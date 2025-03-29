@@ -33,20 +33,17 @@ try {
         const puppeteer = require('puppeteer');
         console.log('puppeteer已加载');
         // 确保html-pdf-node使用我们的puppeteer实例
-        htmlPdf.setPuppeteer(puppeteer);
+        htmlPdf.setPuppeteer && htmlPdf.setPuppeteer(puppeteer);
     } catch (puppeteerError) {
         try {
             const puppeteerCore = require('puppeteer-core');
             console.log('puppeteer-core已加载');
             
-            // 查找本地安装的Chrome/Chromium
-            const executablePath = puppeteerCore.executablePath?.() || 
-                                 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-            
-            console.log('使用本地Chrome:', executablePath);
+            // 不要调用可能导致错误的方法
+            console.log('将使用puppeteer-core');
             
             // 确保html-pdf-node使用我们的puppeteer-core实例
-            htmlPdf.setPuppeteer(puppeteerCore);
+            htmlPdf.setPuppeteer && htmlPdf.setPuppeteer(puppeteerCore);
         } catch (coreError) {
             console.error('无法加载puppeteer或puppeteer-core:', coreError);
         }
@@ -360,6 +357,9 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
         console.log('处理PDF中的图片...');
         const htmlWithBase64Images = await replaceImagesWithBase64(htmlContent);
         
+        // 处理HTML，避免表格和图片被切断
+        const processedHtml = processHtmlForPdf(htmlWithBase64Images);
+        
         // 添加样式的HTML
         const styledHtml = `
             <!DOCTYPE html>
@@ -471,14 +471,19 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                     }
                     table {
                         border-collapse: collapse;
-                        width: 100%;
-                        margin: 15px 0;
+                        width: auto;
+                        max-width: 100%;
+                        margin: 15px auto;
                         box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+                        page-break-inside: avoid; /* 防止表格跨页被分割 */
+                        break-inside: avoid; /* 现代浏览器属性 */
                     }
                     th, td {
                         border: 1px solid #ddd;
                         padding: 8px;
                         text-align: left;
+                        white-space: normal; /* 允许文本换行 */
+                        word-wrap: break-word; /* 文本换行 */
                     }
                     th {
                         background-color: #f5f5f5;
@@ -487,20 +492,58 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                     tr:nth-child(even) {
                         background-color: #f9f9f9;
                     }
+                    table.responsive {
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto; /* 允许在窄屏幕上滚动 */
+                    }
+                    /* 图片容器避免跨页切分 */
+                    .img-container {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                        margin: 15px auto;
+                        text-align: center;
+                    }
                     img {
-                        max-width: 100%;
+                        max-width: 90%;
                         height: auto;
                         display: block;
                         margin: 10px auto;
                         border-radius: 4px;
+                        page-break-inside: avoid; /* 防止图片跨页被分割 */
+                        break-inside: avoid; /* 现代浏览器属性 */
                     }
                     p {
                         margin-bottom: 10px;
                     }
+                    /* 处理特大表格或图片时，添加分页符 */
+                    .page-break-after {
+                        page-break-after: always;
+                        break-after: page;
+                    }
+                    .page-break-before {
+                        page-break-before: always;
+                        break-before: page;
+                    }
+                    /* 缩小过大的表格的字体 */
+                    .small-table {
+                        font-size: 0.85em;
+                    }
+                    /* 特宽表格变形为普通表格 */
+                    @media print {
+                        /* 打印相关样式 */
+                        body {
+                            margin: 0;
+                            padding: 0;
+                        }
+                        .wide-table {
+                            font-size: 0.85em;
+                        }
+                    }
                 </style>
             </head>
             <body>
-                ${htmlWithBase64Images}
+                ${processedHtml}
             </body>
             </html>
         `;
@@ -517,10 +560,12 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
             const options = { 
                 format: 'A4',
                 printBackground: true,
-                margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
+                margin: { top: '30px', right: '25px', bottom: '30px', left: '25px' }, // 增大页边距
                 displayHeaderFooter: true,
                 headerTemplate: '<div style="font-size: 9px; margin-left: 20px;">彩色学习文档</div>',
-                footerTemplate: '<div style="font-size: 9px; margin: 0 auto; text-align: center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'
+                footerTemplate: '<div style="font-size: 9px; margin: 0 auto; text-align: center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+                preferCSSPageSize: true, // 优先使用CSS定义的页面大小
+                scale: 0.95, // 稍微缩小内容，避免内容太贴近边缘
             };
             
             try {
@@ -588,6 +633,61 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
             error: error.message
         };
     }
+}
+
+/**
+ * 处理HTML内容，避免表格和图片在PDF中跨页被切断
+ * @param {string} html - 原始HTML内容
+ * @returns {string} - 处理后的HTML
+ */
+function processHtmlForPdf(html) {
+    let processedHtml = html;
+    
+    // 1. 处理图片 - 将图片放在容器内
+    processedHtml = processedHtml.replace(
+        /<img([^>]*)>/gi, 
+        '<div class="img-container"><img$1></div>'
+    );
+    
+    // 2. 处理表格 - 检测宽表格并添加响应式类
+    const tableRegex = /<table([^>]*)>([\s\S]*?)<\/table>/gi;
+    processedHtml = processedHtml.replace(tableRegex, (match, attributes, tableContent) => {
+        // 计算表格列数
+        const thMatch = tableContent.match(/<th[^>]*>/gi);
+        const firstRowTdMatch = tableContent.match(/<tr[^>]*>[\s\S]*?<\/tr>/i);
+        
+        let columnCount = 0;
+        if (thMatch) {
+            columnCount = thMatch.length;
+        } else if (firstRowTdMatch) {
+            // 如果没有<th>，计算第一行的<td>数量
+            const tdMatch = firstRowTdMatch[0].match(/<td[^>]*>/gi);
+            if (tdMatch) {
+                columnCount = tdMatch.length;
+            }
+        }
+        
+        // 如果列数较多，添加small-table类来缩小字体
+        if (columnCount > 5) {
+            return `<table${attributes} class="small-table">${tableContent}</table>`;
+        }
+        
+        // 如果是非常宽的表格，添加responsive类
+        if (tableContent.length > 1000 || columnCount > 7) {
+            return `<table${attributes} class="responsive">${tableContent}</table>`;
+        }
+        
+        return match; // 保持原样
+    });
+    
+    // 3. 为大图片或复杂表格添加分页控制
+    // 识别大图片
+    processedHtml = processedHtml.replace(
+        /<div class="img-container"><img([^>]*)style="([^"]*width:\s*(?:90|[6-9][0-9])%[^"]*)"([^>]*)><\/div>/gi,
+        '<div class="page-break-before"></div><div class="img-container"><img$1style="$2"$3></div><div class="page-break-after"></div>'
+    );
+    
+    return processedHtml;
 }
 
 module.exports = {
