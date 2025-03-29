@@ -26,12 +26,34 @@
                     <div class="card-body">
                         <form id="upload-form" enctype="multipart/form-data">
                             <div class="mb-3">
-                                <label for="document" class="form-label">选择Word文档或PDF文件</label>
-                                <input type="file" class="form-control" id="document" name="document" accept=".docx,.pdf" required>
-                                <div class="form-text">支持的格式：Word文档(.docx)和PDF文件</div>
-                            </div>
-                            <div class="d-grid gap-2">
-                                <button type="submit" class="btn btn-primary">上传文档</button>
+                                <label for="fileInput" class="form-label">选择Word文档或PDF文件</label>
+                                <input type="file" id="fileInput" name="document" accept=".docx,.pdf" class="form-control">
+                                <div class="mb-4">
+                                    <label class="block text-lg font-medium text-gray-700 mb-2">请选择最终输出格式：</label>
+                                    <div class="flex space-x-4">
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" name="targetFormat" value="word" class="form-radio h-5 w-5 text-indigo-600" checked>
+                                            <span class="ml-2 text-gray-700">Word文档(.docx)</span>
+                                        </label>
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" name="targetFormat" value="pdf" class="form-radio h-5 w-5 text-indigo-600">
+                                            <span class="ml-2 text-gray-700">PDF文档(.pdf)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="deepseek-api-key" class="form-label">DeepSeek API密钥（必填）</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">sk-</span>
+                                        <input type="text" id="deepseek-api-key" class="form-control" placeholder="8540a084e1774f9980019e37a9086781" value="8540a084e1774f9980019e37a9086781">
+                                    </div>
+                                    <div class="form-text">请输入有效的DeepSeek API密钥以启用高级美化功能</div>
+                                </div>
+                                
+                                <button type="button" id="uploadBtn" class="btn btn-primary w-100">
+                                    上传文档
+                                </button>
                             </div>
                         </form>
                     </div>

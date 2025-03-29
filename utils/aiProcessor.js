@@ -64,6 +64,7 @@ async function beautifyWithDeepseek(htmlContent, apiKey) {
     
     try {
         console.log('调用DEEPSEEK API美化文档...');
+        console.log('使用的API密钥:', apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供');
         
         // 提取所有图片标签并保存相关信息
         const imageRegex = /<img\s+[^>]*>/gi;
@@ -75,7 +76,7 @@ async function beautifyWithDeepseek(htmlContent, apiKey) {
         while((matchImage = imageRegex.exec(htmlContent)) !== null) {
             const imgTag = matchImage[0];
             const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
-            const srcMatch = imgTag.match(/src=["']([^"']*)["']/i);
+            const srcMatch = imgTag.match(/src=["']([^"'<>]*)["']/i);
             const widthMatch = imgTag.match(/width=["']?(\d+)(%|px)?["']?/i);
             const heightMatch = imgTag.match(/height=["']?(\d+)(%|px)?["']?/i);
             
@@ -83,15 +84,21 @@ async function beautifyWithDeepseek(htmlContent, apiKey) {
             const width = widthMatch ? widthMatch[1] + (widthMatch[2] || 'px') : 'auto';
             const height = heightMatch ? heightMatch[1] + (heightMatch[2] || 'px') : 'auto';
             
+            // 清理图片路径，确保不包含HTML标签
+            const imgSrc = srcMatch ? srcMatch[1].replace(/<\/?[^>]+(>|$)/g, '') : '';
+            
             const imgData = {
                 fullTag: imgTag,
                 index: matchImage.index,
-                src: srcMatch ? srcMatch[1] : '',
+                src: imgSrc,
                 alt: altMatch ? altMatch[1] : '图片',
                 width: width,
                 height: height,
                 id: `img-${Date.now()}-${images.length}`
             };
+            
+            // 记录图片信息
+            console.log(`提取图片: ID=${imgData.id}, SRC=${imgData.src}, ALT=${imgData.alt}`);
             
             // 创建图片占位标记，包含位置和尺寸信息
             const imageMarker = `<div class="image-placeholder" data-img-id="${imgData.id}" style="width:${width};height:${height};margin:10px 0;background:#f0f0f0;border:1px dashed #ccc;text-align:center;padding:20px;">[图片占位：${imgData.alt}]</div>`;
@@ -354,25 +361,70 @@ ${htmlWithImageMarkers}
             max_tokens: 4000
         };
 
-        // 发送API请求
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify(requestData)
+        console.log('准备发送API请求到:', apiUrl);
+        console.log('请求参数:', {
+            model: requestData.model,
+            temperature: requestData.temperature,
+            max_tokens: requestData.max_tokens,
+            message_length: requestData.messages[0].content.length,
         });
+        console.log('使用的API密钥:', apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供');
+
+        // 发送API请求
+        let response;
+        try {
+            response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(requestData)
+            });
+        } catch (fetchError) {
+            console.error('DEEPSEEK API请求网络错误:', fetchError.message);
+            console.log('网络请求失败，使用规则处理替代');
+            return beautifyWithRules(htmlContent);
+        }
 
         // 处理API响应
         if (!response.ok) {
-            const errorData = await response.text();
-            console.error('DEEPSEEK API请求失败:', errorData);
+            let errorData;
+            try {
+                errorData = await response.text();
+            } catch (e) {
+                errorData = 'Unable to get error details';
+            }
+            
+            console.error(`DEEPSEEK API请求失败(${response.status}): ${errorData}`);
+            
+            if (response.status === 401) {
+                console.error('API密钥无效或未授权，请检查API密钥格式和权限');
+            } else if (response.status === 429) {
+                console.error('API请求过多，超出限制');
+            } else if (response.status >= 500) {
+                console.error('DEEPSEEK API服务器错误');
+            }
+            
             console.log('使用规则处理替代');
             return beautifyWithRules(htmlContent);
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+            console.log('DEEPSEEK API响应成功:', {
+                usage: data.usage,
+                model: data.model,
+                finishReason: data.choices[0].finish_reason,
+                responseLength: data.choices[0].message.content.length
+            });
+        } catch (jsonError) {
+            console.error('解析API响应JSON失败:', jsonError.message);
+            console.log('JSON解析失败，使用规则处理替代');
+            return beautifyWithRules(htmlContent);
+        }
+        
         const aiResponse = data.choices[0].message.content;
 
         // 提取AI回复中的HTML内容
@@ -402,21 +454,52 @@ ${htmlWithImageMarkers}
         
         // 将占位标记替换回原始图片
         images.forEach((img) => {
+            // 输出要替换的图片信息，方便调试
+            console.log(`准备替换图片: ID=${img.id}, SRC=${img.src}, TAG长度=${img.fullTag.length}`);
+            
+            // 确保img.fullTag是有效的图片标签
+            if (!img.fullTag.includes('<img') || !img.src) {
+                console.log(`跳过无效的图片: ID=${img.id}`);
+                return;
+            }
+            
             // 查找占位符
             const placeholderRegex = new RegExp(`<div class="image-placeholder"[^>]*data-img-id="${img.id}"[^>]*>\\[图片占位：${img.alt}\\]<\\/div>`, 'g');
+            const beforeCount = (finalHtml.match(new RegExp(`data-img-id="${img.id}"`, 'g')) || []).length;
             
             // 替换回原始图片标签
             finalHtml = finalHtml.replace(placeholderRegex, img.fullTag);
+            const afterFirstReplace = (finalHtml.match(new RegExp(`data-img-id="${img.id}"`, 'g')) || []).length;
             
-            // 备用替换方案：如果找不到完全匹配的占位符，尝试查找部分匹配
-            if (finalHtml.includes(`data-img-id="${img.id}"`)) {
+            // 备用替换方案1：如果找不到完全匹配的占位符，尝试查找部分匹配
+            if (beforeCount === afterFirstReplace && finalHtml.includes(`data-img-id="${img.id}"`)) {
+                console.log(`使用备用方案1替换: ${img.id}`);
                 const backupRegex = new RegExp(`<div[^>]*data-img-id="${img.id}"[^>]*>.*?<\\/div>`, 'g');
                 finalHtml = finalHtml.replace(backupRegex, img.fullTag);
             }
+            
+            // 备用替换方案2：如果仍然存在占位符，使用更宽松的匹配
+            if (finalHtml.includes(`data-img-id="${img.id}"`)) {
+                console.log(`使用备用方案2替换: ${img.id}`);
+                const relaxedRegex = new RegExp(`<[^>]*data-img-id="${img.id}"[^>]*>.*?<\\/[^>]*>`, 'g');
+                finalHtml = finalHtml.replace(relaxedRegex, img.fullTag);
+            }
+            
+            // 备用替换方案3：如果前两种都失败，但找到了ID，使用最宽松的匹配
+            if (finalHtml.includes(`${img.id}`)) {
+                console.log(`使用备用方案3替换: ${img.id}`);
+                finalHtml = finalHtml.replace(new RegExp(`<[^>]*${img.id}[^>]*>.*?<\\/[^>]*>`, 'g'), img.fullTag);
+            }
+            
+            // 验证替换结果
+            const afterReplace = (finalHtml.match(new RegExp(`data-img-id="${img.id}"`, 'g')) || []).length;
+            console.log(`图片${img.id}替换结果: 之前=${beforeCount}, 之后=${afterReplace}, 成功=${beforeCount > afterReplace}`);
         });
         
-        // 清理可能残留的图片占位符
-        finalHtml = finalHtml.replace(/<div class="image-placeholder"[^>]*>.*?<\/div>/g, '');
+        // 清理可能残留的图片占位符，确保不会漏掉任何格式的占位符
+        console.log('清理可能残留的图片占位符');
+        finalHtml = finalHtml.replace(/<div[^>]*class="image-placeholder"[^>]*>.*?<\/div>/g, '');
+        finalHtml = finalHtml.replace(/<div[^>]*data-img-id="[^"]*"[^>]*>.*?<\/div>/g, '');
         
         return finalHtml;
     } catch (error) {
@@ -435,6 +518,14 @@ ${htmlWithImageMarkers}
  * @returns {Promise<string>} - 美化后的HTML内容
  */
 async function beautifyWithAI(htmlContent, apiKey, apiType = 'deepseek') {
+    // 打印详细调试信息
+    console.log('美化API调用信息:', { 
+        hasApiKey: !!apiKey, 
+        apiKeyLength: apiKey ? apiKey.length : 0,
+        apiType: apiType,
+        apiTypeIsDeepseek: apiType === 'deepseek'
+    });
+    
     // 如果未提供API密钥，回退到规则处理
     if (!apiKey) {
         console.log('未提供API密钥，使用规则处理替代');
@@ -442,17 +533,9 @@ async function beautifyWithAI(htmlContent, apiKey, apiType = 'deepseek') {
     }
     
     try {
-        // 根据API类型选择不同的处理方式
-        if (apiType === 'deepseek') {
-            console.log('使用DEEPSEEK API美化文档...');
-            return await beautifyWithDeepseek(htmlContent, apiKey);
-        } else {
-            // 默认使用OpenAI或其他API的模拟处理
-            console.log('使用默认API处理模拟美化文档...');
-            // 模拟处理延迟
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return beautifyWithRules(htmlContent);
-        }
+        // 强制使用DeepSeek，不考虑apiType参数
+        console.log('尝试使用DEEPSEEK API美化文档...');
+        return await beautifyWithDeepseek(htmlContent, apiKey);
     } catch (error) {
         console.error('AI美化文档失败:', error);
         console.log('回退到规则处理...');
