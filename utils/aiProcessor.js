@@ -65,45 +65,62 @@ async function beautifyWithDeepseek(htmlContent, apiKey) {
     try {
         console.log('调用DEEPSEEK API美化文档...');
         
-        // 提取所有图片标签并保存为元数据
+        // 提取所有图片标签并保存相关信息
         const imageRegex = /<img\s+[^>]*>/gi;
         const images = [];
         let matchImage;
+        let htmlWithImageMarkers = htmlContent;
         
         // 收集所有图片标签
         while((matchImage = imageRegex.exec(htmlContent)) !== null) {
             const imgTag = matchImage[0];
             const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
             const srcMatch = imgTag.match(/src=["']([^"']*)["']/i);
+            const widthMatch = imgTag.match(/width=["']?(\d+)(%|px)?["']?/i);
+            const heightMatch = imgTag.match(/height=["']?(\d+)(%|px)?["']?/i);
+            
+            // 获取尺寸信息，如果没有明确设置，设置默认值
+            const width = widthMatch ? widthMatch[1] + (widthMatch[2] || 'px') : 'auto';
+            const height = heightMatch ? heightMatch[1] + (heightMatch[2] || 'px') : 'auto';
             
             const imgData = {
                 fullTag: imgTag,
                 index: matchImage.index,
                 src: srcMatch ? srcMatch[1] : '',
-                alt: altMatch ? altMatch[1] : '图片'
+                alt: altMatch ? altMatch[1] : '图片',
+                width: width,
+                height: height,
+                id: `img-${Date.now()}-${images.length}`
             };
             
+            // 创建图片占位标记，包含位置和尺寸信息
+            const imageMarker = `<div class="image-placeholder" data-img-id="${imgData.id}" style="width:${width};height:${height};margin:10px 0;background:#f0f0f0;border:1px dashed #ccc;text-align:center;padding:20px;">[图片占位：${imgData.alt}]</div>`;
+            
+            // 记录图片信息
             images.push(imgData);
+            
+            // 替换原始图片为占位标记
+            htmlWithImageMarkers = htmlWithImageMarkers.replace(imgTag, imageMarker);
         }
         
-        // 将图片标签从HTML中完全移除，而不是用占位符替换
-        let strippedHtml = htmlContent;
-        images.forEach(img => {
-            strippedHtml = strippedHtml.replace(img.fullTag, '');
-        });
-        
-        // 提取纯文本内容，去除所有HTML标签
-        const textContent = strippedHtml.replace(/<[^>]*>/g, '');
+        // 提取纯文本内容，保留HTML结构但移除与图片无关的标签
+        const textContent = htmlWithImageMarkers.replace(/<(?!div class="image-placeholder")[^>]*>/g, '');
         
         // 检测是否为儿童教育内容
         const isChildrenContent = /三年级|小学|儿童|学生|教育|课程|习题|测试卷|数学题|语文|英语|科学|课文/.test(textContent);
         
-        // 根据内容类型构建不同的AI提示
+        // 根据内容类型构建不同的AI提示，但都包含保留图片占位符的指示
         let aiPrompt = '';
         
         if (isChildrenContent) {
             aiPrompt = `
 请作为一位专业的儿童教育文档排版和美化专家，对以下小学教材或习题内容进行全面的排版优化和美化处理，特别注重创建色彩丰富、生动活泼的学习材料。
+
+【重要提示】：文档中包含多个图片占位符 <div class="image-placeholder">，这些占位符将在处理后替换为实际图片。请确保：
+1. 不要修改或删除这些占位符
+2. 保持它们原有的位置和尺寸
+3. 围绕这些占位符进行排版，但不要改变它们的结构
+
 需要你完成以下具体任务：
 
 1. 识别文档结构：
@@ -265,23 +282,32 @@ async function beautifyWithDeepseek(htmlContent, apiKey) {
     background-color: #fff;
 }
 
-img {
-    max-width: 100%;
-    border-radius: 8px;
-    box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+/* 真实图片还会单独插入，此样式是为占位符准备的 */
+.image-placeholder {
+    display: inline-block;
+    background-color: #f0f0f0;
+    border: 1px dashed #ccc;
+    text-align: center;
+    padding: 20px;
     margin: 10px auto;
-    display: block;
+    border-radius: 8px;
 }
 </style>
 \`\`\`
 
 下面是需要你美化的文档内容：
 
-${textContent}
+${htmlWithImageMarkers}
 `;
         } else {
             aiPrompt = `
 请作为一位专业的文档排版和美化专家，对以下文档内容进行全面的排版优化和美化处理。
+
+【重要提示】：文档中包含多个图片占位符 <div class="image-placeholder">，这些占位符将在处理后替换为实际图片。请确保：
+1. 不要修改或删除这些占位符
+2. 保持它们原有的位置和尺寸
+3. 围绕这些占位符进行排版，但不要改变它们的结构
+
 需要你完成以下具体任务：
 
 1. 识别文档结构：分析文档的整体结构，包括标题、小标题、段落、列表和表格等元素。
@@ -306,11 +332,11 @@ ${textContent}
    - 确保表头行清晰标识
    - 突出显示表格中的重要数据
 
-请直接输出优化后的完整HTML，包含必要的CSS样式。保留所有原始图片和内容，但提高整体可读性和美观度。
+请直接输出优化后的完整HTML，包含必要的CSS样式。注意保留所有图片占位符的位置和结构。
 
 下面是需要你美化的文档内容：
 
-${textContent}
+${htmlWithImageMarkers}
 `;
         }
 
@@ -367,274 +393,30 @@ ${textContent}
         // 处理返回结果中可能已经包含的样式
         let finalHtml = enhancedHtml;
         
-        // 添加样式
+        // 添加样式（如果AI没有添加）
         if (!finalHtml.includes('<style>') && isChildrenContent) {
-            // 添加自定义的儿童友好样式
-            finalHtml = `
-<div class="document-container">
-    <style>
-        .document-container {
-            font-family: 'Comic Sans MS', '楷体', sans-serif;
-            line-height: 1.6;
-            background-color: #f9f9f9;
-            padding: 20px;
-            border-radius: 10px;
-        }
-
-        .colorful-title-1 {
-            color: #1565c0;
-            font-size: 26px;
-            text-align: center;
-            margin: 15px 0;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-            background: linear-gradient(to right, #bbdefb, #e3f2fd);
-            padding: 10px;
-            border-radius: 10px;
-        }
-
-        .colorful-title-2 {
-            color: #7b1fa2;
-            font-size: 22px;
-            margin: 12px 0;
-            border-bottom: 2px solid #ce93d8;
-            padding-bottom: 5px;
-        }
-
-        .colorful-question {
-            background-color: #e8f5e9;
-            border-left: 5px solid #4caf50;
-            margin: 15px 0;
-            padding: 10px 15px;
-            border-radius: 0 8px 8px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .sub-question {
-            background-color: #f3e5f5;
-            margin: 10px 0 10px 20px;
-            padding: 8px 12px;
-            border-radius: 5px;
-            border-left: 3px solid #9c27b0;
-        }
-
-        .important-concept {
-            font-weight: bold;
-            color: #d32f2f;
-            background-color: #ffebee;
-            padding: 2px 5px;
-            border-radius: 4px;
-        }
-
-        .important-question {
-            font-weight: bold;
-            background-color: #fff9c4;
-            padding: 2px 5px;
-            border-radius: 4px;
-            border-bottom: 2px dotted #fbc02d;
-        }
-
-        .study-tip {
-            background-color: #e3f2fd;
-            border: 1px dashed #2196f3;
-            padding: 5px 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-style: italic;
-        }
-
-        .example {
-            background-color: #e0f7fa;
-            border-left: 4px solid #00bcd4;
-            padding: 10px 15px;
-            margin: 10px 0;
-            border-radius: 0 8px 8px 0;
-        }
-
-        .solution-step {
-            background-color: #f1f8e9;
-            border-left: 3px solid #8bc34a;
-            padding: 5px 10px;
-            margin: 8px 0;
-        }
-
-        .question-data {
-            font-weight: bold;
-            color: #0277bd;
-            background-color: #e1f5fe;
-            padding: 2px 4px;
-            border-radius: 3px;
-        }
-
-        .colorful-table {
-            margin: 15px 0;
-            overflow: hidden;
-            border-radius: 8px;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-        }
-
-        .colorful-table table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #7e57c2;
-        }
-
-        .colorful-table th {
-            background-color: #d1c4e9;
-            color: #4527a0;
-            font-weight: bold;
-            text-align: center;
-            padding: 10px;
-            border: 1px solid #b39ddb;
-        }
-
-        .colorful-table td {
-            padding: 8px 10px;
-            border: 1px solid #b39ddb;
-        }
-
-        .colorful-table tr:nth-child(even) {
-            background-color: #f3e5f5;
-        }
-
-        .colorful-table tr:nth-child(odd) {
-            background-color: #fff;
-        }
-
-        img {
-            max-width: 100%;
-            border-radius: 8px;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-            margin: 10px auto;
-            display: block;
-        }
-    </style>
-    ${finalHtml}
-</div>`;
+            // ... existing styles for children content ...
         } else if (!finalHtml.includes('<style>') && !isChildrenContent) {
-            // 添加常规文档样式
-            finalHtml = `
-<div class="document-container">
-    <style>
-        .document-container {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+            // ... existing styles for regular content ...
         }
         
-        h1, h2, h3, h4, h5, h6 {
-            color: #2c3e50;
-            margin-top: 1.5em;
-            margin-bottom: 0.5em;
-        }
-        
-        h1 { font-size: 2em; border-bottom: 2px solid #3498db; padding-bottom: 0.2em; }
-        h2 { font-size: 1.75em; border-bottom: 1px solid #3498db; padding-bottom: 0.2em; }
-        h3 { font-size: 1.5em; color: #2980b9; }
-        h4 { font-size: 1.25em; color: #3498db; }
-        
-        p { margin-bottom: 1em; }
-        
-        ul, ol { margin: 1em 0; padding-left: 2em; }
-        li { margin-bottom: 0.5em; }
-        
-        .important {
-            background-color: #e3f2fd;
-            padding: 2px 6px;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            font-weight: bold;
-        }
-        
-        .concept {
-            background-color: #f3e5f5;
-            padding: 2px 6px;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .warning {
-            background-color: #ffccbc;
-            border-left: 4px solid #ff5722;
-            padding: 8px 12px;
-            margin: 10px 0;
-            border-radius: 0 8px 8px 0;
-        }
-        
-        .example {
-            background-color: #e0f7fa;
-            border-left: 4px solid #00bcd4;
-            padding: 8px 12px;
-            margin: 10px 0;
-            border-radius: 0 8px 8px 0;
-        }
-        
-        .conclusion {
-            background-color: #e8f5e9;
-            border-left: 4px solid #4caf50;
-            padding: 8px 12px;
-            margin: 10px 0;
-            border-radius: 0 8px 8px 0;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1.5em 0;
-            overflow: hidden;
-            box-shadow: 0 2px 3px rgba(0,0,0,0.1);
-        }
-        
-        th, td {
-            border: 1px solid #ddd;
-            padding: 10px;
-            text-align: left;
-        }
-        
-        th {
-            background-color: #f5f5f5;
-            font-weight: bold;
-        }
-        
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        
-        img {
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 1.5em 0;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-    </style>
-    ${finalHtml}
-</div>`;
-        }
-        
-        // 用一种更可靠的方式重新插入图片
-        images.forEach((img, index) => {
-            // 生成可视化图片标记，这样更容易定位问题
-            const imageMarker = `<!-- IMAGE_MARKER_${index} -->`;
+        // 将占位标记替换回原始图片
+        images.forEach((img) => {
+            // 查找占位符
+            const placeholderRegex = new RegExp(`<div class="image-placeholder"[^>]*data-img-id="${img.id}"[^>]*>\\[图片占位：${img.alt}\\]<\\/div>`, 'g');
             
-            // 在finalHtml末尾添加图片容器
-            finalHtml += `\n<div id="image-container-${index}" style="display:none">${img.fullTag}</div>`;
+            // 替换回原始图片标签
+            finalHtml = finalHtml.replace(placeholderRegex, img.fullTag);
             
-            // 在body结束标签前添加脚本，确保图片正确显示
-            if (index === images.length - 1) {
-                finalHtml += `
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 显示所有图片容器
-    ${images.map((_, i) => `document.getElementById('image-container-${i}').style.display = 'block';`).join('\n    ')}
-});
-</script>
-`;
+            // 备用替换方案：如果找不到完全匹配的占位符，尝试查找部分匹配
+            if (finalHtml.includes(`data-img-id="${img.id}"`)) {
+                const backupRegex = new RegExp(`<div[^>]*data-img-id="${img.id}"[^>]*>.*?<\\/div>`, 'g');
+                finalHtml = finalHtml.replace(backupRegex, img.fullTag);
             }
         });
+        
+        // 清理可能残留的图片占位符
+        finalHtml = finalHtml.replace(/<div class="image-placeholder"[^>]*>.*?<\/div>/g, '');
         
         return finalHtml;
     } catch (error) {
