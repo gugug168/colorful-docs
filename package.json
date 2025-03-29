@@ -18,8 +18,10 @@
   "license": "ISC",
   "dependencies": {
     "bootstrap": "^5.3.0",
+    "chrome-launcher": "^1.1.2",
     "express": "^4.18.2",
     "html-docx-js": "^0.3.1",
+    "html-pdf-node": "^1.0.8",
     "html-to-docx": "^1.8.0",
     "jquery": "^3.7.0",
     "jspdf": "^2.5.1",
@@ -27,7 +29,9 @@
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
     "openai": "^4.0.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "puppeteer": "^19.7.2",
+    "puppeteer-core": "^19.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
