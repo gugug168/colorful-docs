@@ -1,0 +1,35 @@
+{
+  "name": "colorful-docs",
+  "version": "1.0.0",
+  "description": "文档排版与美化系统",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "document",
+    "formatting",
+    "styling",
+    "AI"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bootstrap": "^5.3.0",
+    "express": "^4.18.2",
+    "html-docx-js": "^0.3.1",
+    "html-to-docx": "^1.8.0",
+    "jquery": "^3.7.0",
+    "jspdf": "^2.5.1",
+    "mammoth": "^1.6.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.0.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
