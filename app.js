@@ -400,27 +400,56 @@ app.get('/export', async (req, res) => {
   }
 });
 
-// 下载处理后的文件
-app.get('/download/:fileName', (req, res) => {
-  const fileName = req.params.fileName;
-  // 确保文件名不包含路径分隔符，防止路径遍历
-  const sanitizedFilename = path.basename(fileName);
-  const filePath = path.join(__dirname, 'downloads', sanitizedFilename);
+// 添加处理带查询参数的下载路由
+app.get('/download', (req, res) => {
+  const filePath = req.query.path;
   
-  console.log('尝试下载文件:', filePath);
+  if (!filePath) {
+    return res.status(400).send('缺少文件路径参数');
+  }
   
-  if (!fs.existsSync(filePath)) {
-    console.error('下载文件不存在:', filePath);
+  console.log('使用查询参数下载文件:', filePath);
+  
+  // 确定文件是否存在，并尝试多种可能的路径
+  let resolvedPath = '';
+  
+  // 判断是否为绝对路径
+  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+    resolvedPath = filePath;
+  } else {
+    // 如果是相对路径，尝试多种组合
+    const possiblePaths = [
+      filePath, // 原始路径
+      path.join(__dirname, filePath), // 相对于应用根目录
+      path.join(__dirname, 'downloads', path.basename(filePath)), // 在downloads目录中查找文件名
+      path.join(__dirname, 'temp', path.basename(filePath)), // 在temp目录中查找文件名
+    ];
+    
+    // 找到第一个存在的路径
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        resolvedPath = p;
+        break;
+      }
+    }
+  }
+  
+  // 如果仍未找到文件，返回404
+  if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+    console.error('下载文件不存在，尝试的路径:', filePath);
     return res.status(404).send('文件不存在或已被删除');
   }
   
+  // 提取文件名，确保安全
+  const fileName = path.basename(resolvedPath);
+  
   // 获取文件扩展名，以设置正确的Content-Type
-  const ext = path.extname(filePath).toLowerCase();
-  console.log('文件扩展名:', ext);
+  const ext = path.extname(resolvedPath).toLowerCase();
+  console.log('下载文件:', resolvedPath, '扩展名:', ext);
   
   try {
-    // 读取文件内容以验证
-    const fileContent = fs.readFileSync(filePath);
+    // 读取文件内容
+    const fileContent = fs.readFileSync(resolvedPath);
     console.log('文件大小:', fileContent.length, '字节');
     
     let contentType;
@@ -443,11 +472,12 @@ app.get('/download/:fileName', (req, res) => {
     
     // 设置响应头
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', fileContent.length);
     
     // 发送文件内容
     res.send(fileContent);
+    console.log('文件下载成功:', fileName);
   } catch (err) {
     console.error('读取或发送文件时出错:', err);
     res.status(500).send('下载失败: ' + err.message);

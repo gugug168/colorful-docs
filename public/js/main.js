@@ -3,11 +3,215 @@ $(document).ready(function() {
     let currentProcessedFile = null;
     let currentUploadedFile = null;
     
+    // 初始化上传区域交互效果
+    initUploadZone();
+    
+    // 初始化预览区域折叠功能
+    initTogglePreview();
+    
     // 绑定上传按钮的点击事件
     $('#uploadBtn').on('click', function() {
         // 触发表单提交
         $('#upload-form').submit();
     });
+    
+    // 初始化预览区域折叠/展开功能
+    function initTogglePreview() {
+        // 预览区域折叠/展开
+        $('.toggle-preview').on('click', function(e) {
+            e.stopPropagation(); // 防止事件冒泡
+            e.preventDefault(); // 阻止默认行为
+            
+            // 不要直接操作DOM，使用变量先获取元素
+            const previewBody = $('.preview-content-wrapper');
+            const toggleIcon = $(this).find('.toggle-icon i');
+            
+            // 首先确保标题和图标可见
+            ensureVisibility();
+            
+            // 保存当前状态以便切换
+            const isCollapsed = previewBody.hasClass('collapsed');
+            
+            // 切换折叠状态
+            if (isCollapsed) {
+                // 展开
+                previewBody.removeClass('collapsed');
+                toggleIcon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                toggleIcon.parent().removeClass('collapsed');
+            } else {
+                // 折叠
+                previewBody.addClass('collapsed');
+                toggleIcon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                toggleIcon.parent().addClass('collapsed');
+            }
+            
+            // 存储折叠状态到本地存储
+            localStorage.setItem('preview_collapsed', !isCollapsed);
+            
+            // 确保交互结束后标题仍然可见
+            ensureVisibility();
+            
+            // 再次检查所有元素是否可见
+            setTimeout(ensureVisibility, 50);
+            setTimeout(ensureVisibility, 200);
+        });
+        
+        // 结果区域折叠/展开
+        $('.toggle-result').on('click', function(e) {
+            e.stopPropagation(); // 防止事件冒泡
+            e.preventDefault(); // 阻止默认行为
+            
+            // 不要直接操作DOM，使用变量先获取元素
+            const resultBody = $('.result-content-wrapper');
+            const toggleIcon = $(this).find('.toggle-icon i');
+            
+            // 首先确保标题和图标可见
+            ensureVisibility();
+            
+            // 保存当前状态以便切换
+            const isCollapsed = resultBody.hasClass('collapsed');
+            
+            // 切换折叠状态
+            if (isCollapsed) {
+                // 展开
+                resultBody.removeClass('collapsed');
+                toggleIcon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                toggleIcon.parent().removeClass('collapsed');
+            } else {
+                // 折叠
+                resultBody.addClass('collapsed');
+                toggleIcon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                toggleIcon.parent().addClass('collapsed');
+            }
+            
+            // 存储折叠状态到本地存储
+            localStorage.setItem('result_collapsed', !isCollapsed);
+            
+            // 确保交互结束后标题仍然可见
+            ensureVisibility();
+            
+            // 再次检查所有元素是否可见
+            setTimeout(ensureVisibility, 50);
+            setTimeout(ensureVisibility, 200);
+        });
+        
+        // 恢复上次的折叠状态
+        const previewCollapsed = localStorage.getItem('preview_collapsed') === 'true';
+        const resultCollapsed = localStorage.getItem('result_collapsed') === 'true';
+        
+        if (previewCollapsed) {
+            $('.preview-content-wrapper').addClass('collapsed');
+            $('.toggle-preview .toggle-icon').addClass('collapsed');
+            $('.toggle-preview .toggle-icon i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
+        }
+        
+        if (resultCollapsed) {
+            $('.result-content-wrapper').addClass('collapsed');
+            $('.toggle-result .toggle-icon').addClass('collapsed');
+            $('.toggle-result .toggle-icon i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
+        }
+        
+        // 确保初始化时标题始终可见
+        ensureVisibility();
+        
+        // 添加鼠标悬停监听，确保标题文字始终可见
+        $('.toggle-preview, .toggle-result').on('mouseenter mouseleave', function() {
+            ensureVisibility();
+        });
+        
+        // 通用函数：确保标题和图标可见
+        function ensureVisibility() {
+            // 设置强制样式确保标题和图标可见
+            $('.card-header-preview').css({
+                'background-color': 'var(--info-color)',
+                'opacity': '1'
+            });
+            
+            $('.card-header-result').css({
+                'background-color': 'var(--result-color)',
+                'opacity': '1'
+            });
+            
+            $('.header-title, .header-text').css({
+                'opacity': '1',
+                'visibility': 'visible',
+                'color': 'white',
+                'text-shadow': '0px 0px 4px rgba(0, 0, 0, 0.5)'
+            });
+            
+            $('.toggle-icon, .toggle-icon i').css({
+                'opacity': '1',
+                'visibility': 'visible',
+                'color': 'white'
+            });
+        }
+    }
+    
+    // 初始化上传区域交互效果
+    function initUploadZone() {
+        const uploadZone = $('.upload-zone');
+        const fileInput = $('#fileInput');
+        const uploadPrompt = $('.upload-prompt');
+        
+        // 显示上传提示
+        uploadPrompt.removeClass('d-none');
+        
+        // 点击上传区域时触发文件选择
+        uploadZone.on('click', function(e) {
+            if (e.target !== fileInput[0]) {
+                fileInput.click();
+            }
+        });
+        
+        // 处理拖放效果
+        uploadZone.on('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).addClass('border-primary').css('background-color', 'rgba(212, 224, 255, 0.7)');
+        });
+        
+        uploadZone.on('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).removeClass('border-primary').css('background-color', '');
+        });
+        
+        uploadZone.on('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).removeClass('border-primary').css('background-color', '');
+            
+            if (e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files.length) {
+                fileInput[0].files = e.originalEvent.dataTransfer.files;
+                // 更新文件名显示
+                const fileName = fileInput[0].files[0].name;
+                updateFileNameDisplay(fileName);
+            }
+        });
+        
+        // 文件选择变化时显示文件名
+        fileInput.on('change', function() {
+            if (this.files && this.files.length) {
+                const fileName = this.files[0].name;
+                updateFileNameDisplay(fileName);
+            }
+        });
+        
+        // 更新文件名显示
+        function updateFileNameDisplay(fileName) {
+            // 创建或更新文件名显示元素
+            let fileNameDisplay = uploadZone.find('.selected-file');
+            if (fileNameDisplay.length === 0) {
+                uploadPrompt.html(`
+                    <i class="fas fa-file-alt fs-2 mb-2 text-primary"></i>
+                    <p class="selected-file mb-0">${fileName}</p>
+                    <p class="text-muted small mt-1">点击重新选择</p>
+                `);
+            } else {
+                fileNameDisplay.text(fileName);
+            }
+        }
+    }
     
     // 表单提交处理 - 仅上传文件
     $('#upload-form').on('submit', function(e) {
@@ -22,7 +226,7 @@ $(document).ready(function() {
         // 验证文件类型
         const fileInput = $('#fileInput')[0]; // 修正为正确的文件输入元素ID
         if (fileInput.files.length === 0) {
-            alert('请选择文件');
+            showMessage('请选择文件', 'warning');
             return;
         }
         
@@ -30,7 +234,7 @@ $(document).ready(function() {
         const fileType = file.name.split('.').pop().toLowerCase();
         
         if (fileType !== 'docx' && fileType !== 'pdf') {
-            alert('只支持Word文档(.docx)和PDF文件');
+            showMessage('只支持Word文档(.docx)和PDF文件', 'warning');
             return;
         }
         
@@ -105,6 +309,9 @@ $(document).ready(function() {
                     }
                     sessionStorage.setItem('uploadedFile', JSON.stringify(uploadedFileWithPath));
                     
+                    // 显示上传成功消息
+                    showMessage('文档上传成功！', 'success');
+                    
                     // 直接使用返回的HTML显示预览
                     if (currentUploadedFile && currentUploadedFile.html) {
                         // 显示预览区域
@@ -116,10 +323,13 @@ $(document).ready(function() {
                         // 在预览区域显示内容
                         $('#preview-content').html(currentUploadedFile.html);
                         
-                        // 滚动到预览区域
-                        $('html, body').animate({
-                            scrollTop: $('#document-preview').offset().top - 50
-                        }, 500);
+                        // 添加漂亮的加载动画
+                        addEntryAnimation('#document-preview');
+                        
+                        // 确保预览区域处于展开状态
+                        $('.preview-content-wrapper').removeClass('collapsed');
+                        $('.toggle-preview .toggle-icon i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                        $('.toggle-preview .toggle-icon').removeClass('collapsed');
                         
                         // 启用美化按钮
                         $('#beautify-btn').prop('disabled', false);
@@ -141,6 +351,15 @@ $(document).ready(function() {
         });
     });
     
+    // 添加元素出现动画
+    function addEntryAnimation(selector) {
+        const element = $(selector);
+        element.css('opacity', 0);
+        element.animate({
+            opacity: 1
+        }, 400);
+    }
+    
     // 加载原始文档预览
     function loadOriginalPreview(filePath) {
         console.log('加载预览，文件路径:', filePath); // 添加调试日志
@@ -161,13 +380,16 @@ $(document).ready(function() {
         // 显示预览区域
         $('#document-preview').removeClass('d-none');
         
+        // 添加漂亮的加载动画
+        addEntryAnimation('#document-preview');
+        
+        // 确保预览区域处于展开状态
+        $('.preview-content-wrapper').removeClass('collapsed');
+        $('.toggle-preview .toggle-icon i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+        $('.toggle-preview .toggle-icon').removeClass('collapsed');
+        
         // 隐藏美化结果区域
         $('#result-section').addClass('d-none');
-        
-        // 滚动到预览区域
-        $('html, body').animate({
-            scrollTop: $('#document-preview').offset().top - 50
-        }, 500);
         
         // 获取预览内容
         $.ajax({
@@ -219,422 +441,371 @@ $(document).ready(function() {
         });
     }
     
-    // 美化按钮点击处理
+    // 绑定美化按钮的点击事件
     $('#beautify-btn').on('click', function() {
-        console.log('美化按钮被点击');
+        // 添加点击效果
+        const btn = $(this);
+        btn.addClass('pulse-animation');
+        setTimeout(() => {
+            btn.removeClass('pulse-animation');
+        }, 500);
         
-        // 尝试从全局变量获取（最可靠）
-        if (window.currentFilePath && window.currentFileName) {
-            console.log('从全局变量获取文件信息:', {
-                path: window.currentFilePath,
-                name: window.currentFileName
-            });
-            processBeautification(window.currentFilePath, window.currentFileName);
-            return;
-        }
+        // 禁用美化按钮，防止重复点击
+        $(this).prop('disabled', true);
         
-        // 尝试从HTML属性获取
-        const buttonFilePath = $(this).attr('data-filepath');
-        const buttonFileName = $(this).attr('data-filename');
+        // 获取文件路径
+        const filePath = $(this).attr('data-filepath');
+        const filename = $(this).attr('data-filename');
         
-        console.log('从HTML属性获取美化按钮文件信息:', {
-            path: buttonFilePath, 
-            name: buttonFileName,
-            hasAttributes: $(this).attr('data-filepath') !== undefined
-        });
+        console.log('美化按钮点击，文件路径:', filePath, '文件名:', filename);
         
-        // 如果按钮上有文件信息，直接使用
-        if (buttonFilePath && buttonFileName) {
-            processBeautification(buttonFilePath, buttonFileName);
-            return;
-        }
-        
-        // 检查会话存储中的准备标志
-        const documentReady = sessionStorage.getItem('documentReady') === 'true';
-        console.log('会话中的文档准备状态:', documentReady);
-        
-        // 如果文档已准备好，尝试从会话存储获取文件信息
-        if (documentReady) {
-            // 尝试从会话存储获取
-            const currentFile = JSON.parse(sessionStorage.getItem('currentFile') || '{}');
-            const uploadedFile = JSON.parse(sessionStorage.getItem('uploadedFile') || '{}');
+        // 验证文件信息
+        if (!filePath || !filename) {
+            console.error('美化按钮缺少有效的文件信息');
             
-            // 使用任一有效的文件信息
-            const filePath = 
-                (currentFile && currentFile.path) ? currentFile.path : 
-                (uploadedFile && uploadedFile.path) ? uploadedFile.path : null;
-                
-            if (filePath) {
-                const filename = filePath.split(/[\/\\]/).pop();
-                console.log('从会话存储获取文件信息:', { path: filePath, name: filename });
-                processBeautification(filePath, filename);
+            // 尝试从会话存储获取
+            const storedFileJson = sessionStorage.getItem('currentFile');
+            if (storedFileJson) {
+                try {
+                    const storedFile = JSON.parse(storedFileJson);
+                    if (storedFile.path && storedFile.filename) {
+                        console.log('从会话存储恢复文件信息:', storedFile);
+                        processBeautification(storedFile.path, storedFile.filename);
+                        return;
+                    }
+                } catch (e) {
+                    console.error('解析会话存储文件信息失败:', e);
+                }
+            }
+            
+            // 如果还是失败，尝试从全局变量获取
+            if (window.currentFilePath && window.currentFileName) {
+                console.log('从全局变量恢复文件信息');
+                processBeautification(window.currentFilePath, window.currentFileName);
                 return;
             }
+            
+            // 所有尝试都失败
+            showMessage('无法获取文件信息，请重新上传文档', 'danger');
+            $(this).prop('disabled', false);
+            return;
         }
         
-        // 所有尝试都失败，才显示上传文档提示
-        console.log('无法获取文件信息，提示上传文档');
-        showMessage('请先上传文件', 'warning');
+        // 处理美化
+        processBeautification(filePath, filename);
     });
     
-    // 提取美化处理逻辑到单独的函数
+    // 处理美化请求
     function processBeautification(filePath, filename) {
-        // 如果没有提供有效的文件路径或文件名，尝试从会话中恢复
-        if (!filePath || !filename) {
-            const currentFile = JSON.parse(sessionStorage.getItem('currentFile') || '{}');
-            
-            // 尝试使用会话中的信息
-            if (currentFile) {
-                filePath = filePath || currentFile.path || null;
-                filename = filename || currentFile.filename || null;
-            }
-            
-            // 仍然无法获取有效信息，则提示错误并返回
-            if (!filePath || !filename) {
-                console.error('无法获取有效的文件信息进行美化');
-                showMessage('无法获取文件信息，请重新上传文档', 'danger');
-                return;
-            }
-        }
+        // 显示加载状态
+        showLoading('正在进行文档美化，这可能需要一些时间...');
         
-        const targetFormat = sessionStorage.getItem('targetFormat') || 'word';
+        // 获取当前HTML内容
+        const htmlContent = $('#preview-content').html();
+        
+        // 获取目标格式
+        const targetFormat = sessionStorage.getItem('targetFormat') || 
+                           $('input[name="targetFormat"]:checked').val() || 
+                           'word';
         
         // 获取API密钥
-        const apiKeyInput = $('#deepseek-api-key').val() || '';
-        // 确保API密钥格式正确，加上前缀sk-
-        const apiKey = apiKeyInput.startsWith('sk-') ? apiKeyInput : `sk-${apiKeyInput}`;
-
-        if (apiKey && apiKey.length > 10) {
-            console.log(`使用API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
-            sessionStorage.setItem('deepseekApiKey', apiKey);
-        } else {
-            console.warn('未提供有效的API密钥，这可能导致高级美化功能不可用');
+        let apiKey = $('#deepseek-api-key').val() || '';
+        if (apiKey && !apiKey.startsWith('sk-')) {
+            apiKey = 'sk-' + apiKey;
         }
         
-        // 处理文件名 - 去除可能的路径前缀，确保只发送文件名部分
-        let cleanFilename = filename;
-        if (cleanFilename.includes('/')) {
-            cleanFilename = cleanFilename.split('/').pop();
-        }
-        if (cleanFilename.includes('\\')) {
-            cleanFilename = cleanFilename.split('\\').pop();
-        }
+        // 准备请求数据
+        const requestData = {
+            filename: filename,
+            targetFormat: targetFormat,
+            apiKey: apiKey
+        };
         
-        // 获取HTML内容 - 优先使用会话存储中的内容
-        const uploadedFile = JSON.parse(sessionStorage.getItem('uploadedFile') || '{}');
-        const currentFile = JSON.parse(sessionStorage.getItem('currentFile') || '{}');
-        
-        // 尝试获取HTML内容
-        const htmlContent = 
-            (uploadedFile && uploadedFile.html) ? uploadedFile.html : 
-            (currentFile && currentFile.html) ? currentFile.html : null;
-        
-        if (!htmlContent) {
-            console.log('未找到HTML内容，将尝试通过文件名请求美化');
-        } else {
-            console.log('找到HTML内容，将直接发送HTML进行美化');
+        // 如果有HTML内容，添加到请求
+        if (htmlContent && htmlContent.trim().length > 0) {
+            requestData.htmlContent = htmlContent;
         }
         
-        // 显示正在处理的文件信息
-        console.log('发送给服务器的信息:', {
-            filename: cleanFilename,
-            hasHtmlContent: !!htmlContent,
-            hasApiKey: !!apiKey
+        console.log('发送美化请求:', {
+            filename,
+            targetFormat,
+            hasApiKey: !!apiKey,
+            hasHtmlContent: !!htmlContent
         });
-        showLoading('正在美化文档...');
         
-        // 发送美化请求
+        // 发送请求到服务器
         $.ajax({
             url: '/beautify',
             type: 'POST',
+            data: JSON.stringify(requestData),
             contentType: 'application/json',
-            data: JSON.stringify({
-                filename: cleanFilename,
-                targetFormat: targetFormat,
-                htmlContent: htmlContent, // 直接发送HTML内容
-                apiKey: apiKey // 添加API密钥
-            }),
             success: function(response) {
                 hideLoading();
                 console.log('美化成功，服务器响应:', response);
                 
                 if (response.success) {
+                    // 显示美化成功消息
                     showMessage('文档美化成功！', 'success');
-                    // 保存当前处理的文件信息
+                    
+                    // 保存处理后的文件信息
                     currentProcessedFile = response.processedFile;
                     
-                    // 保存到会话存储
-                    sessionStorage.setItem('processedFile', JSON.stringify(response.processedFile));
+                    // 保存信息到会话存储
+                    sessionStorage.setItem('processedFile', JSON.stringify(currentProcessedFile));
                     
-                    // 确保处理后的文件有路径信息
-                    if (response.processedFile && response.processedFile.path) {
-                        // 加载美化后的预览
-                        loadBeautifiedPreview(response.processedFile.path);
-                    } else if (response.processedFile && response.processedFile.html) {
-                        // 如果没有路径但有HTML，直接显示HTML
+                    // 加载美化后的预览
+                    if (currentProcessedFile && currentProcessedFile.path) {
+                        loadBeautifiedPreview(currentProcessedFile.path);
+                    } else if (response.html) {
+                        // 如果响应中直接包含HTML，显示它
+                        // 确保文档预览区域不被隐藏
+                        // $('#document-preview').addClass('d-none'); // 删除这行，保留文档预览
                         $('#result-section').removeClass('d-none');
-                        $('#beautified-content').html(response.processedFile.html);
+                        $('#beautified-content').html(response.html);
+                        
+                        // 添加漂亮的加载动画
+                        addEntryAnimation('#result-section');
                         
                         // 滚动到结果区域
                         $('html, body').animate({
                             scrollTop: $('#result-section').offset().top - 50
                         }, 500);
-                    } else {
-                        showMessage('美化成功，但无法显示预览', 'warning');
+                        
+                        // 显示下载按钮
+                        $('#download-btn').removeClass('d-none');
                     }
                 } else {
-                    showMessage(response.message || '美化失败', 'danger');
+                    // 美化失败
+                    $('#beautify-btn').prop('disabled', false);
+                    showMessage(response.message || '文档美化失败', 'danger');
                 }
             },
             error: function(xhr, status, error) {
                 hideLoading();
-                console.error('美化请求失败:', error, xhr.status, xhr.responseText);
-                
-                let errorMsg = '美化出错';
-                try {
-                    // 尝试解析错误响应
-                    const errorResponse = JSON.parse(xhr.responseText);
-                    if (errorResponse && errorResponse.message) {
-                        errorMsg += ': ' + errorResponse.message;
-                    }
-                } catch (e) {
-                    errorMsg += ': ' + error;
-                }
-                
-                showMessage(errorMsg, 'danger');
-                
-                // 如果是"找不到文件"错误，提供更明确的提示和恢复选项
-                if (xhr.status === 404 && xhr.responseText.includes('找不到指定的文件')) {
-                    // 尝试再次发送，但此次直接从会话存储中提取HTML内容
-                    if (htmlContent) {
-                        showMessage('找不到指定文件，但我们有HTML内容。正在重试...', 'info');
-                        
-                        // 等待1秒后重试
-                        setTimeout(() => {
-                            $.ajax({
-                                url: '/beautify',
-                                type: 'POST',
-                                contentType: 'application/json',
-                                data: JSON.stringify({
-                                    targetFormat: targetFormat,
-                                    htmlContent: htmlContent // 只发送HTML内容，不指定文件名
-                                }),
-                                success: function(response) {
-                                    hideLoading();
-                                    if (response.success) {
-                                        showMessage('文档美化成功！', 'success');
-                                        // 保存当前处理的文件信息
-                                        currentProcessedFile = response.processedFile;
-                                        
-                                        // 保存到会话存储
-                                        sessionStorage.setItem('processedFile', JSON.stringify(response.processedFile));
-                                        
-                                        // 显示美化结果
-                                        if (response.processedFile && response.processedFile.html) {
-                                            $('#result-section').removeClass('d-none');
-                                            $('#beautified-content').html(response.processedFile.html);
-                                            
-                                            // 滚动到结果区域
-                                            $('html, body').animate({
-                                                scrollTop: $('#result-section').offset().top - 50
-                                            }, 500);
-                                        }
-                                    } else {
-                                        showMessage(response.message || '美化失败', 'danger');
-                                    }
-                                },
-                                error: function() {
-                                    hideLoading();
-                                    showMessage('所有尝试都失败，请重新上传文档', 'danger');
-                                    
-                                    // 清除可能过期的文件信息
-                                    sessionStorage.removeItem('documentReady');
-                                    $('#beautify-btn').removeAttr('data-filepath');
-                                    $('#beautify-btn').removeAttr('data-filename');
-                                }
-                            });
-                        }, 1000);
-                    } else {
-                        showMessage('找不到文件，可能是因为文件路径不正确或文件已被移除。请重新上传文档。', 'warning');
-                        
-                        // 清除可能过期的文件信息
-                        sessionStorage.removeItem('documentReady');
-                        $('#beautify-btn').removeAttr('data-filepath');
-                        $('#beautify-btn').removeAttr('data-filename');
-                    }
-                }
+                $('#beautify-btn').prop('disabled', false);
+                showMessage('美化出错: ' + (xhr.responseJSON?.message || error), 'danger');
             }
         });
     }
     
-    // 加载美化后的文档预览
+    // 加载美化后的预览
     function loadBeautifiedPreview(filePath) {
         console.log('加载美化后预览，文件路径:', filePath);
         
-        // 只获取文件名部分，不包含路径
-        const filename = filePath ? filePath.split(/[\/\\]/).pop() : '';
-        console.log('美化后预览文件名:', filename);
+        // 获取文件名
+        const filename = filePath.split(/[\/\\]/).pop();
         
         if (!filename) {
-            console.error('无法从路径中提取美化后文件名');
-            $('#beautified-content').html('<div class="alert alert-danger">无法加载预览：文件名无效</div>');
+            console.error('无法从路径中提取文件名');
+            showMessage('无法加载美化后的预览：文件名无效', 'danger');
+            $('#beautify-btn').prop('disabled', false);
             return;
         }
         
         // 显示加载中状态
-        $('#beautified-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载预览...</p></div>');
+        $('#beautified-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载美化后的结果...</p></div>');
         
-        // 显示结果区域
+        // 显示结果区域，但不隐藏文档预览区域
+        // $('#document-preview').addClass('d-none'); // 删除这行，保留文档预览
         $('#result-section').removeClass('d-none');
         
-        // 滚动到结果区域
-        $('html, body').animate({
-            scrollTop: $('#result-section').offset().top - 50
-        }, 500);
+        // 添加漂亮的加载动画
+        addEntryAnimation('#result-section');
         
-        // 获取预览内容
+        // 确保结果区域处于展开状态
+        $('.result-content-wrapper').removeClass('collapsed');
+        $('.toggle-result .toggle-icon i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+        $('.toggle-result .toggle-icon').removeClass('collapsed');
+        
+        // 设置下载按钮链接
+        $('#download-btn').attr('data-filepath', filePath).removeClass('d-none');
+        
+        // 获取美化后的预览
         $.ajax({
             url: '/preview/' + encodeURIComponent(filename),
             type: 'GET',
             success: function(html) {
-                console.log('美化后预览请求成功');
                 // 在预览区域显示内容
                 $('#beautified-content').html(html);
+                
+                // 启用美化按钮，允许重新美化
+                $('#beautify-btn').prop('disabled', false);
+                
+                // 滚动到结果区域
+                $('html, body').animate({
+                    scrollTop: $('#result-section').offset().top - 50
+                }, 500);
             },
             error: function(xhr, status, error) {
-                console.error('美化后预览加载失败:', error, xhr.status, xhr.responseText);
-                $('#beautified-content').html('<div class="alert alert-danger">加载预览失败: ' + (xhr.status ? xhr.status + ' ' + error : error) + '</div>');
-                
-                // 如果预览API失败，尝试直接使用会话存储中的HTML内容
-                const processedFile = JSON.parse(sessionStorage.getItem('processedFile') || '{}');
-                if (processedFile && processedFile.html) {
-                    console.log('使用会话存储中的HTML作为美化后预览');
-                    $('#beautified-content').html(processedFile.html);
-                }
+                console.error('加载美化后预览出错:', error);
+                $('#beautified-content').html('<div class="alert alert-danger">加载预览失败: ' + error + '</div>');
+                $('#beautify-btn').prop('disabled', false);
             }
         });
     }
     
-    // 下载按钮处理
+    // 绑定下载按钮的点击事件
     $('#download-btn').on('click', function() {
-        // 先尝试从内存中获取
-        let fileToDownload = currentProcessedFile;
+        // 添加点击效果
+        const btn = $(this);
+        btn.addClass('pulse-animation');
+        setTimeout(() => {
+            btn.removeClass('pulse-animation');
+        }, 500);
         
-        // 如果内存中没有，则尝试从会话存储获取
-        if (!fileToDownload || !fileToDownload.path) {
-            fileToDownload = JSON.parse(sessionStorage.getItem('processedFile') || '{}');
-        }
+        // 获取文件路径
+        const filePath = $(this).attr('data-filepath');
         
-        const targetFormat = sessionStorage.getItem('targetFormat') || 'word';
-        
-        console.log('下载按钮被点击，文件信息:', fileToDownload);
-        
-        if (!fileToDownload || !fileToDownload.path) {
-            showMessage('请先完成文档美化', 'warning');
+        if (!filePath) {
+            // 尝试从会话存储获取
+            const processedFileJson = sessionStorage.getItem('processedFile');
+            if (processedFileJson) {
+                try {
+                    const processedFile = JSON.parse(processedFileJson);
+                    if (processedFile.path) {
+                        window.location.href = '/download?path=' + encodeURIComponent(processedFile.path);
+                        return;
+                    }
+                } catch (e) {
+                    console.error('解析会话存储处理文件信息失败:', e);
+                }
+            }
+            
+            showMessage('无法找到要下载的文件', 'danger');
             return;
         }
         
-        // 显示加载状态
-        showLoading('正在准备下载...');
-        
-        // 根据目标格式设置文件扩展名
-        const format = targetFormat === 'word' ? 'docx' : 'pdf';
-        const filename = fileToDownload.path.split(/[\/\\]/).pop();
-        
-        // 触发下载
-        const exportUrl = `/export?htmlFile=${encodeURIComponent(filename)}&format=${format}`;
-        console.log('导出URL:', exportUrl);
-        
-        // 使用AJAX请求获取导出结果
-        $.ajax({
-            url: exportUrl,
-            type: 'GET',
-            dataType: 'json',
-            success: function(response) {
-                hideLoading();
-                
-                if (response.success && response.downloadUrl) {
-                    console.log('导出成功，下载URL:', response.downloadUrl);
-                    showMessage('文件已准备好，正在下载...', 'success');
-                    
-                    // 创建一个临时的a标签并触发点击
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = response.downloadUrl;
-                    downloadLink.download = response.filename || 'document.' + format;
-                    downloadLink.style.display = 'none';
-                    document.body.appendChild(downloadLink);
-                    
-                    // 延迟一点点再触发下载，确保UI更新
-                    setTimeout(function() {
-                        downloadLink.click();
-                        document.body.removeChild(downloadLink);
-                    }, 500);
-                    
-                    // 也可以作为备用尝试直接访问下载路由
-                    setTimeout(function() {
-                        if (confirm('如果下载未自动开始，请点击确定尝试直接下载')) {
-                            window.location.href = '/download/' + encodeURIComponent(response.filename);
-                        }
-                    }, 3000);
-                } else {
-                    showMessage(response.message || '导出失败，请稍后重试', 'danger');
-                }
-            },
-            error: function(xhr, status, error) {
-                hideLoading();
-                console.error('导出请求失败:', error, xhr.status, xhr.responseText);
-                
-                try {
-                    const errorResponse = JSON.parse(xhr.responseText);
-                    showMessage(errorResponse.message || '导出失败: ' + error, 'danger');
-                } catch (e) {
-                    showMessage('导出失败: ' + error, 'danger');
-                }
-            }
-        });
+        // 执行下载
+        window.location.href = '/download?path=' + encodeURIComponent(filePath);
     });
     
-    // 辅助函数 - 显示消息提示
+    // 显示消息
     function showMessage(message, type) {
-        const alertClass = `alert-${type}`;
-        const alertHtml = `
-            <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
-                ${message}
+        // 检查消息容器是否存在
+        let messageContainer = $('#message-container');
+        if (messageContainer.length === 0) {
+            // 创建消息容器
+            $('<div id="message-container" class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index: 1050;"></div>').appendTo('body');
+            messageContainer = $('#message-container');
+        }
+        
+        // 创建消息元素
+        const messageId = 'msg-' + Date.now();
+        const icons = {
+            success: '<i class="fas fa-check-circle me-2"></i>',
+            warning: '<i class="fas fa-exclamation-triangle me-2"></i>',
+            danger: '<i class="fas fa-times-circle me-2"></i>',
+            info: '<i class="fas fa-info-circle me-2"></i>'
+        };
+        
+        const icon = icons[type] || '';
+        const messageHtml = `
+            <div id="${messageId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${icon}${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
         
-        // 清除现有提示并添加新提示
-        $('.alert').remove();
-        $('.container').prepend(alertHtml);
+        // 添加消息到容器
+        const alert = $(messageHtml).appendTo(messageContainer);
         
-        // 自动消失
+        // 添加动画
+        alert.css('transform', 'translateY(-20px)');
+        alert.css('opacity', '0');
         setTimeout(() => {
-            $('.alert').alert('close');
+            alert.css('transition', 'all 0.3s ease');
+            alert.css('transform', 'translateY(0)');
+            alert.css('opacity', '1');
+        }, 10);
+        
+        // 设置自动消失
+        setTimeout(function() {
+            alert.css('transform', 'translateY(-20px)');
+            alert.css('opacity', '0');
+            setTimeout(() => {
+                alert.remove();
+            }, 300);
         }, 5000);
     }
     
-    // 辅助函数 - 显示加载状态
+    // 显示加载中状态
     function showLoading(message) {
-        // 如果已存在加载提示则移除
-        hideLoading();
+        // 检查加载容器是否存在
+        let loadingContainer = $('#loading-container');
+        if (loadingContainer.length === 0) {
+            // 创建加载容器
+            $('<div id="loading-container" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="background-color: rgba(0,0,0,0.5); z-index: 2000;"></div>').appendTo('body');
+            loadingContainer = $('#loading-container');
+        }
         
+        // 创建加载内容
         const loadingHtml = `
-            <div id="loading-indicator" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="background-color: rgba(0,0,0,0.5); z-index: 9999;">
-                <div class="card p-4 text-center">
-                    <div class="spinner-border text-primary mb-3" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mb-0">${message}</p>
+            <div class="bg-white p-4 rounded shadow-lg text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
+                <p class="mb-0">${message || '正在处理...'}</p>
             </div>
         `;
         
-        $('body').append(loadingHtml);
+        // 显示加载状态
+        loadingContainer.html(loadingHtml).removeClass('d-none');
+        
+        // 添加动画
+        const loadingBox = loadingContainer.find('div').first();
+        loadingBox.css('transform', 'scale(0.8)');
+        loadingBox.css('opacity', '0');
+        setTimeout(() => {
+            loadingBox.css('transition', 'all 0.3s ease');
+            loadingBox.css('transform', 'scale(1)');
+            loadingBox.css('opacity', '1');
+        }, 10);
     }
     
-    // 辅助函数 - 隐藏加载状态
+    // 隐藏加载中状态
     function hideLoading() {
-        $('#loading-indicator').remove();
+        const loadingContainer = $('#loading-container');
+        const loadingBox = loadingContainer.find('div').first();
+        
+        loadingBox.css('transform', 'scale(0.8)');
+        loadingBox.css('opacity', '0');
+        
+        setTimeout(() => {
+            loadingContainer.addClass('d-none');
+        }, 300);
     }
+    
+    // 向CSS添加按钮脉冲动画
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes pulse-animation {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(var(--pulse-color, 94, 124, 226), 0.7);
+            }
+            
+            70% {
+                transform: scale(0.98);
+                box-shadow: 0 0 0 10px rgba(var(--pulse-color, 94, 124, 226), 0);
+            }
+            
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(var(--pulse-color, 94, 124, 226), 0);
+            }
+        }
+        
+        .pulse-animation {
+            animation: pulse-animation 0.5s ease-out;
+        }
+        
+        .btn-success-custom.pulse-animation {
+            --pulse-color: 66, 184, 131;
+        }
+        
+        .btn-download.pulse-animation {
+            --pulse-color: 255, 125, 69;
+        }
+    `;
+    document.head.appendChild(style);
 });
