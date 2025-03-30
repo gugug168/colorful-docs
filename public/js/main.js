@@ -3,6 +3,38 @@ $(document).ready(function() {
     let currentProcessedFile = null;
     let currentUploadedFile = null;
     
+    // 添加常量API密钥，替代用户输入
+    const FIXED_API_KEY = 'sk-8540a084e1774f9980019e37a9086781';
+    
+    // 声明模板变量，初始为空对象
+    let BEAUTIFY_TEMPLATES = {};
+    
+    // 页面加载时从服务器获取模板
+    $.ajax({
+        url: '/api/templates',
+        type: 'GET',
+        success: function(response) {
+            if (response.success && response.templates) {
+                // 更新模板变量
+                BEAUTIFY_TEMPLATES = response.templates;
+                
+                // 初始化模板选择功能
+                initTemplateSelection();
+                
+                console.log('从服务器加载模板成功', BEAUTIFY_TEMPLATES);
+            } else {
+                console.error('加载模板失败:', response.message);
+                // 使用默认模板作为备选
+                initTemplateSelection();
+            }
+        },
+        error: function(xhr) {
+            console.error('加载模板请求失败:', xhr);
+            // 使用默认模板作为备选
+            initTemplateSelection();
+        }
+    });
+    
     // 初始化上传区域交互效果
     initUploadZone();
     
@@ -14,6 +46,109 @@ $(document).ready(function() {
         // 触发表单提交
         $('#upload-form').submit();
     });
+    
+    // 初始化模板选择功能
+    function initTemplateSelection() {
+        const templateSelect = document.getElementById('template-select');
+        const applyTemplateBtn = document.getElementById('apply-template-btn');
+        const customRequirements = document.getElementById('custom-requirements');
+        const targetFormatRadios = document.querySelectorAll('input[name="targetFormat"]');
+        
+        // 如果模板选择器不存在，直接返回
+        if (!templateSelect) return;
+        
+        // 监听目标格式变化，更新可用模板
+        targetFormatRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                updateAvailableTemplates(this.value);
+            });
+        });
+        
+        // 初始更新可用模板
+        const initialFormat = document.querySelector('input[name="targetFormat"]:checked');
+        if (initialFormat) {
+            updateAvailableTemplates(initialFormat.value);
+        }
+        
+        // 更新可用模板的函数
+        function updateAvailableTemplates(targetFormat) {
+            // 保存当前选择
+            const currentSelection = templateSelect.value;
+            
+            // 清空模板选择器
+            templateSelect.innerHTML = '<option value="" selected>-- 请选择美化模板 --</option>';
+            
+            // 如果没有模板数据，直接返回
+            if (!BEAUTIFY_TEMPLATES || Object.keys(BEAUTIFY_TEMPLATES).length === 0) {
+                console.log('没有可用的模板数据');
+                return;
+            }
+            
+            // 根据当前格式筛选模板
+            Object.keys(BEAUTIFY_TEMPLATES).forEach(key => {
+                const template = BEAUTIFY_TEMPLATES[key];
+                
+                // 检查模板是否适用于当前格式
+                if (!template.format || template.format === 'all' || template.format === targetFormat) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = template.name;
+                    
+                    // 添加格式标记
+                    if (template.format && template.format !== 'all') {
+                        option.textContent += ' (' + (template.format === 'word' ? 'Word' : 'PDF') + ')';
+                    }
+                    
+                    templateSelect.appendChild(option);
+                }
+            });
+            
+            // 尝试恢复之前的选择
+            if (currentSelection && templateSelect.querySelector(`option[value="${currentSelection}"]`)) {
+                templateSelect.value = currentSelection;
+            } else {
+                // 如果之前的选择不再可用，则重置
+                templateSelect.value = '';
+                applyTemplateBtn.disabled = true;
+            }
+        }
+        
+        // 添加预览图显示/隐藏逻辑
+        templateSelect.addEventListener('change', function() {
+            // 首先隐藏所有预览图
+            document.querySelectorAll('.template-preview').forEach(preview => {
+                preview.classList.add('d-none');
+            });
+            
+            const selectedValue = this.value;
+            
+            // 如果选择了模板，显示对应预览图
+            if (selectedValue) {
+                const previewElement = document.getElementById(`template-preview-${selectedValue}`);
+                if (previewElement) {
+                    previewElement.classList.remove('d-none');
+                }
+                
+                // 启用应用按钮
+                applyTemplateBtn.disabled = false;
+            } else {
+                // 未选择模板时禁用应用按钮
+                applyTemplateBtn.disabled = true;
+            }
+        });
+        
+        // 应用模板按钮点击事件
+        applyTemplateBtn.addEventListener('click', function() {
+            const selectedTemplate = templateSelect.value;
+            if (selectedTemplate && BEAUTIFY_TEMPLATES[selectedTemplate]) {
+                // 将模板要求填入自定义要求文本框
+                customRequirements.value = BEAUTIFY_TEMPLATES[selectedTemplate].requirements;
+                
+                // 显示一个成功消息
+                showMessage(`已应用"${BEAUTIFY_TEMPLATES[selectedTemplate].name}"模板`, 'success');
+            }
+        });
+    }
     
     // 初始化预览区域折叠/展开功能
     function initTogglePreview() {
@@ -441,246 +576,324 @@ $(document).ready(function() {
         });
     }
     
-    // 绑定美化按钮的点击事件
+    // 美化文档按钮点击事件
     $('#beautify-btn').on('click', function() {
-        // 添加点击效果
-        const btn = $(this);
-        btn.addClass('pulse-animation');
-        setTimeout(() => {
-            btn.removeClass('pulse-animation');
-        }, 500);
+        // 获取自定义美化要求
+        const customRequirements = $('#custom-requirements').val().trim();
         
-        // 禁用美化按钮，防止重复点击
+        // 检查是否已上传文件
+        if (!currentUploadedFile) {
+            showMessage('请先上传文档', 'danger');
+            return;
+        }
+        
+        // 禁用按钮，防止重复点击
         $(this).prop('disabled', true);
         
-        // 获取文件路径
-        const filePath = $(this).attr('data-filepath');
-        const filename = $(this).attr('data-filename');
+        // 显示加载状态
+        showLoading('正在使用AI美化文档...');
         
-        console.log('美化按钮点击，文件路径:', filePath, '文件名:', filename);
+        // 启动美化处理
+        processBeautification(currentUploadedFile.path, currentUploadedFile.originalname);
+    });
+    
+    // 下载按钮点击事件
+    $('#download-btn').on('click', function() {
+        if (!currentProcessedFile) {
+            showMessage('还没有可下载的文件', 'warning');
+            return;
+        }
         
-        // 验证文件信息
-        if (!filePath || !filename) {
-            console.error('美化按钮缺少有效的文件信息');
-            
-            // 尝试从会话存储获取
-            const storedFileJson = sessionStorage.getItem('currentFile');
-            if (storedFileJson) {
-                try {
-                    const storedFile = JSON.parse(storedFileJson);
-                    if (storedFile.path && storedFile.filename) {
-                        console.log('从会话存储恢复文件信息:', storedFile);
-                        processBeautification(storedFile.path, storedFile.filename);
-                        return;
-                    }
-                } catch (e) {
-                    console.error('解析会话存储文件信息失败:', e);
-                }
-            }
-            
-            // 如果还是失败，尝试从全局变量获取
-            if (window.currentFilePath && window.currentFileName) {
-                console.log('从全局变量恢复文件信息');
-                processBeautification(window.currentFilePath, window.currentFileName);
+        // 安全处理路径
+        let filename = '';
+        try {
+            // 尝试提取文件名
+            if (typeof currentProcessedFile.path === 'string') {
+                // 从路径中提取文件名
+                filename = currentProcessedFile.path.split('/').pop().split('\\').pop();
+            } else {
+                console.error('当前处理文件路径无效:', currentProcessedFile.path);
+                showMessage('文件路径无效，请重新上传文档', 'danger');
                 return;
             }
-            
-            // 所有尝试都失败
-            showMessage('无法获取文件信息，请重新上传文档', 'danger');
-            $(this).prop('disabled', false);
+        } catch (error) {
+            console.error('处理文件路径出错:', error);
+            showMessage('文件路径处理出错，请重新上传文档', 'danger');
             return;
         }
         
-        // 处理美化
-        processBeautification(filePath, filename);
+        // 打开新窗口查看AI处理后的HTML文档
+        window.open(`/view-document/${filename}`, '_blank');
     });
     
-    // 处理美化请求
-    function processBeautification(filePath, filename) {
+    // 查看完整页面按钮点击事件
+    $('#view-complete-btn').on('click', function() {
+        if (!currentProcessedFile) {
+            showMessage('还没有可查看的文件', 'warning');
+            return;
+        }
+        
+        // 安全处理路径
+        let filename = '';
+        try {
+            // 尝试提取文件名
+            if (typeof currentProcessedFile.path === 'string') {
+                // 从路径中提取文件名
+                filename = currentProcessedFile.path.split('/').pop().split('\\').pop();
+            } else {
+                console.error('当前处理文件路径无效:', currentProcessedFile.path);
+                showMessage('文件路径无效，请重新上传文档', 'danger');
+                return;
+            }
+        } catch (error) {
+            console.error('处理文件路径出错:', error);
+            showMessage('文件路径处理出错，请重新上传文档', 'danger');
+            return;
+        }
+        
+        // 打开新窗口查看AI处理后的HTML文档
+        window.open(`/view-document/${filename}`, '_blank');
+    });
+    
+    // 下载完整文档按钮点击事件
+    $('#download-complete-btn').on('click', function() {
+        if (!currentProcessedFile) {
+            showMessage('还没有可下载的文件', 'warning');
+            return;
+        }
+        
+        // 安全处理路径
+        let filename = '';
+        try {
+            // 尝试提取文件名
+            if (typeof currentProcessedFile.path === 'string') {
+                // 从路径中提取文件名
+                filename = currentProcessedFile.path.split('/').pop().split('\\').pop();
+            } else {
+                console.error('当前处理文件路径无效:', currentProcessedFile.path);
+                showMessage('文件路径无效，请重新上传文档', 'danger');
+                return;
+            }
+        } catch (error) {
+            console.error('处理文件路径出错:', error);
+            showMessage('文件路径处理出错，请重新上传文档', 'danger');
+            return;
+        }
+        
+        const targetFormat = $('input[name="targetFormat"]:checked').val();
+        
         // 显示加载状态
-        showLoading('正在进行文档美化，这可能需要一些时间...');
+        showLoading('准备下载文档...');
         
-        // 获取当前HTML内容
-        const htmlContent = $('#preview-content').html();
-        
-        // 获取目标格式
-        const targetFormat = sessionStorage.getItem('targetFormat') || 
-                           $('input[name="targetFormat"]:checked').val() || 
-                           'word';
-        
-        // 获取API密钥
-        let apiKey = $('#deepseek-api-key').val() || '';
-        if (apiKey && !apiKey.startsWith('sk-')) {
-            apiKey = 'sk-' + apiKey;
-        }
-        
-        // 准备请求数据
-        const requestData = {
-            filename: filename,
-            targetFormat: targetFormat,
-            apiKey: apiKey
-        };
-        
-        // 如果有HTML内容，添加到请求
-        if (htmlContent && htmlContent.trim().length > 0) {
-            requestData.htmlContent = htmlContent;
-        }
-        
-        console.log('发送美化请求:', {
-            filename,
-            targetFormat,
-            hasApiKey: !!apiKey,
-            hasHtmlContent: !!htmlContent
-        });
-        
-        // 发送请求到服务器
+        // 请求导出文件
         $.ajax({
-            url: '/beautify',
-            type: 'POST',
-            data: JSON.stringify(requestData),
-            contentType: 'application/json',
+            url: `/export?htmlFile=${filename}&format=${targetFormat}`,
+            type: 'GET',
             success: function(response) {
                 hideLoading();
-                console.log('美化成功，服务器响应:', response);
                 
-                if (response.success) {
-                    // 显示美化成功消息
-                    showMessage('文档美化成功！', 'success');
+                if (response.success && response.downloadUrl) {
+                    showMessage('文档准备完成，即将开始下载', 'success');
                     
-                    // 保存处理后的文件信息
-                    currentProcessedFile = response.processedFile;
+                    // 使用临时链接元素来下载文件，而不是通过window.location跳转
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = response.downloadUrl;
+                    downloadLink.download = response.filename || `document.${targetFormat}`;
+                    downloadLink.style.display = 'none';
+                    document.body.appendChild(downloadLink);
                     
-                    // 保存信息到会话存储
-                    sessionStorage.setItem('processedFile', JSON.stringify(currentProcessedFile));
-                    
-                    // 加载美化后的预览
-                    if (currentProcessedFile && currentProcessedFile.path) {
-                        loadBeautifiedPreview(currentProcessedFile.path);
-                    } else if (response.html) {
-                        // 如果响应中直接包含HTML，显示它
-                        // 确保文档预览区域不被隐藏
-                        // $('#document-preview').addClass('d-none'); // 删除这行，保留文档预览
-                        $('#result-section').removeClass('d-none');
-                        $('#beautified-content').html(response.html);
-                        
-                        // 添加漂亮的加载动画
-                        addEntryAnimation('#result-section');
-                        
-                        // 滚动到结果区域
-                        $('html, body').animate({
-                            scrollTop: $('#result-section').offset().top - 50
-                        }, 500);
-                        
-                        // 显示下载按钮
-                        $('#download-btn').removeClass('d-none');
-                    }
+                    // 延迟一点点再触发下载，确保UI更新
+                    setTimeout(function() {
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                    }, 500);
                 } else {
-                    // 美化失败
-                    $('#beautify-btn').prop('disabled', false);
-                    showMessage(response.message || '文档美化失败', 'danger');
+                    showMessage('导出文档失败：' + (response.message || '未知错误'), 'danger');
                 }
             },
-            error: function(xhr, status, error) {
+            error: function(xhr) {
                 hideLoading();
-                $('#beautify-btn').prop('disabled', false);
-                showMessage('美化出错: ' + (xhr.responseJSON?.message || error), 'danger');
+                showMessage('导出文档请求失败：' + (xhr.responseText || '服务器错误'), 'danger');
             }
         });
-    }
-    
-    // 加载美化后的预览
-    function loadBeautifiedPreview(filePath) {
-        console.log('加载美化后预览，文件路径:', filePath);
-        
-        // 获取文件名
-        const filename = filePath.split(/[\/\\]/).pop();
-        
-        if (!filename) {
-            console.error('无法从路径中提取文件名');
-            showMessage('无法加载美化后的预览：文件名无效', 'danger');
-            $('#beautify-btn').prop('disabled', false);
-            return;
-        }
-        
-        // 显示加载中状态
-        $('#beautified-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载美化后的结果...</p></div>');
-        
-        // 显示结果区域，但不隐藏文档预览区域
-        // $('#document-preview').addClass('d-none'); // 删除这行，保留文档预览
-        $('#result-section').removeClass('d-none');
-        
-        // 添加漂亮的加载动画
-        addEntryAnimation('#result-section');
-        
-        // 确保结果区域处于展开状态
-        $('.result-content-wrapper').removeClass('collapsed');
-        $('.toggle-result .toggle-icon i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
-        $('.toggle-result .toggle-icon').removeClass('collapsed');
-        
-        // 设置下载按钮链接
-        $('#download-btn').attr('data-filepath', filePath).removeClass('d-none');
-        
-        // 获取美化后的预览
-        $.ajax({
-            url: '/preview/' + encodeURIComponent(filename),
-            type: 'GET',
-            success: function(html) {
-                // 在预览区域显示内容
-                $('#beautified-content').html(html);
-                
-                // 启用美化按钮，允许重新美化
-                $('#beautify-btn').prop('disabled', false);
-                
-                // 滚动到结果区域
-                $('html, body').animate({
-                    scrollTop: $('#result-section').offset().top - 50
-                }, 500);
-            },
-            error: function(xhr, status, error) {
-                console.error('加载美化后预览出错:', error);
-                $('#beautified-content').html('<div class="alert alert-danger">加载预览失败: ' + error + '</div>');
-                $('#beautify-btn').prop('disabled', false);
-            }
-        });
-    }
-    
-    // 绑定下载按钮的点击事件
-    $('#download-btn').on('click', function() {
-        // 添加点击效果
-        const btn = $(this);
-        btn.addClass('pulse-animation');
-        setTimeout(() => {
-            btn.removeClass('pulse-animation');
-        }, 500);
-        
-        // 获取文件路径
-        const filePath = $(this).attr('data-filepath');
-        
-        if (!filePath) {
-            // 尝试从会话存储获取
-            const processedFileJson = sessionStorage.getItem('processedFile');
-            if (processedFileJson) {
-                try {
-                    const processedFile = JSON.parse(processedFileJson);
-                    if (processedFile.path) {
-                        window.location.href = '/download?path=' + encodeURIComponent(processedFile.path);
-                        return;
-                    }
-                } catch (e) {
-                    console.error('解析会话存储处理文件信息失败:', e);
-                }
-            }
-            
-            showMessage('无法找到要下载的文件', 'danger');
-            return;
-        }
-        
-        // 执行下载
-        window.location.href = '/download?path=' + encodeURIComponent(filePath);
     });
     
+    /**
+     * 处理文档美化
+     * @param {string} filePath - 上传文件路径
+     * @param {string} filename - 原始文件名
+     */
+    function processBeautification(filePath, filename) {
+        if (!filePath) {
+            showMessage('无法处理文件，文件路径丢失', 'danger');
+            return;
+        }
+        
+        const targetFormat = document.querySelector('input[name="targetFormat"]:checked').value;
+        const customRequirements = document.getElementById('custom-requirements').value;
+        
+        // 从路径中提取HTML文件名，不使用原始文件名
+        let htmlFilename = '';
+        try {
+            htmlFilename = filePath.split('/').pop().split('\\').pop();
+            console.log('美化请求使用HTML文件名:', htmlFilename);
+        } catch (error) {
+            console.error('提取HTML文件名出错:', error);
+            htmlFilename = filename; // 如果提取失败，回退到原始文件名
+        }
+        
+        console.log('发送美化请求:', { 
+            filename: htmlFilename, // 使用HTML文件名
+            targetFormat: targetFormat,
+            customRequirements: customRequirements 
+        });
+        
+        showLoading('正在使用AI美化您的文档，这可能需要一些时间...');
+        
+        // 准备美化请求
+        fetch('/beautify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: htmlFilename, // 使用HTML文件名
+                targetFormat: targetFormat,
+                apiKey: FIXED_API_KEY, // 使用固定的API密钥
+                customRequirements: customRequirements
+            })
+        })
+        .then(response => {
+            console.log('收到服务器响应，状态码:', response.status);
+            if (!response.ok) {
+                throw new Error(`服务器返回错误状态码: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            hideLoading();
+            console.log('美化响应数据:', data);
+            
+            if (data.success) {
+                showMessage('文档美化完成！', 'success');
+                
+                // 更新结果文件路径
+                const resultFilePath = data.processedFile.path.replace(/\\/g, '/');
+                // 从文件路径中提取文件名 - 修复path未定义错误
+                window.processedFilename = resultFilePath.split('/').pop();
+                
+                console.log('处理后的文件路径:', resultFilePath);
+                console.log('处理后的文件名:', window.processedFilename);
+                
+                // 显示下载按钮
+                $('#download-btn').removeClass('d-none');
+                $('#view-complete-btn').removeClass('d-none');
+                $('#download-complete-btn').removeClass('d-none');
+                
+                // 加载美化后的预览
+                loadBeautifiedPreview(data.processedFile.html, resultFilePath);
+                
+                // 更新当前处理后的文件
+                currentProcessedFile = {
+                    path: resultFilePath,
+                    html: data.processedFile.html,
+                    filename: window.processedFilename,
+                    type: data.processedFile.type,
+                    originalname: data.processedFile.originalname
+                };
+            } else {
+                console.error('美化失败原因:', data.message);
+                showMessage('美化文档失败: ' + data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            hideLoading();
+            console.error('处理美化请求时发生错误:', error);
+            showMessage('处理请求时发生错误: ' + error.message, 'danger');
+        });
+    }
+    
+    /**
+     * 加载美化后的预览
+     * @param {string} html - 美化后的HTML内容
+     * @param {string} filePath - 美化后HTML文件的路径
+     */
+    function loadBeautifiedPreview(html, filePath) {
+        try {
+            const resultSection = $('#result-section');
+            const beautifiedContent = $('#beautified-content');
+            
+            // 获取文件名
+            let filename = '';
+            try {
+                if (typeof filePath === 'string') {
+                    // 从路径中提取文件名
+                    filename = filePath.split('/').pop().split('\\').pop();
+                } else {
+                    console.error('文件路径无效:', filePath);
+                    // 使用时间戳创建临时文件名
+                    filename = `temp-${Date.now()}.html`;
+                }
+            } catch (error) {
+                console.error('处理文件路径出错:', error);
+                // 使用时间戳创建临时文件名
+                filename = `temp-${Date.now()}.html`;
+            }
+            
+            // 显示结果区域
+            resultSection.removeClass('d-none');
+            addEntryAnimation('#result-section');
+            
+            // 先清空内容
+            beautifiedContent.empty();
+            
+            // 构建iframe包装
+            const iframeContainer = $('<div class="iframe-container"></div>');
+            const iframe = $('<iframe class="preview-iframe" frameborder="0"></iframe>');
+            iframeContainer.append(iframe);
+            beautifiedContent.append(iframeContainer);
+            
+            // 获取iframe文档
+            const iframeDoc = iframe[0].contentDocument || iframe[0].contentWindow.document;
+            
+            // 创建链接到资源的base标签
+            const baseUrl = window.location.origin;
+            
+            // 写入HTML内容
+            iframeDoc.open();
+            iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <base href="${baseUrl}">
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        img { max-width: 100%; height: auto; }
+                    </style>
+                </head>
+                <body>${html}</body>
+                </html>
+            `);
+            iframeDoc.close();
+            
+            // 调整iframe高度以适应内容
+            setTimeout(() => {
+                const height = iframeDoc.body.scrollHeight;
+                iframe.css('height', height + 50 + 'px'); // 添加50px以避免滚动条
+            }, 300);
+            
+            // 显示一条提示，建议用户如何查看和下载
+            showMessage('美化完成！点击"查看完整页面"或"下载文档"按钮查看更多效果', 'success', 10000);
+        } catch (error) {
+            console.error('加载美化后预览失败:', error);
+            $('#beautified-content').html(`<div class="alert alert-danger">加载预览失败：${error.message}</div>`);
+        }
+    }
+    
     // 显示消息
-    function showMessage(message, type) {
+    function showMessage(message, type, duration = 5000) {
         // 检查消息容器是否存在
         let messageContainer = $('#message-container');
         if (messageContainer.length === 0) {
@@ -725,7 +938,7 @@ $(document).ready(function() {
             setTimeout(() => {
                 alert.remove();
             }, 300);
-        }, 5000);
+        }, duration);
     }
     
     // 显示加载中状态

@@ -1,54 +1,198 @@
 const fs = require('fs');
 const path = require('path');
-const pdfParse = require('pdf-parse');
+
+// 安全地加载pdf-parse模块
+let pdfParse;
+try {
+  pdfParse = require('pdf-parse');
+  console.log('pdf-parse模块加载成功');
+} catch (err) {
+  console.error('加载pdf-parse模块失败:', err.message);
+  // 创建一个虚拟的pdf-parse函数以避免程序崩溃
+  pdfParse = async () => {
+    return {
+      text: '无法解析PDF，pdf-parse模块未正确加载',
+      numpages: 0,
+      info: {},
+      metadata: {}
+    };
+  };
+}
 
 /**
- * 将PDF文档转换为HTML
- * @param {string} filePath - PDF文档路径
- * @param {string} outputDir - 输出目录
- * @returns {Promise<object>} - 包含转换结果的对象
+ * 将PDF文件转换为HTML格式
+ * @param {string} pdfFilePath - PDF文件路径
+ * @returns {Promise<object>} - 包含HTML内容和HTML文件路径的对象
  */
-async function convertPdfToHtml(filePath, outputDir = 'temp') {
+exports.convertPdfToHtml = async function(pdfFilePath) {
     try {
+        console.log('开始转换PDF文档:', pdfFilePath);
+        
+        // 检查文件是否存在
+        if (!fs.existsSync(pdfFilePath)) {
+            throw new Error(`PDF文件不存在: ${pdfFilePath}`);
+        }
+        
+        // 确保输出目录存在
+        const outputDir = path.join(__dirname, '..', 'temp');
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+        
+        // 生成一个唯一的输出文件名
+        const timestamp = Date.now();
+        const outputHtmlPath = path.join(outputDir, `pdf-${timestamp}.html`);
+        
+        try {
+            // 检查pdf-parse是否可用
+            if (!pdfParse || typeof pdfParse !== 'function') {
+                throw new Error('pdf-parse模块不可用或未正确加载');
+            }
+            
+            // 读取PDF文件
+            const dataBuffer = fs.readFileSync(pdfFilePath);
+            
+            // 提取PDF内容
+            const data = await pdfParse(dataBuffer);
+            
+            // 获取文本内容
+            const pdfText = data.text || '';
+            
+            // 将提取的文本转换为HTML
+            const paragraphs = pdfText.split(/\r?\n\r?\n/);
+            const htmlParagraphs = paragraphs
+                .filter(p => p.trim() !== '')
+                .map(p => `<p>${p.replace(/\r?\n/g, '<br>')}</p>`)
+                .join('\n');
+            
+            // 创建完整的HTML文档
+            const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>PDF转换文档</title>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            margin: 20px;
+                            max-width: 800px;
+                            margin: 0 auto;
+                            padding: 20px;
+                        }
+                        h1, h2, h3 { color: #2c3e50; }
+                        p { margin-bottom: 16px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>文档内容</h1>
+                    <div class="content">
+                        ${htmlParagraphs}
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            // 保存HTML文件
+            fs.writeFileSync(outputHtmlPath, html, 'utf8');
+            console.log('PDF文档转换成功，保存到:', outputHtmlPath);
+            
+            // 替换Windows路径分隔符为URL适用的格式
+            const normalizedPath = outputHtmlPath.replace(/\\/g, '/');
+            
+            return {
+                html: html,
+                htmlPath: normalizedPath,
+                pageCount: data.numpages
+            };
+        } catch (convertError) {
+            console.error('PDF文档转换过程中出错:', convertError);
+            
+            // 转换失败时，创建一个简单的错误页面作为备选
+            const errorHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>文档转换错误</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                        .error-container { border: 1px solid #f44336; padding: 20px; border-radius: 5px; }
+                        h1 { color: #f44336; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-container">
+                        <h1>PDF转换出错</h1>
+                        <p>很抱歉，我们无法转换您的PDF文档。</p>
+                        <p>错误信息: ${convertError.message}</p>
+                        <p>请确保文档格式正确，或尝试上传其他文档。</p>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            // 保存错误HTML
+            fs.writeFileSync(outputHtmlPath, errorHtml, 'utf8');
+            console.log('创建了PDF错误页面:', outputHtmlPath);
+            
+            // 仍然返回一个有效的结果，但包含错误信息
+            return {
+                html: errorHtml,
+                htmlPath: outputHtmlPath.replace(/\\/g, '/'),
+                error: convertError.message
+            };
+        }
+    } catch (error) {
+        console.error('PDF文档转换失败:', error);
+        
+        // 构建一个备用HTML路径和内容，确保函数始终返回有效结果
+        const outputDir = path.join(__dirname, '..', 'temp');
+        const fallbackHtmlPath = path.join(outputDir, `pdf-error-${Date.now()}.html`);
+        
+        // 创建一个简单的错误页面
+        const fallbackHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>PDF处理错误</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                    .error-container { border: 1px solid #f44336; padding: 20px; border-radius: 5px; }
+                    h1 { color: #f44336; }
+                </style>
+            </head>
+            <body>
+                <div class="error-container">
+                    <h1>PDF文档处理出错</h1>
+                    <p>无法处理您的PDF文档。</p>
+                    <p>错误信息: ${error.message}</p>
+                    <p>请尝试上传其他文档或联系系统管理员。</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
         // 确保输出目录存在
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
         
-        // 读取PDF文件
-        const dataBuffer = fs.readFileSync(filePath);
-        
-        // 解析PDF内容
-        const data = await pdfParse(dataBuffer);
-        
-        // 提取文本内容并格式化
-        const text = data.text;
-        
-        // 生成增强的HTML格式
-        let htmlContent = generateEnhancedHtml(text, data);
-        
-        // 生成输出文件名
-        const fileName = `${path.basename(filePath, '.pdf')}-${Date.now()}.html`;
-        const outputPath = path.join(outputDir, fileName);
-        
-        // 写入HTML文件
-        fs.writeFileSync(outputPath, htmlContent);
+        // 保存错误HTML
+        fs.writeFileSync(fallbackHtmlPath, fallbackHtml, 'utf8');
+        console.log('创建了PDF错误备用页面:', fallbackHtmlPath);
         
         return {
-            success: true,
-            html: htmlContent,
-            pageCount: data.numpages,
-            info: data.info,
-            outputPath: outputPath
-        };
-    } catch (error) {
-        console.error('转换PDF文档失败:', error);
-        return {
-            success: false,
+            html: fallbackHtml,
+            htmlPath: fallbackHtmlPath.replace(/\\/g, '/'),
             error: error.message
         };
     }
-}
+};
 
 /**
  * 生成增强的HTML内容
@@ -260,8 +404,4 @@ function generateTable(rows) {
     
     tableHtml += '</table>';
     return tableHtml;
-}
-
-module.exports = {
-    convertPdfToHtml
-}; 
+} 
