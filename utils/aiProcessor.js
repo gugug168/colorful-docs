@@ -135,8 +135,25 @@ async function beautifyWithDeepseek(htmlContent, apiKey, targetFormat = 'word', 
         const isBusiness = /报告|公司|市场|销售|业务|计划|项目|方案|战略|商业|客户|产品|服务|营销/.test(textContent);
         
         // 构建基础AI提示
-        let basePrompt = `
-请作为专业排版专家美化以下文档。目标是创建排版精美、层次清晰、视觉吸引力强的文档，最终输出格式为${targetFormat === 'pdf' ? 'PDF' : 'Word文档'}。
+        let basePrompt = '';
+        
+        // 如果是Word文档，始终首先添加格式限制提示
+        if (targetFormat === 'word') {
+            basePrompt = `【HTML/CSS格式限制】请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：
+
+颜色（可选不同颜色）：<span style="color:#FF0000">
+
+高亮（可选不同颜色）：<span style="background-color:yellow">
+
+加粗：<b> 或 <strong>
+
+下划线：<u>
+
+斜体：<i>
+
+禁止使用class、id、div布局或复杂CSS。
+
+请作为专业排版专家美化以下文档。目标是创建排版精美、层次清晰、视觉吸引力强的文档，最终输出格式为Word文档。
 
 【文档处理要求】：
 1. 保留所有原始内容
@@ -145,27 +162,51 @@ async function beautifyWithDeepseek(htmlContent, apiKey, targetFormat = 'word', 
 4. 使用恰当的字体、颜色和间距
 5. 确保整体视觉美观协调
 `;
+        } else if (targetFormat === 'pdf') {
+            // PDF格式使用极简提示
+            basePrompt = `优化排版为PDF格式。
+
+【简要要求】：
+1. 保留全部内容和图片
+2. 简洁美观
+3. 打印友好`;
+        } else {
+            basePrompt = `
+请作为专业排版专家美化以下文档。目标是创建排版精美、层次清晰、视觉吸引力强的文档，最终输出格式为Word文档。
+
+【文档处理要求】：
+1. 保留所有原始内容
+2. 优化标题、段落和列表的排版
+3. 保持文档结构清晰
+4. 使用恰当的字体、颜色和间距
+5. 确保整体视觉美观协调
+`;
+        }
 
         // 添加用户自定义要求（如果有）
         if (customRequirements && customRequirements.trim()) {
             basePrompt += `
-【用户自定义美化要求】：
-${customRequirements.trim()}
+【用户要求】：${customRequirements.trim()}
 `;
         }
 
-        // 添加对图片占位符的特殊处理说明
-        basePrompt += `
+        // 添加对图片占位符的特殊处理说明 - 只对非PDF格式添加详细说明
+        if (targetFormat === 'pdf') {
+            basePrompt += `\n注意:保留所有图片标签和位置。`;
+        } else {
+            basePrompt += `
 【重要提示】：文档中包含多个图片占位符 <div class="image-placeholder">，这些占位符将在处理后替换为实际图片。请确保：
 1. 不要修改或删除这些占位符
 2. 保持它们原有的位置和尺寸
 3. 围绕这些占位符进行排版，但不要改变它们的结构
 
 请根据内容特点选择合适的排版风格，直接输出美化后的完整HTML，并在HTML中添加必要的CSS样式。`;
+        }
 
-        // 根据内容类型添加特定指示
-        if (isChildrenContent) {
-            basePrompt += `
+        // 根据内容类型添加特定指示 - 只对非PDF格式添加详细内容分析
+        if (targetFormat !== 'pdf') {
+            if (isChildrenContent) {
+                basePrompt += `
 
 【内容分析】：检测到这可能是儿童教育相关内容，请使用：
 - 活泼、色彩丰富的设计
@@ -173,8 +214,8 @@ ${customRequirements.trim()}
 - 视觉引导和提示
 - 分隔明确的内容块
 - 友好生动的页面布局`;
-        } else if (isAcademic) {
-            basePrompt += `
+            } else if (isAcademic) {
+                basePrompt += `
 
 【内容分析】：检测到这可能是学术或研究内容，请使用：
 - 专业严谨的排版风格
@@ -182,8 +223,8 @@ ${customRequirements.trim()}
 - 规范的引用和参考文献格式
 - 表格和图表的专业处理
 - 适合学术阅读的间距和字体`;
-        } else if (isBusiness) {
-            basePrompt += `
+            } else if (isBusiness) {
+                basePrompt += `
 
 【内容分析】：检测到这可能是商业或报告内容，请使用：
 - 简洁专业的商务风格
@@ -191,6 +232,7 @@ ${customRequirements.trim()}
 - 清晰的信息层次
 - 合适的商业配色方案
 - 专业的图表和表格样式`;
+            }
         }
 
         // 添加API请求头部
@@ -205,11 +247,15 @@ ${customRequirements.trim()}
             messages: [
                 {
                     role: 'system',
-                    content: '你是一位专业的文档排版和设计专家，擅长将普通文档转换为具有专业排版和美观设计的高质量文档。'
+                    content: targetFormat === 'word' ? 
+                        '你是一位专业的文档排版和设计专家，擅长将普通文档转换为具有专业排版和美观设计的高质量文档。请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止使用class、id、div布局或复杂CSS。' :
+                        '您是排版专家。为PDF优化HTML，保留内容和图片，确保简洁美观。'
                 },
                 {
                     role: 'user',
-                    content: `${basePrompt}\n\n以下是需要美化的文档内容：\n\n${htmlWithImageMarkers}`
+                    content: targetFormat === 'pdf' ?
+                        `${basePrompt}\n要优化的文档:\n${htmlWithImageMarkers}` :
+                        `${basePrompt}\n\n以下是需要美化的文档内容：\n\n${htmlWithImageMarkers}`
                 }
             ],
             temperature: 0.7,

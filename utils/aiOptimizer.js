@@ -59,18 +59,37 @@ async function processAndSaveHtml(htmlContent, outputDir, apiConfig, targetForma
  */
 function generateOptimizationPrompt(htmlContent, targetFormat, customRequirements = '') {
     // 极简提示词，减少token占用
-    let prompt = `美化HTML文档并保持原始内容结构。`;
-
-    // 根据目标格式添加最简洁的特定提示
+    let prompt = '';
+    
+    // 对于word格式，始终将格式限制放在最前面
     if (targetFormat === 'word') {
-        prompt += `使其适合Word格式，添加合适标题样式和表格格式，确保可读性好。`;
+        prompt = `请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：
+
+颜色（可选不同颜色）：<span style="color:#FF0000">
+
+高亮（可选不同颜色）：<span style="background-color:yellow">
+
+加粗：<b> 或 <strong>
+
+下划线：<u>
+
+斜体：<i>
+
+禁止使用class、id、div布局或复杂CSS。
+
+美化HTML文档并保持原始内容结构。使其适合Word格式，添加合适标题样式和表格格式，确保可读性好。`;
     } else if (targetFormat === 'pdf') {
-        prompt += `适合PDF格式，优化排版和页面布局，保持打印友好。`;
+        // PDF格式使用极简提示
+        prompt = `优化排版为PDF格式。保留内容和图片。简洁美观，打印友好。`;
+    } else {
+        prompt = `美化HTML文档并保持原始内容结构。`;
     }
 
     // 添加用户自定义要求（如果有）
     if (customRequirements && customRequirements.trim()) {
-        prompt += `用户要求:${customRequirements}`;
+        prompt += `
+
+【用户要求】：${customRequirements.trim()}`;
     }
 
     return prompt;
@@ -129,13 +148,21 @@ async function processWithOpenAI(htmlContent, prompt, apiKey, params = {}) {
         
         console.log(`OpenAI API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
         
+        // 确定是否为Word格式，以添加相应的系统提示
+        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        
         // 调用OpenAI API
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
                 model: 'gpt-4-turbo', // 使用适当的模型
                 messages: [
-                    { role: 'system', content: '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。' },
+                    { 
+                        role: 'system', 
+                        content: isWordFormat ?
+                            '你是一个专业的文档美化和排版专家。请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止使用class、id、div布局或复杂CSS。' :
+                            '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。'
+                    },
                     { role: 'user', content: userInput }
                 ],
                 temperature: temperature,
@@ -244,11 +271,31 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         // 预处理HTML内容，替换图片为占位符
         const { processedHtml, imageReferences } = preprocessHtmlForAI(htmlContent);
         
-        // 扩展提示，强调保留图片占位符
-        const enhancedPrompt = `${prompt}\n\n重要提示：文档中包含图片占位符标签，请保留所有<img>标签及其属性，不要改变它们的位置和结构。`;
+        // 确定格式类型
+        const isPdfFormat = prompt.includes('PDF格式') || prompt.includes('优化排版为PDF');
+        
+        // 根据不同格式调整提示词和内容
+        let enhancedPrompt;
+        let userContent;
+        
+        if (isPdfFormat) {
+            // PDF格式使用极简提示和内容
+            enhancedPrompt = `${prompt}\n图片请保留。`;
+            userContent = processedHtml
+                // PDF格式下移除HTML文档结构，只保留body内容
+                .replace(/<\!DOCTYPE[^>]*>|<html[^>]*>|<\/html>|<head>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')
+                // 移除多余空白
+                .replace(/>\s+</g, '><')
+                // 移除注释
+                .replace(/<!--[\s\S]*?-->/g, '');
+        } else {
+            // WORD格式使用更详细的提示和完整内容
+            enhancedPrompt = `${prompt}\n\n重要提示：文档中包含图片占位符标签，请保留所有<img>标签及其属性，不要改变它们的位置和结构。`;
+            userContent = processedHtml;
+        }
         
         // 编写API请求内容
-        const userInput = `${enhancedPrompt}\n\n这是要优化的HTML内容(已优化大小):\n\n${processedHtml}`;
+        const userInput = `${enhancedPrompt}\n${isPdfFormat ? '内容:' : '这是要优化的HTML内容(已优化大小):'}\n\n${userContent}`;
         console.log(`发送给API的内容长度: ${userInput.length}`);
         
         // 添加超时和重试设置
@@ -260,13 +307,26 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             timeout: 60000, // 60秒超时
         };
         
+        // 确定是否为Word格式，以添加相应的系统提示
+        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        
+        // 构建系统提示
+        let systemPrompt;
+        if (isWordFormat) {
+            systemPrompt = '你是专业排版专家。请仅使用以下HTML/CSS修改文本样式：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止class、id、div布局或复杂CSS。保留图片标签。';
+        } else if (isPdfFormat) {
+            systemPrompt = '你是排版专家，优化HTML为PDF。保留内容结构和图片，简洁美观。';
+        } else {
+            systemPrompt = '你是专业排版专家。保留原始内容完整性，保留所有图片标签。';
+        }
+        
         // 使用最新的DeepSeek API参数格式
         const requestBody = {
-            model: 'deepseek-chat', // 确保使用正确的模型名称
+            model: 'deepseek-chat',
             messages: [
                 { 
                     role: 'system', 
-                    content: '你是一个专业的文档美化和排版专家。你擅长将HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。请仅返回美化后的HTML，不要添加解释性文字。特别注意：保留所有图片标签及其位置。' 
+                    content: systemPrompt
                 },
                 { 
                     role: 'user', 
@@ -354,6 +414,9 @@ async function processWithQianwen(htmlContent, prompt, apiKey, params = {}) {
         
         console.log(`千问 API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
         
+        // 确定是否为Word格式，以添加相应的系统提示
+        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        
         // 调用通义千问API
         const response = await axios.post(
             'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
@@ -361,7 +424,12 @@ async function processWithQianwen(htmlContent, prompt, apiKey, params = {}) {
                 model: 'qwen-turbo',
                 input: {
                     messages: [
-                        { role: 'system', content: '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。' },
+                        { 
+                            role: 'system', 
+                            content: isWordFormat ?
+                                '你是一个专业的文档美化和排版专家。请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止使用class、id、div布局或复杂CSS。' :
+                                '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。'
+                        },
                         { role: 'user', content: userInput }
                     ]
                 },
@@ -409,6 +477,9 @@ async function processWithQwq(htmlContent, prompt, apiKey, params = {}) {
         
         console.log(`QWQ API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
         
+        // 确定是否为Word格式，以添加相应的系统提示
+        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        
         // 调用QWQ API - 使用通义千问的API格式
         const response = await axios.post(
             'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
@@ -416,7 +487,12 @@ async function processWithQwq(htmlContent, prompt, apiKey, params = {}) {
                 model: 'free:QwQ-32B',
                 input: {
                     messages: [
-                        { role: 'system', content: '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。' },
+                        { 
+                            role: 'system', 
+                            content: isWordFormat ?
+                                '你是一个专业的文档美化和排版专家。请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止使用class、id、div布局或复杂CSS。' :
+                                '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。'
+                        },
                         { role: 'user', content: userInput }
                     ]
                 },

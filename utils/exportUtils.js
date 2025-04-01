@@ -740,7 +740,7 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                 printBackground: true,
                 margin: { top: '30px', right: '25px', bottom: '30px', left: '25px' }, // 增大页边距
                 displayHeaderFooter: true,
-                headerTemplate: '<div style="font-size: 9px; margin-left: 20px;">彩色学习文档</div>',
+                headerTemplate: '<div></div>',
                 footerTemplate: '<div style="font-size: 9px; margin: 0 auto; text-align: center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
                 preferCSSPageSize: true, // 优先使用CSS定义的页面大小
                 scale: 0.95, // 稍微缩小内容，避免内容太贴近边缘

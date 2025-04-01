@@ -604,12 +604,10 @@ $(document).ready(function() {
             return;
         }
         
-        // 安全处理路径
+        // 安全处理路径，提取文件名
         let filename = '';
         try {
-            // 尝试提取文件名
             if (typeof currentProcessedFile.path === 'string') {
-                // 从路径中提取文件名
                 filename = currentProcessedFile.path.split('/').pop().split('\\').pop();
             } else {
                 console.error('当前处理文件路径无效:', currentProcessedFile.path);
@@ -621,9 +619,44 @@ $(document).ready(function() {
             showMessage('文件路径处理出错，请重新上传文档', 'danger');
             return;
         }
+
+        // 获取用户选择的目标格式
+        const targetFormat = $('input[name="targetFormat"]:checked').val();
         
-        // 打开新窗口查看AI处理后的HTML文档
-        window.open(`/view-document/${filename}`, '_blank');
+        // 显示加载状态
+        showLoading('准备下载文档...');
+        
+        // 请求导出文件
+        $.ajax({
+            url: `/export?htmlFile=${encodeURIComponent(filename)}&format=${targetFormat}`,
+            type: 'GET',
+            success: function(response) {
+                hideLoading();
+                
+                if (response.success && response.downloadUrl) {
+                    showMessage('文档准备完成，即将开始下载', 'success');
+                    
+                    // 使用临时链接元素来下载文件
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = response.downloadUrl;
+                    downloadLink.download = response.filename || `document.${targetFormat}`;
+                    downloadLink.style.display = 'none';
+                    document.body.appendChild(downloadLink);
+                    
+                    // 延迟一点点再触发下载，确保UI更新
+                    setTimeout(function() {
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                    }, 500);
+                } else {
+                    showMessage('导出文档失败：' + (response.message || '未知错误'), 'danger');
+                }
+            },
+            error: function(xhr) {
+                hideLoading();
+                showMessage('导出文档请求失败：' + (xhr.responseText || '服务器错误'), 'danger');
+            }
+        });
     });
     
     // 查看完整页面按钮点击事件
@@ -792,6 +825,28 @@ $(document).ready(function() {
                 
                 // 加载美化后的预览
                 loadBeautifiedPreview(data.processedFile.html, resultFilePath);
+                
+                // 折叠原始文档预览区域，让美化结果更显眼
+                const previewWrapper = $('#document-preview .preview-content-wrapper');
+                const previewToggleIcon = $('#document-preview .toggle-preview .toggle-icon');
+                const previewIconElement = previewToggleIcon.find('i');
+
+                if (!previewWrapper.hasClass('collapsed')) { // 仅在未折叠时执行
+                    previewWrapper.addClass('collapsed');
+                    previewIconElement.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                    previewToggleIcon.addClass('collapsed');
+                    // 可以在这里添加平滑动画，例如:
+                    // previewWrapper.slideUp(300); // 如果需要动画
+                }
+                
+                // 自动滚动到结果区域，确保按钮可见
+                const resultSectionElement = document.getElementById('result-section');
+                if (resultSectionElement) {
+                    // 使用短暂延迟确保渲染完成
+                    setTimeout(() => {
+                        resultSectionElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }, 400); // 延迟时间可以根据需要调整
+                }
                 
                 // 更新当前处理后的文件
                 currentProcessedFile = {
