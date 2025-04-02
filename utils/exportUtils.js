@@ -461,7 +461,7 @@ async function convertHtmlToDocx(htmlContent, outputPath) {
         if (htmlToDocx) {
             console.log('使用html-to-docx导出Word文档...');
             const fileBuffer = await htmlToDocx(processedHtml, {
-                title: '彩色文档',
+                title: '导出文档',
                 orientation: 'portrait', // 纵向
                 margins: {
                     top: 1440,      // 1英寸 = 1440 twip
@@ -538,6 +538,36 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
         // 处理HTML，避免表格和图片被切断
         const processedHtml = processHtmlForPdf(htmlWithBase64Images);
         
+        // 过滤并移除任何可能的水印文本
+        let filteredHtml = processedHtml;
+        
+        // 1. 强力移除各种可能包含水印文本的元素
+        // 删除包含水印文本的元素（多种匹配模式）
+        filteredHtml = filteredHtml.replace(/<[^>]*>\s*彩色学习文档\s*<\/[^>]*>/g, '');
+        filteredHtml = filteredHtml.replace(/<[^>]*>\s*彩\s*色\s*学\s*习\s*文\s*档\s*<\/[^>]*>/g, ''); // 处理带间距的变体
+        filteredHtml = filteredHtml.replace(/<[^>]*>[^<]*彩色学习文档[^<]*<\/[^>]*>/g, function(match) {
+            return match.replace(/彩色学习文档/g, '');
+        });
+        
+        // 2. 删除包含特定ID或类的元素（通常用于水印）
+        filteredHtml = filteredHtml.replace(/<[^>]*(class|id)\s*=\s*["'][^"']*?(watermark|header|彩色)[^"']*?["'][^>]*>.*?<\/[^>]*>/gi, '');
+        
+        // 3. 删除有固定定位的元素（常用于添加水印）
+        filteredHtml = filteredHtml.replace(/<[^>]*style\s*=\s*["'][^"']*position\s*:\s*fixed[^"']*["'][^>]*>.*?<\/[^>]*>/gi, '');
+        
+        // 4. 删除所有SVG元素（某些水印会通过SVG实现）
+        filteredHtml = filteredHtml.replace(/<svg[\s\S]*?<\/svg>/gi, '');
+        
+        // 5. 删除所有包含"彩色学习文档"的脚本和样式
+        filteredHtml = filteredHtml.replace(/<script[\s\S]*?彩色学习文档[\s\S]*?<\/script>/gi, '');
+        filteredHtml = filteredHtml.replace(/<style[\s\S]*?彩色学习文档[\s\S]*?<\/style>/gi, '');
+        
+        // 6. 处理特殊编码形式的文本
+        filteredHtml = filteredHtml.replace(/&#24425;&#33394;&#23398;&#20064;&#25991;&#26723;/g, '');
+        
+        // 7. 最后的安全措施 - 直接替换整个HTML内容中的文本（甚至在属性中）
+        filteredHtml = filteredHtml.replace(/彩色学习文档/g, '');
+        
         // 添加样式的HTML
         const styledHtml = `
             <!DOCTYPE html>
@@ -551,6 +581,50 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                         line-height: 1.6; 
                         padding: 20px;
                         color: #333;
+                    }
+                    /* 隐藏所有可能的水印和页眉 */
+                    @page {
+                        margin-top: 0.7cm; /* 较小的上边距 */
+                        size: A4;
+                    }
+                    /* 更强力地隐藏所有固定定位的元素，通常用于水印 */
+                    body::before, 
+                    body::after,
+                    div::before,
+                    div::after {
+                        display: none !important;
+                        content: none !important;
+                    }
+                    /* 隐藏所有固定定位的元素，通常用于水印 */
+                    *[style*="position: fixed"],
+                    *[style*="position:fixed"],
+                    .watermark,
+                    #watermark,
+                    [id*="watermark"],
+                    [class*="watermark"],
+                    [id*="header"],
+                    [class*="header"],
+                    [class*="彩色"],
+                    [id*="彩色"],
+                    header {
+                        display: none !important;
+                        visibility: hidden !important;
+                        opacity: 0 !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                        position: absolute !important;
+                        z-index: -9999 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    /* 尝试不同的选择器组合来隐藏水印 */
+                    [content*="彩色学习文档"],
+                    [data-content*="彩色学习文档"] {
+                        display: none !important;
+                    }
+                    /* 添加特定针对"彩色学习文档"水印的选择器 */
+                    :root *:not(style):contains("彩色学习文档") {
+                        display: none !important;
                     }
                     .highlighted {
                         background-color: #ffeb3b;
@@ -721,7 +795,7 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                 </style>
             </head>
             <body>
-                ${processedHtml}
+                ${filteredHtml}
             </body>
             </html>
         `;
@@ -738,12 +812,39 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
             const options = { 
                 format: 'A4',
                 printBackground: true,
-                margin: { top: '30px', right: '25px', bottom: '30px', left: '25px' }, // 增大页边距
-                displayHeaderFooter: true,
-                headerTemplate: '<div></div>',
-                footerTemplate: '<div style="font-size: 9px; margin: 0 auto; text-align: center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+                margin: { top: '40px', right: '25px', bottom: '30px', left: '25px' }, // 增大上边距，移除水印
+                displayHeaderFooter: false, // 禁用页眉页脚显示，完全移除页眉
+                headerTemplate: '', // 空字符串作为页眉，确保没有内容
+                footerTemplate: '', // 同样设置为空，避免页脚也显示水印
                 preferCSSPageSize: true, // 优先使用CSS定义的页面大小
                 scale: 0.95, // 稍微缩小内容，避免内容太贴近边缘
+                landscape: false, // 使用纵向打印
+                pageRanges: '', // 打印所有页面
+                omitBackground: false, // 显示背景
+                printPageRanges: '', // 同时确保打印所有页面
+                extraHTTPHeaders: {}, // 确保没有额外的水印相关Header
+                pdfViewport: { // 自定义视口
+                    width: 1200,
+                    height: 1697 // A4比例
+                },
+                // 添加自定义PDF元数据以覆盖默认值
+                metadata: {
+                    title: '导出文档',
+                    author: '',
+                    subject: '',
+                    keywords: '',
+                    creator: '',
+                    producer: ''
+                },
+                // 添加额外的 Puppeteer 参数
+                args: [
+                    '--disable-web-security', // 禁用Web安全性（允许跨域请求等）
+                    '--disable-features=IsolateOrigins,site-per-process', // 禁用站点隔离
+                    '--disable-extensions', // 禁用扩展
+                    '--no-sandbox', // 禁用沙盒
+                    '--disable-setuid-sandbox', // 禁用setuid沙盒
+                    '--disable-blink-features=AutomationControlled' // 隐藏自动化控制标志
+                ]
             };
             
             try {
@@ -774,8 +875,64 @@ async function convertHtmlToPdf(htmlContent, outputPath) {
                 }
                 
                 const pdfBuffer = await htmlPdf.generatePdf(file, options);
-                fs.writeFileSync(outputPath, pdfBuffer);
-                console.log('PDF文档生成成功:', outputPath);
+                
+                // 直接处理生成的 PDF 缓冲区，移除任何可能的水印文本
+                let pdfContent = pdfBuffer.toString('binary');
+                // 在二进制内容中查找并替换"彩色学习文档"（包括可能的编码变体）
+                pdfContent = pdfContent.replace(/彩色学习文档/g, '            '); // 使用等长空格替换，保持布局
+                
+                // 尝试查找所有可能的编码变体
+                // UTF-8 或其他编码可能会有不同的二进制表示
+                const watermarkBytes = Buffer.from('彩色学习文档');
+                if (pdfBuffer.includes(watermarkBytes)) {
+                    console.log('在二进制格式中找到水印，尝试移除...');
+                    // 逐个字节处理，将匹配的字节替换为空格
+                    const bufferView = new Uint8Array(pdfBuffer);
+                    const watermarkView = new Uint8Array(watermarkBytes);
+                    
+                    // 遍历查找匹配模式
+                    for (let i = 0; i < bufferView.length - watermarkView.length; i++) {
+                        let match = true;
+                        for (let j = 0; j < watermarkView.length; j++) {
+                            if (bufferView[i + j] !== watermarkView[j]) {
+                                match = false;
+                                break;
+                            }
+                        }
+                        
+                        // 如果找到匹配，替换为空格
+                        if (match) {
+                            for (let j = 0; j < watermarkView.length; j++) {
+                                bufferView[i + j] = 32; // 空格的ASCII码
+                            }
+                        }
+                    }
+                    
+                    // 将修改后的缓冲区写入文件
+                    fs.writeFileSync(outputPath, Buffer.from(bufferView));
+                } else {
+                    // 将修改后的内容写入文件
+                    fs.writeFileSync(outputPath, Buffer.from(pdfContent, 'binary'));
+                }
+                
+                console.log('PDF文档生成成功，并移除了水印:', outputPath);
+                
+                // 最后验证：读取生成的PDF文件并确认水印已被移除
+                const finalPdfContent = fs.readFileSync(outputPath);
+                if (finalPdfContent.includes('彩色学习文档')) {
+                    console.warn('警告：水印可能仍然存在，尝试额外的处理步骤...');
+                    
+                    // 再次尝试使用不同的方法处理
+                    try {
+                        // 读取为文本并替换
+                        let textContent = finalPdfContent.toString('utf8');
+                        textContent = textContent.replace(/彩色学习文档/g, '            ');
+                        fs.writeFileSync(outputPath, Buffer.from(textContent, 'utf8'));
+                        console.log('已应用额外处理步骤');
+                    } catch (err) {
+                        console.error('额外处理失败:', err);
+                    }
+                }
                 
                 return {
                     success: true,

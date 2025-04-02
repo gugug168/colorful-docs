@@ -103,15 +103,34 @@ function generateOptimizationPrompt(htmlContent, targetFormat, customRequirement
  * @returns {string} 处理后的HTML内容
  */
 async function processWithAI(htmlContent, prompt, apiConfig) {
-    const { apiKey, apiType = API_TYPES.DEEPSEEK, apiParams } = apiConfig;
+    // 检查apiConfig是对象还是字符串
+    if (typeof apiConfig === 'string') {
+        console.log('警告：apiConfig是字符串，转换为对象格式');
+        apiConfig = {
+            apiKey: apiConfig,
+            apiType: API_TYPES.DEEPSEEK
+        };
+    }
+    
+    // 确保apiConfig是对象
+    if (!apiConfig || typeof apiConfig !== 'object') {
+        console.error('无效的API配置:', apiConfig);
+        throw new Error('无效的API配置');
+    }
+    
+    // 从apiConfig中提取apiKey和apiType
+    const apiKey = apiConfig.apiKey;
+    const apiType = apiConfig.apiType || API_TYPES.DEEPSEEK;
+    
+    console.log(`处理AI请求，API类型: ${apiType}, API密钥长度: ${apiKey ? apiKey.length : 0}`);
     
     if (!apiKey) {
         throw new Error('未提供API密钥');
     }
     
     // 获取API类型对应的参数，如果不存在则使用默认值
-    const params = apiParams && apiParams[apiType.toLowerCase()] ? 
-                  apiParams[apiType.toLowerCase()] : 
+    const params = apiConfig.apiParams && apiConfig.apiParams[apiType.toLowerCase()] ? 
+                  apiConfig.apiParams[apiType.toLowerCase()] : 
                   { temperature: 0.7, max_tokens: 4000 };
     
     // 根据API类型选择不同的处理函数
@@ -257,15 +276,20 @@ function preprocessHtmlForAI(htmlContent) {
 async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
     try {
         // 使用配置的参数或默认值
-        const temperature = params.temperature || 0.5; // 默认降低到0.5
-        const max_tokens = params.max_tokens || 4000;
+        const temperature = params.temperature || 1; // 默认降低到0.5
+        const max_tokens = params.max_tokens || 8000;
         
         console.log(`DeepSeek API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
-        console.log(`DeepSeek API密钥长度: ${apiKey.length}`);
+        console.log(`DeepSeek API密钥: ${apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供'}`);
         console.log(`原始HTML内容长度: ${htmlContent.length}`);
         
-        if (!apiKey || apiKey.length < 10) {
-            throw new Error('无效的API密钥，请检查配置');
+        // 增强API密钥验证
+        if (!apiKey) {
+            throw new Error('未提供API密钥');
+        }
+        
+        if (apiKey.length < 20) {
+            throw new Error('无效的API密钥，长度不足');
         }
         
         // 预处理HTML内容，替换图片为占位符
@@ -340,13 +364,42 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         // 调用DeepSeek API
         console.log('开始请求DeepSeek API...');
-        const response = await axios.post(
-            'https://api.deepseek.com/v1/chat/completions',
-            requestBody,
-            axiosOptions
-        );
-
-        console.log('DeepSeek API返回状态码:', response.status);
+        let response;
+        try {
+            response = await axios.post(
+                'https://api.deepseek.com/v1/chat/completions',
+                requestBody,
+                axiosOptions
+            );
+            
+            console.log('DeepSeek API返回状态码:', response.status);
+        } catch (apiError) {
+            // 捕获并处理API请求错误
+            if (apiError.response) {
+                // 服务器响应了错误状态码
+                console.error('DeepSeek API错误状态码:', apiError.response.status);
+                console.error('DeepSeek API错误详情:', apiError.response.data);
+                
+                // 特别处理401错误（未授权）
+                if (apiError.response.status === 401) {
+                    throw new Error('API密钥无效或未授权，请检查API密钥');
+                }
+                
+                // 特别处理429错误（请求过多）
+                if (apiError.response.status === 429) {
+                    throw new Error('API请求次数超限，请稍后再试');
+                }
+                
+                // 处理其他错误
+                throw new Error(`DeepSeek API错误: ${apiError.response.status} - ${JSON.stringify(apiError.response.data)}`);
+            } else if (apiError.request) {
+                // 请求已发送但没有收到响应
+                throw new Error('DeepSeek API请求超时或无响应，请稍后再试');
+            } else {
+                // 请求配置中发生错误
+                throw new Error(`DeepSeek API请求配置错误: ${apiError.message}`);
+            }
+        }
         
         // 提取响应中的HTML内容
         if (!response.data || !response.data.choices || !response.data.choices[0]) {
@@ -387,11 +440,8 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         return extractedHTML;
     } catch (error) {
         console.error('调用DeepSeek API时出错:', error);
-        if (error.response) {
-            console.error('API响应状态:', error.response.status);
-            console.error('API错误详情:', error.response.data);
-        }
-        throw new Error(`DeepSeek处理失败: ${error.message}`);
+        // 简化错误消息，不显示原始错误
+        throw new Error(`DeepSeek API处理失败: ${error.message}`);
     }
 }
 

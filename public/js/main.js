@@ -2,12 +2,11 @@ $(document).ready(function() {
     // 当前处理的文件信息
     let currentProcessedFile = null;
     let currentUploadedFile = null;
+    let beautificationResults = []; // 新增：用于存储所有美化结果
     
-    // 添加常量API密钥，替代用户输入
-    const FIXED_API_KEY = 'sk-8540a084e1774f9980019e37a9086781';
-    
-    // 声明模板变量，初始为空对象
-    let BEAUTIFY_TEMPLATES = {};
+    // 全局变量
+    const BEAUTIFY_TEMPLATES = {}; // 存储美化模板
+    const FIXED_API_KEY = 'sk-8540a084e1774f9980019e37a9086781'; // 使用正确的API密钥
     
     // 页面加载时从服务器获取模板
     $.ajax({
@@ -588,7 +587,7 @@ $(document).ready(function() {
         }
         
         // 禁用按钮，防止重复点击
-        $(this).prop('disabled', true);
+        $(this).prop('disabled', true); // 取消注释此行
         
         // 显示加载状态
         showLoading('正在使用AI美化文档...');
@@ -759,6 +758,8 @@ $(document).ready(function() {
     function processBeautification(filePath, filename) {
         if (!filePath) {
             showMessage('无法处理文件，文件路径丢失', 'danger');
+            // 确保按钮在出错时重新启用
+            $('#beautify-btn').prop('disabled', false);
             return;
         }
         
@@ -775,10 +776,19 @@ $(document).ready(function() {
             htmlFilename = filename; // 如果提取失败，回退到原始文件名
         }
         
+        // 确保API密钥可用且有效
+        if (!FIXED_API_KEY || FIXED_API_KEY.length < 10 || FIXED_API_KEY === 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') {
+            console.error('API密钥无效或未设置:', FIXED_API_KEY);
+            showMessage('API密钥无效或未设置，无法使用AI美化功能', 'danger');
+            $('#beautify-btn').prop('disabled', false);
+            return;
+        }
+        
         console.log('发送美化请求:', { 
             filename: htmlFilename, // 使用HTML文件名
             targetFormat: targetFormat,
-            customRequirements: customRequirements 
+            customRequirements: customRequirements,
+            apiKey: FIXED_API_KEY ? `${FIXED_API_KEY.substring(0, 5)}...` : '未设置' // 日志中只显示部分密钥，保护隐私
         });
         
         showLoading('正在使用AI美化您的文档，这可能需要一些时间...');
@@ -799,7 +809,13 @@ $(document).ready(function() {
         .then(response => {
             console.log('收到服务器响应，状态码:', response.status);
             if (!response.ok) {
-                throw new Error(`服务器返回错误状态码: ${response.status}`);
+                return response.json().then(errorData => {
+                    // 尝试从响应中获取更详细的错误信息
+                    throw new Error(errorData.message || `服务器返回错误状态码: ${response.status}`);
+                }).catch(jsonError => {
+                    // 如果解析JSON失败，则使用原始错误
+                    throw new Error(`服务器返回错误状态码: ${response.status}`);
+                });
             }
             return response.json();
         })
@@ -812,19 +828,35 @@ $(document).ready(function() {
                 
                 // 更新结果文件路径
                 const resultFilePath = data.processedFile.path.replace(/\\/g, '/');
-                // 从文件路径中提取文件名 - 修复path未定义错误
+                // 从文件路径中提取文件名
                 window.processedFilename = resultFilePath.split('/').pop();
                 
                 console.log('处理后的文件路径:', resultFilePath);
                 console.log('处理后的文件名:', window.processedFilename);
                 
-                // 显示下载按钮
+                // 更新当前处理后的文件（可能仍用于某些地方，暂时保留）
+                currentProcessedFile = {
+                    path: resultFilePath,
+                    html: data.processedFile.html,
+                    filename: window.processedFilename,
+                    type: data.processedFile.type,
+                    originalname: data.processedFile.originalname,
+                    prompt: customRequirements // 保存提示词
+                };
+
+                // 将新结果添加到数组
+                beautificationResults.push({
+                    html: data.processedFile.html,
+                    path: resultFilePath,
+                    prompt: customRequirements, // 记录本次提示词
+                    targetFormat: targetFormat // 记录目标格式
+                });
+
+                // 显示主下载按钮（曾经被隐藏的）
                 $('#download-btn').removeClass('d-none');
-                $('#view-complete-btn').removeClass('d-none');
-                $('#download-complete-btn').removeClass('d-none');
                 
-                // 加载美化后的预览
-                loadBeautifiedPreview(data.processedFile.html, resultFilePath);
+                // 调用新的函数来展示所有结果
+                displayBeautificationResults();
                 
                 // 折叠原始文档预览区域，让美化结果更显眼
                 const previewWrapper = $('#document-preview .preview-content-wrapper');
@@ -835,116 +867,449 @@ $(document).ready(function() {
                     previewWrapper.addClass('collapsed');
                     previewIconElement.removeClass('fa-chevron-up').addClass('fa-chevron-down');
                     previewToggleIcon.addClass('collapsed');
-                    // 可以在这里添加平滑动画，例如:
-                    // previewWrapper.slideUp(300); // 如果需要动画
                 }
                 
-                // 自动滚动到结果区域，确保按钮可见
+                // 自动滚动到结果区域，确保最新结果可见
                 const resultSectionElement = document.getElementById('result-section');
                 if (resultSectionElement) {
-                    // 使用短暂延迟确保渲染完成
                     setTimeout(() => {
-                        resultSectionElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }, 400); // 延迟时间可以根据需要调整
+                        resultSectionElement.scrollIntoView({ behavior: 'smooth', block: 'start' }); // 改为滚动到区域顶部
+                    }, 400);
                 }
-                
-                // 更新当前处理后的文件
-                currentProcessedFile = {
-                    path: resultFilePath,
-                    html: data.processedFile.html,
-                    filename: window.processedFilename,
-                    type: data.processedFile.type,
-                    originalname: data.processedFile.originalname
-                };
+
+                // 重新启用美化按钮，允许再次美化
+                $('#beautify-btn').prop('disabled', false);
             } else {
                 console.error('美化失败原因:', data.message);
                 showMessage('美化文档失败: ' + data.message, 'danger');
+                 // 美化失败时也要重新启用按钮
+                $('#beautify-btn').prop('disabled', false);
             }
         })
         .catch(error => {
             hideLoading();
             console.error('处理美化请求时发生错误:', error);
             showMessage('处理请求时发生错误: ' + error.message, 'danger');
+             // 出错时也要重新启用按钮
+            $('#beautify-btn').prop('disabled', false);
         });
     }
     
     /**
-     * 加载美化后的预览
-     * @param {string} html - 美化后的HTML内容
+     * 显示所有美化结果
      * @param {string} filePath - 美化后HTML文件的路径
+     * @param {string} prompt - 本次美化使用的提示词
      */
-    function loadBeautifiedPreview(html, filePath) {
-        try {
-            const resultSection = $('#result-section');
-            const beautifiedContent = $('#beautified-content');
-            
-            // 获取文件名
-            let filename = '';
+    function displayBeautificationResults() {
+        const resultsList = $('#beautified-results-list');
+        resultsList.empty(); // 清空现有列表
+        
+        // 清空侧边导航栏
+        const sidebarNav = $('#results-sidebar');
+        sidebarNav.empty();
+        
+        console.log('准备显示美化结果，数量:', beautificationResults.length);
+
+        // 确保body可以滚动
+        $('body').css({
+            'overflow-y': 'auto !important',
+            'height': 'auto !important',
+            'position': 'relative !important'
+        });
+        
+        // 确保页面可滚动
+        ensurePageScrollable();
+
+        beautificationResults.forEach((result, index) => {
+            const resultId = `result-${index}`;
+            let filename = '无效文件名';
             try {
-                if (typeof filePath === 'string') {
-                    // 从路径中提取文件名
-                    filename = filePath.split('/').pop().split('\\').pop();
+                if (typeof result.path === 'string') {
+                    filename = result.path.split('/').pop().split('\\').pop();
+                    console.log(`结果 ${index+1} 文件名:`, filename);
                 } else {
-                    console.error('文件路径无效:', filePath);
-                    // 使用时间戳创建临时文件名
-                    filename = `temp-${Date.now()}.html`;
+                    console.error(`结果 ${index+1} 文件路径无效:`, result.path);
                 }
             } catch (error) {
-                console.error('处理文件路径出错:', error);
-                // 使用时间戳创建临时文件名
-                filename = `temp-${Date.now()}.html`;
+                console.error(`处理结果 ${index+1} 文件路径出错:`, error);
             }
+
+            const cardHtml = `
+                <div class="card shadow-sm mb-3 result-card" id="${resultId}">
+                    <div class="card-header card-header-result-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-check-circle me-2"></i>美化结果 ${index + 1}
+                            </h5>
+                            <span class="badge bg-secondary">提示词: ${result.prompt || '无'}</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="beautified-content-container border p-3 rounded content-display">
+                            <!-- Iframe 容器 -->
+                            <div class="iframe-container mb-3">
+                               <iframe class="preview-iframe" frameborder="0" style="width: 100%; min-height: 400px; height: auto;"></iframe>
+                            </div>
+                            <div class="text-center">
+                                 <p class="small text-muted mb-2">可下载或在新页面查看完整效果</p>
+                                 <button class="btn btn-sm btn-outline-secondary view-complete-single-btn" data-filename="${filename}">
+                                    <i class="fas fa-external-link-alt me-1"></i> 查看
+                                </button>
+                                <button class="btn btn-sm btn-primary download-single-btn" data-filename="${filename}" data-format="${result.targetFormat || 'word'}">
+                                    <i class="fas fa-download me-1"></i> 下载
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const cardElement = $(cardHtml);
+            resultsList.append(cardElement);
             
-            // 显示结果区域
+            // 向侧边导航栏添加导航项
+            const navItemHtml = `<div class="result-nav-item" data-target="${resultId}" data-index="${index + 1}">${index + 1}</div>`;
+            sidebarNav.append(navItemHtml);
+
+            // 每添加一个卡片，确保页面可滚动
+            ensurePageScrollable();
+
+            // 加载Iframe内容
+            const iframe = cardElement.find('iframe')[0];
+            if (iframe) {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const baseUrl = window.location.origin;
+                    
+                    iframeDoc.open();
+                    iframeDoc.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <base href="${baseUrl}">
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <style>
+                                body { 
+                                    font-family: Arial, sans-serif; 
+                                    margin: 10px; 
+                                    overflow-y: visible;
+                                }
+                                img { max-width: 100%; height: auto; }
+                                ::-webkit-scrollbar {
+                                    width: 8px;
+                                    height: 8px;
+                                }
+                                ::-webkit-scrollbar-track {
+                                    background: #f1f1f1;
+                                    border-radius: 4px;
+                                }
+                                ::-webkit-scrollbar-thumb {
+                                    background: #888;
+                                    border-radius: 4px;
+                                }
+                                ::-webkit-scrollbar-thumb:hover {
+                                    background: #555;
+                                }
+                            </style>
+                        </head>
+                        <body>${result.html || '<p>预览内容加载失败</p>'}</body>
+                        </html>
+                    `);
+                    iframeDoc.close();
+                    
+                    // 调整iframe高度
+                    setTimeout(() => {
+                        try {
+                            // 获取iframe内容实际高度
+                            const scrollHeight = iframeDoc.body.scrollHeight;
+                            
+                            // 设置最小高度为400px，最大高度可以更高以适应内容
+                            const iframeHeight = Math.max(scrollHeight, 400);
+                            $(iframe).css('height', iframeHeight + 'px');
+                            
+                            // 移除iframe容器的最大高度限制
+                            const iframeContainer = cardElement.find('.iframe-container');
+                            iframeContainer.css({
+                                'height': 'auto !important',
+                                'max-height': 'none !important',
+                                'overflow-y': 'visible !important',
+                                'border': '1px solid #e0e0e0',
+                                'border-radius': '4px'
+                            });
+
+                            // 在每个iframe加载后，确保页面可以滚动
+                            ensurePageScrollable();
+                        } catch (e) {
+                            console.warn(`调整结果 ${index+1} iframe高度时出错:`, e);
+                            $(iframe).css('height', '400px'); // 回退到默认高度
+                            
+                            // 即使调整失败，也要确保页面可滚动
+                            ensurePageScrollable();
+                        }
+                    }, 300);
+                } catch (error) {
+                    console.error(`设置结果 ${index+1} iframe内容时出错:`, error);
+                    // 如果iframe操作失败，尝试直接在容器中显示HTML
+                    const container = cardElement.find('.iframe-container');
+                    container.css({
+                        'height': 'auto !important',
+                        'max-height': 'none !important',
+                        'overflow-y': 'visible !important',
+                        'padding': '10px'
+                    }).html(`<div class="content-fallback">${result.html || '内容加载失败'}</div>`);
+                    
+                    // 即使显示失败，也要确保页面可滚动
+                    ensurePageScrollable();
+                }
+            }
+
+            // 绑定按钮事件
+            cardElement.find('.view-complete-single-btn').on('click', function() {
+                const fname = $(this).data('filename');
+                if (fname && fname !== '无效文件名') {
+                    window.open(`/view-document/${fname}`, '_blank');
+                } else {
+                    showMessage('无法查看，文件名无效', 'warning');
+                }
+            });
+
+            cardElement.find('.download-single-btn').on('click', function() {
+                const fname = $(this).data('filename');
+                const format = $(this).data('format');
+                if (fname && fname !== '无效文件名') {
+                    requestDownload(fname, format);
+                } else {
+                    showMessage('无法下载，文件名无效', 'warning');
+                }
+            });
+        });
+
+        // 显示结果区域
+        const resultSection = $('#result-section');
+        if (resultSection.hasClass('d-none')) {
             resultSection.removeClass('d-none');
             addEntryAnimation('#result-section');
-            
-            // 先清空内容
-            beautifiedContent.empty();
-            
-            // 构建iframe包装
-            const iframeContainer = $('<div class="iframe-container"></div>');
-            const iframe = $('<iframe class="preview-iframe" frameborder="0"></iframe>');
-            iframeContainer.append(iframe);
-            beautifiedContent.append(iframeContainer);
-            
-            // 获取iframe文档
-            const iframeDoc = iframe[0].contentDocument || iframe[0].contentWindow.document;
-            
-            // 创建链接到资源的base标签
-            const baseUrl = window.location.origin;
-            
-            // 写入HTML内容
-            iframeDoc.open();
-            iframeDoc.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <base href="${baseUrl}">
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 20px; }
-                        img { max-width: 100%; height: auto; }
-                    </style>
-                </head>
-                <body>${html}</body>
-                </html>
-            `);
-            iframeDoc.close();
-            
-            // 调整iframe高度以适应内容
-            setTimeout(() => {
-                const height = iframeDoc.body.scrollHeight;
-                iframe.css('height', height + 50 + 'px'); // 添加50px以避免滚动条
-            }, 300);
-            
-            // 显示一条提示，建议用户如何查看和下载
-            showMessage('美化完成！点击"查看完整页面"或"下载文档"按钮查看更多效果', 'success', 10000);
-        } catch (error) {
-            console.error('加载美化后预览失败:', error);
-            $('#beautified-content').html(`<div class="alert alert-danger">加载预览失败：${error.message}</div>`);
+            console.log('结果区域显示完成');
+            // 结果区域显示后再次确保可滚动
+            ensurePageScrollable();
         }
+
+        // 确保结果区域展开
+        const resultWrapper = $('.result-content-wrapper');
+        const resultToggleIcon = $('.toggle-result .toggle-icon');
+        const resultIconElement = resultToggleIcon.find('i');
+        if (resultWrapper.hasClass('collapsed')) {
+            resultWrapper.removeClass('collapsed');
+            resultIconElement.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+            resultToggleIcon.removeClass('collapsed');
+            // 展开后再次确保可滚动
+            ensurePageScrollable();
+        }
+        
+        // 如果有美化结果，显示侧边导航栏
+        if (beautificationResults.length > 0) {
+            sidebarNav.removeClass('d-none');
+            
+            // 默认选中第一个导航项
+            sidebarNav.find('.result-nav-item:first').addClass('active');
+            
+            // 绑定导航项点击事件
+            $('.result-nav-item').on('click', function() {
+                const targetId = $(this).data('target');
+                if (targetId) {
+                    // 移除所有导航项的active类
+                    $('.result-nav-item').removeClass('active');
+                    // 给当前点击的导航项添加active类
+                    $(this).addClass('active');
+                    // 滚动到目标元素
+                    $('html, body').animate({
+                        scrollTop: $(`#${targetId}`).offset().top - 80 // 80px的偏移量，避免被导航栏遮挡
+                    }, 500);
+                    
+                    // 滚动动画完成后确保页面仍然可滚动
+                    setTimeout(ensurePageScrollable, 600);
+                }
+            });
+            
+            // 监听滚动事件，更新导航项的active状态
+            $(window).on('scroll', debounce(function() {
+                if (beautificationResults.length > 0) {
+                    const scrollTop = $(window).scrollTop();
+                    const windowHeight = $(window).height();
+                    const scrollMid = scrollTop + windowHeight / 2; // 取窗口中点作为参考
+                    
+                    let closestCard = null;
+                    let minDistance = Infinity;
+                    
+                    // 查找距离窗口中点最近的结果卡片
+                    $('.result-card').each(function() {
+                        const cardTop = $(this).offset().top;
+                        const cardCenter = cardTop + $(this).outerHeight() / 2;
+                        const distance = Math.abs(cardCenter - scrollMid);
+                        
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestCard = $(this);
+                        }
+                    });
+                    
+                    // 如果找到了最近的卡片，更新激活状态
+                    if (closestCard) {
+                        const cardId = closestCard.attr('id');
+                        
+                        // 只有当当前激活项不是目标项时才更新
+                        const currentActive = $('.result-nav-item.active').data('target');
+                        if (currentActive !== cardId) {
+                            // 移除所有导航项的active类
+                            $('.result-nav-item').removeClass('active');
+                            // 给对应的导航项添加active类
+                            $(`.result-nav-item[data-target="${cardId}"]`).addClass('active');
+                        }
+                    }
+                    
+                    // 滚动时确保页面可以滚动
+                    ensurePageScrollable();
+                }
+            }, 100)); // 使用100ms的防抖
+        } else {
+            sidebarNav.addClass('d-none');
+        }
+
+        // 滚动到最新结果
+        if (beautificationResults.length > 0) {
+            const lastResultId = `result-${beautificationResults.length - 1}`;
+            const lastResultElement = $(`#${lastResultId}`);
+            if (lastResultElement.length > 0) {
+                setTimeout(() => {
+                    lastResultElement[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    
+                    // 额外滚动一点，确保完全可见
+                    setTimeout(() => {
+                        window.scrollBy(0, -80); // 向上滚动80px以显示标题
+                        
+                        // 再次确保页面可滚动
+                        ensurePageScrollable();
+                    }, 300);
+                }, 400);
+            }
+        }
+
+        // 根据结果数量更新消息
+        if (beautificationResults.length > 0) {
+            showMessage(`已生成 ${beautificationResults.length} 个美化版本`, 'info', 3000);
+        } else {
+            showMessage('没有可显示的美化结果', 'warning');
+        }
+
+        // 确保页面可以滚动，使用多个定时器确保在各种情况下都能正常滚动
+        ensurePageScrollable();
+        setTimeout(ensurePageScrollable, 500);
+        setTimeout(ensurePageScrollable, 1000);
+        setTimeout(ensurePageScrollable, 2000);
+        setTimeout(ensurePageScrollable, 3000);
+        
+        // 监听窗口大小变化事件，确保滚动正常
+        $(window).on('resize', debounce(ensurePageScrollable, 100));
+    }
+
+    // 确保页面可以滚动的辅助函数
+    function ensurePageScrollable() {
+        // 移除可能阻止滚动的样式
+        $('html, body').css({
+            'height': 'auto !important',
+            'overflow-y': 'auto !important',
+            'min-height': '100% !important',
+            'position': 'relative !important'
+        });
+        
+        // 确保内容区域可以滚动
+        $('.content-area, #result-section, #beautified-results-list').css({
+            'overflow': 'visible !important',
+            'height': 'auto !important',
+            'max-height': 'none !important'
+        });
+        
+        // 确保iframe容器可见
+        $('.iframe-container').css({
+            'height': 'auto !important',
+            'max-height': 'none !important',
+            'overflow': 'visible !important'
+        });
+        
+        // 检查文档高度是否超过窗口高度
+        if ($(document).height() > $(window).height()) {
+            console.log('文档高度超过窗口高度，确保可滚动');
+            
+            // 强制应用可滚动样式
+            $('html, body').css({
+                'overflow-y': 'auto !important',
+                'height': 'auto !important'
+            });
+            
+            // 强制设置滚动样式到所有结果卡片
+            $('.result-card, .result-card .card-body').css({
+                'overflow': 'visible !important',
+                'height': 'auto !important'
+            });
+            
+            // 确保容器和布局可见
+            $('.container-fluid, .row').css({
+                'overflow': 'visible !important',
+                'height': 'auto !important'
+            });
+            
+            // 尝试触发窗口resize事件
+            $(window).trigger('resize');
+        }
+        
+        // 检查body的样式是否被覆盖
+        const bodyStyles = window.getComputedStyle(document.body);
+        if (bodyStyles.overflow === 'hidden' || bodyStyles.overflowY === 'hidden') {
+            console.log('检测到body滚动被禁用，强制启用滚动');
+            document.body.style.setProperty('overflow', 'auto', 'important');
+            document.body.style.setProperty('overflow-y', 'auto', 'important');
+            document.body.style.setProperty('height', 'auto', 'important');
+        }
+        
+        // 确保html元素也可滚动
+        const htmlStyles = window.getComputedStyle(document.documentElement);
+        if (htmlStyles.overflow === 'hidden' || htmlStyles.overflowY === 'hidden') {
+            console.log('检测到html滚动被禁用，强制启用滚动');
+            document.documentElement.style.setProperty('overflow', 'auto', 'important');
+            document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
+            document.documentElement.style.setProperty('height', 'auto', 'important');
+        }
+    }
+
+    // 辅助函数：请求下载
+    function requestDownload(filename, format) {
+        showLoading('准备下载文档...');
+        $.ajax({
+            url: `/export?htmlFile=${encodeURIComponent(filename)}&format=${format}`,
+            type: 'GET',
+            success: function(response) {
+                hideLoading();
+                if (response.success && response.downloadUrl) {
+                    showMessage('文档准备完成，即将开始下载', 'success');
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = response.downloadUrl;
+                    downloadLink.download = response.filename || `document.${format}`;
+                    downloadLink.style.display = 'none';
+                    document.body.appendChild(downloadLink);
+                    setTimeout(function() {
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                    }, 500);
+                } else {
+                    showMessage('导出文档失败：' + (response.message || '未知错误'), 'danger');
+                }
+            },
+            error: function(xhr) {
+                hideLoading();
+                showMessage('导出文档请求失败：' + (xhr.responseText || '服务器错误'), 'danger');
+            }
+        });
     }
     
     // 显示消息
@@ -1043,7 +1408,7 @@ $(document).ready(function() {
         }, 300);
     }
     
-    // 向CSS添加按钮脉冲动画
+    // 向CSS添加按钮脉冲动画和滚动条样式
     const style = document.createElement('style');
     style.innerHTML = `
         @keyframes pulse-animation {
@@ -1074,6 +1439,56 @@ $(document).ready(function() {
         .btn-download.pulse-animation {
             --pulse-color: 255, 125, 69;
         }
+        
+        /* 添加滚动条样式 */
+        .content-display {
+            overflow: visible;
+        }
+        
+        .iframe-container {
+            position: relative;
+            overflow: auto;
+        }
+        
+        .result-card {
+            overflow: visible;
+        }
+        
+        .beautified-content-container {
+            overflow: visible;
+        }
+        
+        /* 美化滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
     `;
     document.head.appendChild(style);
+
+    // debounce工具函数:延迟调用函数直到一段时间后才执行
+    function debounce(func, wait) {
+        let timeout;
+        return function() {
+            const context = this, args = arguments;
+            clearTimeout(timeout);
+            timeout = setTimeout(function() {
+                func.apply(context, args);
+            }, wait);
+        };
+    }
 });

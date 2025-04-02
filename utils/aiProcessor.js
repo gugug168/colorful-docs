@@ -339,21 +339,37 @@ async function beautifyWithAI(htmlContent, apiKey = null, apiType = 'deepseek', 
 async function processAndSaveHtml(htmlContent, outputDir = 'temp', apiKey = null, targetFormat = 'word', customRequirements = '') {
     try {
         console.log(`处理HTML并保存到${outputDir}目录...`);
+        console.log(`API密钥长度: ${apiKey ? apiKey.length : 0}, 目标格式: ${targetFormat}`);
         
         // 创建输出目录（如果不存在）
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
+            console.log(`创建输出目录: ${outputDir}`);
         }
         
         // 使用AI处理内容
         console.log('调用AI处理文档内容...');
-        console.log('目标格式:', targetFormat);
         
         if (customRequirements) {
             console.log('用户自定义要求:', customRequirements.substring(0, 100) + (customRequirements.length > 100 ? '...' : ''));
         }
         
-        const beautifiedHtml = await beautifyWithAI(htmlContent, apiKey, 'deepseek', targetFormat, customRequirements);
+        // 检查API密钥
+        let beautifiedHtml = '';
+        if (!apiKey || apiKey.length < 10) {
+            console.log('API密钥无效或未提供，使用规则处理');
+            beautifiedHtml = await beautifyWithRules(htmlContent);
+        } else {
+            try {
+                console.log('尝试使用DEEPSEEK API处理...');
+                beautifiedHtml = await beautifyWithDeepseek(htmlContent, apiKey, targetFormat, customRequirements);
+                console.log('DEEPSEEK API处理成功');
+            } catch (deepseekError) {
+                console.error('DEEPSEEK API处理失败:', deepseekError);
+                console.log('切换到规则处理...');
+                beautifiedHtml = await beautifyWithRules(htmlContent);
+            }
+        }
         
         // 生成输出文件路径
         const timestamp = Date.now();
@@ -372,12 +388,34 @@ async function processAndSaveHtml(htmlContent, outputDir = 'temp', apiKey = null
         };
     } catch (error) {
         console.error('处理HTML内容时出错:', error);
-        // 发生错误时返回原始内容
-        return {
-            success: false,
-            html: htmlContent,
-            error: error.message
-        };
+        // 发生错误时尝试使用规则处理
+        try {
+            console.log('出错后尝试使用规则处理...');
+            const backupHtml = await beautifyWithRules(htmlContent);
+            
+            // 生成备用输出路径
+            const timestamp = Date.now();
+            const backupFileName = `backup-${timestamp}.html`;
+            const backupPath = path.join(outputDir, backupFileName);
+            
+            // 保存备用结果
+            fs.writeFileSync(backupPath, backupHtml);
+            console.log(`备用美化文档已保存到: ${backupPath}`);
+            
+            return {
+                success: true,
+                html: backupHtml,
+                path: backupPath,
+                wasBackupMode: true
+            };
+        } catch (backupError) {
+            console.error('备用处理也失败:', backupError);
+            return {
+                success: false,
+                html: htmlContent,
+                error: error.message + ' (备用处理也失败: ' + backupError.message + ')'
+            };
+        }
     }
 }
 

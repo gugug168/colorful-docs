@@ -21,7 +21,7 @@ console.log('- aiOptimizer 模块:', typeof aiOptimizer === 'object' && typeof a
 // 配置默认API配置对象
 let globalApiConfig = {
   // 使用更新的API密钥 - 请替换为您的有效API密钥
-  apiKey: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // 需要替换为有效的API密钥
+  apiKey: 'sk-8540a084e1774f9980019e37a9086781', // 已更新为正确的API密钥
   apiType: 'deepseek', // 当前使用的API类型
   apiModel: 'deepseek-chat', // 使用的模型名称
   apiParams: {
@@ -79,7 +79,7 @@ if (!fs.existsSync(configPath)) {
       openai: '',
       deepseek: globalApiConfig.apiKey,
       qianwen: '',
-      qwq: 'sk-W0rpStc95T7JVYVwDYc29IyirjtpPPby6SozFMQr17m8KWeo'
+      qwq: ''  // 清空默认值，避免冲突
     },
     apiModels: {
       openai: 'gpt-4-turbo',
@@ -478,7 +478,7 @@ app.post('/beautify', async (req, res) => {
 
     console.log('收到美化请求:', { 
       filename, 
-          targetFormat,
+      targetFormat,
       customRequirements: customRequirements?.length || 0,
       hasHtmlContent: !!htmlContent
     });
@@ -502,208 +502,137 @@ app.post('/beautify', async (req, res) => {
     let processedContent;
     let htmlToProcess = '';
     let htmlFilePath = '';
-
-    // 如果直接提供了HTML内容，则使用它
+    
+    // 如果提供了HTML内容，直接使用
     if (htmlContent) {
-      console.log('使用提供的HTML内容进行美化，内容长度:', htmlContent.length);
+      console.log('使用请求中提供的HTML内容');
       htmlToProcess = htmlContent;
-    } else {
-      // 传统方式：通过文件名查找HTML文件
-      // 检查文件名是否存在
-      if (!filename) {
-        return res.status(400).json({
-          success: false, 
-          message: '缺少文件名参数'
-        });
-      }
-
-      // 增强的文件查找逻辑
-      let htmlFilePath = null;
+    } else if (filename) {
+      // 尝试多个可能的文件路径
+      console.log('尝试通过文件名加载HTML:', filename);
+      const possiblePaths = [
+        path.join(__dirname, 'uploads', filename),
+        path.join(__dirname, 'temp', filename),
+        path.join(__dirname, 'downloads', filename)
+      ];
       
-      // 创建可能的文件路径列表
-      const possiblePaths = [];
-      
-      // 1. 首先检查完整路径（如果传入的是完整路径）
-      if (filename.includes('/') || filename.includes('\\')) {
-        possiblePaths.push(filename);
-        
-        // 如果是绝对路径，也尝试从中提取文件名
-        const extractedName = path.basename(filename);
-        possiblePaths.push(path.join(__dirname, 'temp', extractedName));
-        possiblePaths.push(path.join(__dirname, 'downloads', extractedName));
-      }
-      
-      // 2. 检查给定的文件名
-      possiblePaths.push(path.join(__dirname, 'temp', filename));
-      possiblePaths.push(path.join(__dirname, 'downloads', filename));
-      
-      // 3. 如果文件名有扩展名，也尝试基础名加.html
-      if (filename.includes('.') && !filename.endsWith('.html')) {
-        const nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'));
-        possiblePaths.push(path.join(__dirname, 'temp', nameWithoutExt + '.html'));
-        possiblePaths.push(path.join(__dirname, 'downloads', nameWithoutExt + '.html'));
-      }
-      
-      // 4. 尝试添加.html扩展名
-      if (!filename.endsWith('.html')) {
-        possiblePaths.push(path.join(__dirname, 'temp', filename + '.html'));
-        possiblePaths.push(path.join(__dirname, 'downloads', filename + '.html'));
-      }
-      
-      console.log('尝试查找文件的可能路径:', possiblePaths);
-      
-      // 遍历所有可能的路径，找到第一个存在的文件
-      for (const filepath of possiblePaths) {
-        if (fs.existsSync(filepath)) {
-          htmlFilePath = filepath;
-            console.log('找到HTML文件:', htmlFilePath);
-            break;
-          }
-        }
-        
-      // 如果仍然找不到文件，尝试列出temp目录中的所有文件
-        if (!htmlFilePath) {
-          try {
-          console.log('未找到指定的HTML文件，尝试查找最近的文件...');
-            const tempFiles = fs.readdirSync(path.join(__dirname, 'temp'));
-            console.log('temp目录文件列表:', tempFiles);
-            
-          // 按修改时间排序，获取最新文件
-          const tempDir = path.join(__dirname, 'temp');
-          const filesWithStats = tempFiles
-            .filter(file => file.endsWith('.html'))
-            .map(file => {
-              const filePath = path.join(tempDir, file);
-              return {
-                name: file,
-                path: filePath,
-                mtime: fs.statSync(filePath).mtime
-              };
-            })
-            .sort((a, b) => b.mtime - a.mtime); // 最新的在前
-            
-          if (filesWithStats.length > 0) {
-            htmlFilePath = filesWithStats[0].path;
-            console.log('找到最新的HTML文件:', htmlFilePath);
-          }
-        } catch (listError) {
-          console.error('尝试列出temp目录失败:', listError);
+      // 查找存在的HTML文件路径
+      let foundHtmlPath = null;
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          console.log('找到HTML文件:', p);
+          foundHtmlPath = p;
+          break;
         }
       }
-
-      // 检查文件是否存在
-      if (!htmlFilePath || !fs.existsSync(htmlFilePath)) {
-        console.error('找不到指定的HTML文件:', filename);
+      
+      if (foundHtmlPath) {
+        try {
+          htmlFilePath = foundHtmlPath;
+          console.log('读取HTML文件:', htmlFilePath);
+          htmlToProcess = fs.readFileSync(htmlFilePath, 'utf8');
+          console.log('HTML文件读取成功，大小:', htmlToProcess.length);
+        } catch (readError) {
+          console.error('读取HTML文件失败:', readError);
+          return res.status(500).json({
+            success: false,
+            message: '读取HTML文件失败: ' + readError.message
+          });
+        }
+      } else {
+        console.error('未找到HTML文件:', filename);
         return res.status(404).json({
           success: false,
-          message: '找不到指定的HTML文件，请确保文件已上传并转换成功'
+          message: '找不到HTML文件: ' + filename
         });
       }
-
-      // 读取HTML内容
-      try {
-        htmlToProcess = fs.readFileSync(htmlFilePath, 'utf8');
-        console.log('读取到HTML内容，长度:', htmlToProcess.length);
-      } catch (readError) {
-        console.error('读取HTML文件失败:', readError);
+    } else {
+      // 如果没有提供HTML内容或文件名
+      console.error('请求中未包含HTML内容或有效的文件名');
+      return res.status(400).json({
+        success: false,
+        message: '请求中缺少必要参数：HTML内容或有效的文件名'
+      });
+    }
+    
+    // 验证HTML内容是否有效
+    if (!htmlToProcess || htmlToProcess.trim() === '') {
+      console.error('HTML内容为空');
+      return res.status(400).json({
+        success: false,
+        message: 'HTML内容为空，无法处理'
+      });
+    }
+    
+    // 获取API密钥 - 优先使用请求中的API密钥，如果未提供则使用全局配置
+    const apiKey = req.body.apiKey || globalApiConfig.apiKey;
+    
+    // 确保API密钥有效
+    if (!apiKey || apiKey.length < 20) {
+      console.error('美化请求中未提供有效的API密钥');
+      return res.status(500).json({
+        success: false,
+        message: '未提供有效的API密钥，无法进行美化处理'
+      });
+    }
+    
+    // 记录API密钥信息（只记录部分，保护隐私）
+    console.log('使用API密钥:', apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供');
+    
+    // 创建API配置对象，确保包含所有必要的参数
+    const apiConfig = {
+      apiKey: apiKey,
+      apiType: req.body.apiType || globalApiConfig.apiType,
+      apiParams: globalApiConfig.apiParams
+    };
+    
+    console.log('处理美化请求使用的API配置:', { 
+      apiType: apiConfig.apiType, 
+      apiKeyLength: apiConfig.apiKey ? apiConfig.apiKey.length : 0 
+    });
+    
+    // 创建临时目录（如果不存在）
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // 时间戳，用于生成唯一文件名
+    const timestamp = Date.now();
+    
+    // 输出处理后的HTML文件路径
+    const processedFilePath = path.join(tempDir, `processed-${timestamp}.html`);
+    
+    console.log('调用AI处理器美化HTML...');
+    
+    try {
+      processedContent = await aiOptimizer.processAndSaveHtml(
+        htmlToProcess,
+        tempDir,
+        apiConfig, // 传递完整的apiConfig对象
+        targetFormat,
+        customRequirements
+      );
+      
+      // 检查处理结果
+      if (!processedContent || !processedContent.html) {
+        console.error('AI处理器未返回有效结果');
         return res.status(500).json({
           success: false,
-          message: '读取HTML文件时出错: ' + readError.message
+          message: 'AI处理过程未返回有效的处理结果'
         });
       }
-    }
-
-    // 检查是否处于调试模式或API密钥无效
-    const debugMode = process.env.DEBUG_MODE === 'true';
-    const isApiKeyInvalid = !globalApiConfig.apiKey || globalApiConfig.apiKey.length < 10;
-    
-    // 使用AI优化器处理内容或使用本地备用处理
-    if (debugMode || isApiKeyInvalid) {
-      console.log('使用本地备用模式处理HTML (调试模式或API密钥无效)');
       
-      // 简单本地美化作为备用
-      processedContent = {
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; color: #333; line-height: 1.6; }
-              h1, h2, h3 { color: #2c3e50; }
-              p { margin-bottom: 15px; }
-              .highlight { background-color: #fffacd; padding: 2px; }
-              img { max-width: 100%; height: auto; }
-              table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-              table, th, td { border: 1px solid #ddd; }
-              th, td { padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-            </style>
-          </head>
-          <body>
-            ${htmlToProcess}
-          </body>
-          </html>
-        `,
-        success: true
-      };
-    } else {
-      try {
-        // 使用全局API配置
-        console.log(`使用系统配置的API：类型=${globalApiConfig.apiType}，模型=${globalApiConfig.apiModel}`);
-        
-        // 传递目标格式和自定义要求给AI优化器
-        processedContent = await aiOptimizer.processAndSaveHtml(
-          htmlToProcess, 
-          'downloads',
-          globalApiConfig,
-          targetFormat,
-          customRequirements // 添加自定义美化要求
-        );
-        
-        console.log('AI处理完成，结果长度:', processedContent.html.length);
-      } catch (aiError) {
-        console.error('AI处理错误详情:', aiError);
-        if (aiError.response) {
-          console.error('API响应:', aiError.response.data);
-        }
-        console.error('错误堆栈:', aiError.stack);
-        
-        console.log('AI处理失败，切换到本地备用模式');
-        
-        // 本地备用处理
-        processedContent = {
-          html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="UTF-8">
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; color: #333; line-height: 1.6; }
-                h1, h2, h3 { color: #2c3e50; }
-                p { margin-bottom: 15px; }
-                .error-note { color: #e74c3c; font-weight: bold; }
-              </style>
-            </head>
-            <body>
-              <div class="error-note">
-                注意：AI处理失败，使用备用模式展示内容。错误信息: ${aiError.message}
-              </div>
-              ${htmlToProcess}
-            </body>
-            </html>
-          `,
-          success: true,
-          wasBackupMode: true
-        };
-      }
+      console.log('AI处理完成，获得处理后的HTML内容，大小:', processedContent.html.length);
+    } catch (aiError) {
+      console.error('AI处理发生错误:', aiError);
+      return res.status(500).json({
+        success: false,
+        message: 'AI处理过程中发生错误: ' + aiError.message
+      });
     }
-
-    // 保存处理后的内容
-    const timestamp = Date.now();
-    const processedFilename = `processed-${timestamp}.html`;
-    const processedFilePath = path.join(__dirname, 'downloads', processedFilename);
-
+    
+    // 保存处理后的内容到文件
     try {
       fs.writeFileSync(processedFilePath, processedContent.html);
       console.log('处理后的内容已保存到:', processedFilePath);
@@ -715,6 +644,22 @@ app.post('/beautify', async (req, res) => {
       });
     }
 
+    // 复制到downloads目录以便查看
+    try {
+      const downloadsDir = path.join(__dirname, 'downloads');
+      if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      }
+      
+      // 使用相同的文件名复制
+      const downloadFilePath = path.join(downloadsDir, path.basename(processedFilePath));
+      fs.copyFileSync(processedFilePath, downloadFilePath);
+      console.log('处理后的HTML已复制到downloads目录:', downloadFilePath);
+    } catch (copyError) {
+      console.error('复制到downloads目录失败:', copyError);
+      // 这不是致命错误，继续处理
+    }
+    
     // 返回成功响应
     return res.json({
       success: true,
@@ -866,84 +811,80 @@ app.get('/export', async (req, res) => {
 
 // 添加处理带查询参数的下载路由
 app.get('/download', (req, res) => {
-  const filePath = req.query.path;
-  
-  if (!filePath) {
-    return res.status(400).send('缺少文件路径参数');
-  }
-  
-  console.log('使用查询参数下载文件:', filePath);
-  
-  // 确定文件是否存在，并尝试多种可能的路径
-  let resolvedPath = '';
-  
-  // 判断是否为绝对路径
-  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
-    resolvedPath = filePath;
-  } else {
-    // 如果是相对路径，尝试多种组合
-    const possiblePaths = [
-      filePath, // 原始路径
-      path.join(__dirname, filePath), // 相对于应用根目录
-      path.join(__dirname, 'downloads', path.basename(filePath)), // 在downloads目录中查找文件名
-      path.join(__dirname, 'temp', path.basename(filePath)), // 在temp目录中查找文件名
-    ];
+  try {
+    const filePath = req.query.path;
     
-    // 找到第一个存在的路径
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        resolvedPath = p;
-        break;
+    if (!filePath) {
+      return res.status(400).send('缺少文件路径参数');
+    }
+    
+    console.log('收到下载请求，文件路径:', filePath);
+    
+    // 确定文件是否存在，并尝试多种可能的路径
+    let resolvedPath = '';
+    
+    // 判断是否为绝对路径
+    if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+      resolvedPath = filePath;
+    } else {
+      // 如果是相对路径，尝试多种组合
+      const possiblePaths = [
+        filePath, // 原始路径
+        path.join(__dirname, filePath), // 相对于应用根目录
+        path.join(__dirname, 'downloads', filePath), // 在downloads目录中查找文件名
+        path.join(__dirname, 'temp', filePath), // 在temp目录中查找文件名
+        path.join(__dirname, 'downloads', path.basename(filePath)), // 在downloads目录中查找文件名
+        path.join(__dirname, 'temp', path.basename(filePath)), // 在temp目录中查找文件名
+      ];
+      
+      console.log('尝试以下路径:', possiblePaths);
+      
+      // 找到第一个存在的路径
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          resolvedPath = p;
+          console.log('找到匹配的文件路径:', p);
+          break;
+        }
       }
     }
-  }
-  
-  // 如果仍未找到文件，返回404
-  if (!resolvedPath || !fs.existsSync(resolvedPath)) {
-    console.error('下载文件不存在，尝试的路径:', filePath);
-    return res.status(404).send('文件不存在或已被删除');
-  }
-  
-  // 提取文件名，确保安全
-  const fileName = path.basename(resolvedPath);
-  
-  // 获取文件扩展名，以设置正确的Content-Type
-  const ext = path.extname(resolvedPath).toLowerCase();
-  console.log('下载文件:', resolvedPath, '扩展名:', ext);
-  
-  try {
-    // 读取文件内容
-    const fileContent = fs.readFileSync(resolvedPath);
-    console.log('文件大小:', fileContent.length, '字节');
     
-    let contentType;
-    // 根据扩展名设置Content-Type
-    switch (ext) {
-      case '.docx':
-        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        break;
-      case '.pdf':
-        contentType = 'application/pdf';
-        break;
-      case '.html':
-        contentType = 'text/html';
-        break;
-      default:
-        contentType = 'application/octet-stream';
+    // 如果仍未找到文件，返回404
+    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+      console.error('下载文件不存在，请求的路径:', filePath);
+      return res.status(404).send('文件不存在或已被删除');
     }
     
-    console.log('设置Content-Type:', contentType);
+    // 获取文件名和扩展名
+    const fileName = path.basename(resolvedPath);
     
-    // 设置响应头
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Content-Length', fileContent.length);
+    // 设置响应头，指示浏览器下载文件
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
     
-    // 发送文件内容
-    res.send(fileContent);
-    console.log('文件下载成功:', fileName);
+    // 如果是HTML文件，检查是否有对应的Word或PDF版本
+    if (fileName.endsWith('.html')) {
+      const baseFileName = fileName.replace('.html', '');
+      const wordPath = path.join(path.dirname(resolvedPath), `${baseFileName}.docx`);
+      const pdfPath = path.join(path.dirname(resolvedPath), `${baseFileName}.pdf`);
+      
+      // 优先使用Word或PDF版本（如果存在）
+      if (fs.existsSync(wordPath)) {
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(path.basename(wordPath))}"`);
+        console.log('找到Word文档版本，将下载它:', wordPath);
+        return fs.createReadStream(wordPath).pipe(res);
+      } else if (fs.existsSync(pdfPath)) {
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(path.basename(pdfPath))}"`);
+        console.log('找到PDF文档版本，将下载它:', pdfPath);
+        return fs.createReadStream(pdfPath).pipe(res);
+      }
+    }
+    
+    // 发送文件
+    fs.createReadStream(resolvedPath).pipe(res);
+    console.log('文件下载已启动:', fileName);
   } catch (err) {
-    console.error('读取或发送文件时出错:', err);
+    console.error('处理下载请求时出错:', err);
     res.status(500).send('下载失败: ' + err.message);
   }
 });
@@ -1195,6 +1136,8 @@ app.get('/view-document/:filename', (req, res) => {
       return res.status(400).send('无效的文件名');
     }
     
+    console.log('请求查看文档:', filename);
+    
     // 尝试多个可能的路径
     const possiblePaths = [
       path.join(__dirname, 'downloads', filename),
@@ -1207,6 +1150,7 @@ app.get('/view-document/:filename', (req, res) => {
     for (const p of possiblePaths) {
       if (fs.existsSync(p)) {
         filePath = p;
+        console.log('找到文件:', p);
         break;
       }
     }
@@ -1233,14 +1177,19 @@ app.get('/view-document/:filename', (req, res) => {
     // 在HTML底部添加下载按钮
     const htmlWithDownloadButton = modifiedHtml.replace('</body>', `
       <div style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-        <a href="/download?path=${filename}" class="btn btn-primary" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold;">
-          <i class="fas fa-download" style="margin-right: 8px;"></i>下载文档
+        <a href="/download?path=${encodeURIComponent(filename)}" class="btn btn-primary" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-flex; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16" style="margin-right: 8px;">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+          </svg>
+          下载文档
         </a>
       </div>
     </body>`);
     
     // 发送修改后的HTML
     res.send(htmlWithDownloadButton);
+    console.log('成功发送文档视图，包含下载按钮');
   } catch (error) {
     console.error('查看文档时出错:', error);
     res.status(500).send('服务器处理文档时出错: ' + error.message);
@@ -1292,7 +1241,9 @@ async function validateApiKey() {
               { role: 'system', content: '你好' },
               { role: 'user', content: '测试API密钥是否有效' }
             ],
-            max_tokens: 5
+            max_tokens: 5,
+            temperature: 0.7,
+            stream: false  // 明确指定不使用流式传输
           },
           {
             headers: {
