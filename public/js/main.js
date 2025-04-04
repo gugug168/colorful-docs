@@ -57,6 +57,9 @@ $(document).ready(function() {
                 // 初始化模板选择功能
                 initTemplateSelection();
                 
+                // 初始化模板图片放大功能
+                setTimeout(initTemplatePreviewZoom, 500);
+                
                 console.log('从服务器加载模板成功', BEAUTIFY_TEMPLATES);
             } else {
                 console.error('加载模板失败:', response.message);
@@ -164,7 +167,10 @@ $(document).ready(function() {
                         if (template.image) {
                             previewElement.innerHTML = `
                                 <div class="text-center p-4">
-                                    <img src="${template.image}" alt="${template.name}" class="img-fluid mb-3" style="max-height: 150px;">
+                                    <div class="template-preview-zoom">
+                                        <img src="${template.image}" alt="${template.name}" class="img-fluid mb-1">
+                                        <div class="template-preview-caption">点我放大查看</div>
+                                    </div>
                                     <h5>${template.name}</h5>
                                     <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
                                 </div>
@@ -223,6 +229,9 @@ $(document).ready(function() {
                 if (previewElement) {
                     previewElement.classList.remove('d-none');
                     console.log('显示模板预览:', selectedValue);
+                    
+                    // 显示后初始化放大功能
+                    setTimeout(initTemplatePreviewZoom, 100);
                 } else {
                     console.log('未找到预览元素:', `template-preview-${selectedValue}`);
                     
@@ -241,7 +250,10 @@ $(document).ready(function() {
                         if (template.image) {
                             newPreviewElement.innerHTML = `
                                 <div class="text-center p-4">
-                                    <img src="${template.image}" alt="${template.name}" class="img-fluid mb-3" style="max-height: 150px;">
+                                    <div class="template-preview-zoom">
+                                        <img src="${template.image}" alt="${template.name}" class="img-fluid mb-1">
+                                        <div class="template-preview-caption">点我放大查看</div>
+                                    </div>
                                     <h5>${template.name}</h5>
                                     <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
                                 </div>
@@ -1259,64 +1271,80 @@ $(document).ready(function() {
                         <!DOCTYPE html>
                         <html>
                         <head>
-                            <base href="${baseUrl}">
                             <meta charset="UTF-8">
                             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                             <style>
-                                body { 
-                                    font-family: Arial, sans-serif; 
-                                    margin: 10px; 
-                                    overflow-y: visible;
+                                /* 复制必要的样式到iframe中 */
+                                body {
+                                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                    margin: 0;
+                                    padding: 10px;
+                                    color: #333;
+                                    line-height: 1.6;
                                 }
-                                img { max-width: 100%; height: auto; }
-                                ::-webkit-scrollbar {
-                                    width: 8px;
-                                    height: 8px;
-                                }
-                                ::-webkit-scrollbar-track {
-                                    background: #f1f1f1;
+                                img {
+                                    max-width: 100% !important;
+                                    height: auto !important;
+                                    max-height: 150px !important;
+                                    display: block;
+                                    margin: 10px auto;
                                     border-radius: 4px;
+                                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                                    cursor: zoom-in;
+                                    transition: max-height 0.3s ease, transform 0.3s ease;
+                                    position: relative;
                                 }
-                                ::-webkit-scrollbar-thumb {
-                                    background: #888;
-                                    border-radius: 4px;
+                                img:hover {
+                                    max-height: none !important;
+                                    transform: scale(1.05);
+                                    z-index: 100;
+                                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
                                 }
-                                ::-webkit-scrollbar-thumb:hover {
-                                    background: #555;
+                                .image-caption {
+                                    text-align: center;
+                                    color: #666;
+                                    font-size: 12px;
+                                    margin-top: 5px;
+                                    cursor: zoom-in;
                                 }
-                                
-                                /* 隐藏提示词区域 */
-                                [class*="prompt"], [id*="prompt"],
-                                [class*="提示"], [id*="提示"] { 
-                                    display: none !important; 
-                                }
-                                
-                                /* 隐藏紫色背景的元素 */
-                                [style*="background-color: purple"],
-                                [style*="background: purple"],
-                                [style*="background-color: #"],
-                                [style*="background: #"],
-                                [style*="background-color: rgb"],
-                                [style*="background: rgb"] {
-                                    display: none !important;
-                                }
-                                
-                                /* 移除顶部可能的提示词 */
-                                body > div:first-child > div:first-child {
-                                    background: none !important;
-                                }
+                                /* 其它样式保持不变 */
+                                ${result.css || ''}
                             </style>
                         </head>
-                        <body>${processedHtml}</body>
+                        <body>
+                            ${processedHtml}
+                        </body>
                         </html>
                     `);
                     iframeDoc.close();
                     
-                    // 在iframe加载完成后执行额外的过滤
+                    // 在iframe加载完成后添加图片说明
                     setTimeout(() => {
                         try {
-                            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-                            const allElements = iframeDocument.querySelectorAll('body *');
+                            const iframeWindow = iframe.contentWindow;
+                            const iframeDoc = iframeWindow.document;
+                            
+                            // 处理iframe中的所有图片
+                            const allImages = iframeDoc.querySelectorAll('img');
+                            allImages.forEach(img => {
+                                // 为每个图片添加点击放大的文字说明
+                                const imageWrapper = iframeDoc.createElement('div');
+                                imageWrapper.style.position = 'relative';
+                                imageWrapper.style.marginBottom = '20px';
+                                
+                                // 创建说明文字
+                                const caption = iframeDoc.createElement('div');
+                                caption.className = 'image-caption';
+                                caption.textContent = '点我放大查看';
+                                
+                                // 将原始图片替换为带有说明的包装
+                                img.parentNode.insertBefore(imageWrapper, img);
+                                imageWrapper.appendChild(img);
+                                imageWrapper.appendChild(caption);
+                            });
+                            
+                            // 获取所有元素以进行后续处理
+                            const allElements = iframeDoc.querySelectorAll('*');
                             
                             // 检查第一个大型元素是否可能包含提示词
                             const firstLargeElement = Array.from(allElements).find(el => {
@@ -1991,6 +2019,44 @@ $(document).ready(function() {
         
         document.querySelectorAll('.remove-beautified').forEach(button => {
             button.addEventListener('click', handleBeautifiedRemove);
+        });
+    }
+
+    /**
+     * 初始化模板预览图片放大功能
+     */
+    function initTemplatePreviewZoom() {
+        // 处理页面加载时已存在的模板预览图片
+        const existingImages = document.querySelectorAll('.template-preview img');
+        existingImages.forEach(img => {
+            if (!img.closest('.template-preview-zoom')) {
+                // 如果图片还没有放大功能包装，添加包装
+                const parent = img.parentNode;
+                
+                // 创建包装容器
+                const zoomWrapper = document.createElement('div');
+                zoomWrapper.className = 'template-preview-zoom';
+                
+                // 保存原始图片的类和样式
+                const imgClasses = img.className;
+                const imgStyle = img.getAttribute('style') || '';
+                
+                // 移除max-height内联样式，让CSS控制
+                img.className = 'img-fluid mb-1';
+                img.removeAttribute('style');
+                
+                // 创建说明文字
+                const caption = document.createElement('div');
+                caption.className = 'template-preview-caption';
+                caption.textContent = '点我放大查看';
+                
+                // 构建新的DOM结构
+                parent.insertBefore(zoomWrapper, img);
+                zoomWrapper.appendChild(img);
+                zoomWrapper.appendChild(caption);
+                
+                console.log('为已存在的模板预览图片添加了放大功能');
+            }
         });
     }
 });

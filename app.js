@@ -1180,21 +1180,80 @@ app.get('/view-document/:filename', (req, res) => {
       return `<img src="/uploads/${src}"`;
     });
     
-    // 在HTML底部添加下载按钮
-    const htmlWithDownloadButton = modifiedHtml.replace('</body>', `
-      <div style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-        <a href="/download?path=${encodeURIComponent(filename)}" class="btn btn-primary" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-flex; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16" style="margin-right: 8px;">
-            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-          </svg>
-          下载文档
-        </a>
-      </div>
+    // 添加头部样式以支持图片放大和提示文字
+    const htmlWithStyles = modifiedHtml.replace('</head>', `
+    <style>
+      /* 图片部分显示和放大效果 */
+      img {
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: 150px !important; /* 限制默认状态下的图片高度 */
+        display: block;
+        margin: 10px auto;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        cursor: zoom-in;
+        transition: max-height 0.3s ease, transform 0.3s ease;
+        position: relative;
+      }
+      
+      img:hover {
+        max-height: none !important; /* 鼠标悬停时取消高度限制 */
+        transform: scale(1.05); /* 轻微缩放效果 */
+        z-index: 100; /* 确保放大后的图片显示在其他内容之上 */
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+      
+      /* 图片下方的提示文字 */
+      .image-caption {
+        text-align: center;
+        color: #666;
+        font-size: 12px;
+        margin-top: 5px;
+        cursor: zoom-in;
+      }
+    </style>
+    </head>`);
+    
+    // 添加图片处理和下载按钮的脚本
+    const htmlWithScripts = htmlWithStyles.replace('</body>', `
+    <script>
+      // 为所有图片添加"点我放大查看"的文字提示
+      document.addEventListener('DOMContentLoaded', function() {
+        // 处理所有图片
+        const allImages = document.querySelectorAll('img');
+        allImages.forEach(img => {
+          // 为每个图片创建一个包装容器
+          const imageWrapper = document.createElement('div');
+          imageWrapper.style.position = 'relative';
+          imageWrapper.style.marginBottom = '20px';
+          
+          // 创建说明文字
+          const caption = document.createElement('div');
+          caption.className = 'image-caption';
+          caption.textContent = '点我放大查看';
+          
+          // 将原始图片替换为带有说明的包装
+          img.parentNode.insertBefore(imageWrapper, img);
+          imageWrapper.appendChild(img);
+          imageWrapper.appendChild(caption);
+        });
+      });
+    </script>
+    
+    <div style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
+      <a href="/download?path=${encodeURIComponent(filename)}" class="btn btn-primary" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-flex; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16" style="margin-right: 8px;">
+          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+          <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+        </svg>
+        下载文档
+      </a>
+    </div>
     </body>`);
     
     // 发送修改后的HTML
-    res.send(htmlWithDownloadButton);
+    res.send(htmlWithScripts);
     console.log('成功发送文档视图，包含下载按钮');
   } catch (error) {
     console.error('查看文档时出错:', error);

@@ -1,19 +1,21 @@
 {
   "templates": {
-    "academic": {
-      "name": "学术论文",
-      "requirements": "请使用专业学术风格美化文档，包括：\n1. 标准的学术排版格式，清晰的标题层次\n2. 适合长时间阅读的字体，合理的行距和段距\n3. 图表规范布局，表格使用细线条边框\n4. 参考文献格式规范，引用清晰标注\n5. 适合打印和阅读的配色方案（以深蓝色为主）",
-      "image": "/images/templates/academic.jpg"
-    },
-    "education": {
-      "name": "教育教材",
-      "requirements": "请使用教育风格美化文档，包括：\n1. 教材风格排版，章节层次清晰\n2. 使用活泼但不过分鲜艳的颜色（适合长时间学习）\n3. 知识点突出，概念解释醒目\n4. 示例和练习区域明确区分\n5. 增加图示和提示框，便于学习和记忆",
-      "image": "/images/templates/education.jpg"
-    },
     "小朋友的学习资料：加入更多高亮内容和颜色变化-1743752388802": {
       "name": "小朋友的学习资料：加入更多高亮内容和颜色变化",
       "requirements": "请将以下HTML文档内容进行色彩美化，使其适合小朋友阅读学习，提高记忆效果和专注力：\r\n\r\n1. 所有标题（h1, h2, h3等标签内容）请用<b>加粗</b>并使用<span style=\"color:#4B0082\">深紫色</span>\r\n2. 重要概念或关键词请用<span style=\"background-color:#FFFF00\">黄色高亮</span>并<b>加粗</b>\r\n3. 数字和数学符号请用<span style=\"color:#FF4500\">橙红色</span>\r\n4. 列表项目的第一个词用<b>加粗</b>\r\n5. 示例或例子请用<i>斜体</i>并在开头和结尾添加<span style=\"color:#008000\">绿色</span>的\"例：\"和\"。\"\r\n6. 重要提示或注意事项用<span style=\"background-color:#FFB6C1\">粉色高亮</span>\r\n7. 难词或专业术语请添加<u>下划线</u>并使用<span style=\"color:#1E90FF\">蓝色</span>\r\n8. 每个段落的第一句话中的主语和谓语动词用<span style=\"color:#9932CC\">紫色</span>\r\n9. 表示步骤的词语（\"第一\"、\"首先\"、\"然后\"等）用<span style=\"color:#FF8C00\">深橙色</span>并<b>加粗</b>\r\n10. 故事或比喻部分用<span style=\"color:#2E8B57\">海绿色</span>\r\n11. 日期和时间信息用<span style=\"background-color:#E6E6FA\">淡紫色高亮</span>\r\n12. 人物名称或角色用<span style=\"color:#FF1493\">粉红色</span>并<b>加粗</b>\r\n13. 地点名称用<span style=\"background-color:#AFEEEE\">淡绿松石色高亮</span>\r\n14. 动物名称用<span style=\"color:#A52A2A\">褐色</span>并<i>斜体</i>\r\n15. 问题句用<span style=\"background-color:#FFDEAD\">淡橙色高亮</span>\r\n16. 答案内容用<span style=\"background-color:#98FB98\">淡绿色高亮</span>\r\n17. 表示情感的词语（高兴、伤心等）用<span style=\"color:#FF69B4\">热粉色</span>\r\n18. 季节相关词语用<span style=\"background-color:#F0F8FF\">淡蓝色高亮</span>\r\n19. 颜色名称本身用对应的颜色标记，如<span style=\"color:#FF0000\">红色</span>\r\n20. 引用或名言用<span style=\"background-color:#D8BFD8\">淡紫色高亮</span>并<i>斜体</i>\r\n\r\n请保持原有HTML结构不变，只进行上述文本样式的美化，不要添加任何复杂CSS，不要使用class、id、div等布局元素。根据内容的实际情况灵活应用这些样式，确保页面美观且有助于小朋友的学习和记忆。",
       "image": "/images/templates/template-小朋友的学习资料：加入更多高亮内容和颜色变化-1743752388802.png",
+      "format": "word"
+    },
+    "知识类模版-1743757203741": {
+      "name": "知识类模版",
+      "requirements": "\"将文档转换为高亮彩虹标记风格，只使用以下基础色+高亮组合：\r\n1. 标题系统（3层递进）\r\n\r\n主标题：<span style=\"color:red\"><b>红色+加粗\r\n\r\n副标题：<span style=\"color:blue\"><u>蓝色+下划线\r\n\r\n小标题：<span style=\"background-color:yellow\">黄色高亮（当黄色太多时，可以使用其他颜色）\r\n\r\n2. 内容标记（5类重点）\r\n\r\n核心术语：<span style=\"background-color:yellow\"><b>黄底+加粗，（当黄底色太多时，可以换其他颜色）\r\n\r\n数据/日期：<span style=\"color:green\"><u>绿色+下划线\r\n\r\n对比信息：<span style=\"color:red\">红字 vs. <span style=\"color:blue\">蓝字\r\n\r\n引用内容：<span style=\"background-color:yellow\"><i>黄底+斜体\r\n\r\n警告语句：<span style=\"color:red\"><b><u>红字+加粗+下划线\r\n\r\n3. 记忆锚点（3种高亮技\r\n\r\n首字母缩写：<span style=\"background-color:yellow\"><span style=\"color:red\">红字黄底\r\n\r\n逻辑连接词：<span style=\"color:blue\"><b>蓝色加粗\r\n\r\n递进关系：→ + <span style=\"background-color:yellow\">黄底\r\n\r\n4. 段落修饰\r\n\r\n每段首句：<span style=\"color:green\">绿色\r\n\r\n每段尾句：<span style=\"color:blue\"><i>蓝色斜体\r\n\r\n执行规则\r\n颜色仅限：red/blue/green/yellow（禁止其他颜色词）\r\n\r\n必须嵌套高亮：\r\n\r\n所有<span style=\"color\">必须搭配<b>``<u>``<i>或<span style=\"background-color\">\r\n\r\n例如：<span style=\"background-color:yellow\"><span style=\"color:red\"><b>文字\r\n\r\n高亮密度：\r\n\r\n每行至少1处高亮（<span style=\"background-color:yellow\">）\r\n\r\n每段至少3种颜色交替\r\n\r\n效果示例\r\n原始文本：\r\n\r\n\"2024年Q3销售额增长15%，但用户留存率下降5%。\"\r\n\r\n转换后：\r\n<span style=\"color:green\"><u>2024年Q3</span> \r\n<span style=\"background-color:yellow\"><b>销售额增长15%</span>，\r\n但 <span style=\"color:red\"><u>用户留存率下降5%</span>。",
+      "image": "/images/templates/template-知识类模版-1743757203741.png",
+      "format": "word"
+    },
+    "记忆阅读模版3-1743764109694": {
+      "name": "记忆阅读模版3",
+      "requirements": "请增加下面提示词，让个多的文字增加色彩效果（文字变色、高光、加粗、下划等），让文档有更多的色彩：文档色彩优化提示词\r\n请尽可能为以下HTML文档添加丰富的色彩效果，使其更适合阅读和记忆。只使用基本HTML标签及颜色属性，确保能完美转换为Word文档。\r\n添加色彩的位置和方法\r\n1. 标题着色\r\n   * 为所有标题添加鲜艳颜色（红色、蓝色、绿色、紫色等）\r\n   * 使用<span style=\"color:#FF0000\">或其他颜色代码\r\n2. 重点内容\r\n   * 为重要概念和关键词添加醒目颜色并加粗\r\n   * 在定义、公式、重要结论处使用不同颜色区分\r\n3. 列表项目\r\n   * 为每个列表项添加不同颜色（可使用彩虹色系：红橙黄绿蓝紫）\r\n   * 使用<p><span style=\"color:#颜色代码\">•</span> 内容</p>替代列表标签\r\n4. 高亮重点\r\n   * 对需要记忆的内容使用黄色背景高亮\r\n   * 可以组合彩色文字和黄色背景(<span style=\"background-color:yellow\"><span style=\"color:#FF0000\">文字</span></span>)\r\n5. 段落变化\r\n   * 为段落开头或关键句子添加颜色\r\n   * 在一个段落中可使用多种颜色标记不同类型的信息\r\n6. 图表标记\r\n   * 为图表说明、标题添加颜色\r\n   * 对图表中的重要数据点使用彩色标记\r\n7. 辅助符号着色\r\n   * 将星号、箭头等辅助符号着色（★ → • ♦）\r\n   * 为分隔线添加颜色\r\n色彩使用建议\r\n* 使用鲜艳的基础色：红(\r\n#FF0000)、橙(\r\n#FF8000)、蓝(\r\n#0000FF)、绿(\r\n#008000)、紫(\r\n#800080)、粉(\r\n#FF00FF)等\r\n* 对相似内容使用相同颜色建立视觉联系\r\n* 对不同类型的内容使用不同颜色进行区分\r\n* 重要内容使用红色、橙色等醒目颜色\r\n* 例子和补充内容可使用蓝色、绿色等较柔和的颜色\r\n* 注意事项使用紫色或红色标记\r\n格式组合技巧\r\n* 重要内容：彩色+加粗+高亮\r\n* 标题：彩色+加粗\r\n* 定义：彩色+下划线\r\n* 注意事项：彩色+斜体\r\n* 记忆要点：彩色符号+高亮内容\r\n请尽量为文档中的每个部分添加适当的色彩，使整个文档色彩丰富、生动有趣，同时保持结构清晰，便于阅读和记忆。",
+      "image": "/images/templates/template-记忆阅读模版3-1743764109694.png",
       "format": "word"
     }
   }

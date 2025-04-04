@@ -592,6 +592,37 @@ body {
     max-height: 180px;
     width: 100%;
     object-fit: cover;
+    cursor: zoom-in;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+/* 模板预览图片放大效果 */
+.template-preview-zoom {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.template-preview-zoom img {
+    max-height: 150px;
+    transform-origin: center;
+    transition: max-height 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.template-preview-zoom img:hover {
+    max-height: 400px;
+    transform: scale(1.05);
+    z-index: 100;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.template-preview-caption {
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+    cursor: zoom-in;
 }
 
 .template-preview p {
@@ -708,6 +739,36 @@ img {
 
 .image-zoom:hover {
     transform: scale(1.02);
+}
+
+/* 图片部分显示和放大效果 */
+.content-display img, .beautified-content-container img, iframe body img {
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 150px !important; /* 限制默认状态下的图片高度 */
+    display: block;
+    margin: 10px auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    cursor: zoom-in;
+    transition: max-height 0.3s ease, transform 0.3s ease;
+    position: relative;
+}
+
+.content-display img:hover, .beautified-content-container img:hover, iframe body img:hover {
+    max-height: none !important; /* 鼠标悬停时取消高度限制 */
+    transform: scale(1.05); /* 轻微缩放效果 */
+    z-index: 100; /* 确保放大后的图片显示在其他内容之上 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 图片下方的提示文字 */
+.image-caption {
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+    cursor: zoom-in;
 }
 
 /* 添加美化结果区域的样式 */
