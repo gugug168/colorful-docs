@@ -5,40 +5,15 @@
       "requirements": "请使用专业学术风格美化文档，包括：\n1. 标准的学术排版格式，清晰的标题层次\n2. 适合长时间阅读的字体，合理的行距和段距\n3. 图表规范布局，表格使用细线条边框\n4. 参考文献格式规范，引用清晰标注\n5. 适合打印和阅读的配色方案（以深蓝色为主）",
       "image": "/images/templates/academic.jpg"
     },
-    "business": {
-      "name": "商务报告",
-      "requirements": "请使用专业商务风格美化文档，包括：\n1. 简洁大方的商务排版，重点突出\n2. 商务图表美化，数据可视化优化\n3. 适合商业演示的字体和配色（蓝色和灰色为主）\n4. 要点和总结使用醒目的颜色框\n5. 清晰的信息层次，便于快速浏览",
-      "image": "/images/templates/business.jpg"
-    },
     "education": {
       "name": "教育教材",
       "requirements": "请使用教育风格美化文档，包括：\n1. 教材风格排版，章节层次清晰\n2. 使用活泼但不过分鲜艳的颜色（适合长时间学习）\n3. 知识点突出，概念解释醒目\n4. 示例和练习区域明确区分\n5. 增加图示和提示框，便于学习和记忆",
       "image": "/images/templates/education.jpg"
     },
-    "creative": {
-      "name": "创意设计",
-      "requirements": "请使用创意设计风格美化文档，包括：\n1. 富有创意的排版布局，非传统结构\n2. 大胆的配色方案和视觉元素\n3. 醒目的标题设计，使用创意字体\n4. 添加装饰性元素，增强视觉吸引力\n5. 整体风格活泼有趣，适合创意内容展示",
-      "image": "/images/templates/creative.jpg"
-    },
-    "simple": {
-      "name": "简约清晰",
-      "requirements": "请使用简约风格美化文档，包括：\n1. 极简主义设计，减少不必要的装饰\n2. 大量留白，提高可读性\n3. 单色或双色配色方案（黑白为主，辅以一种强调色）\n4. 简洁明了的标题和分隔符\n5. 整体风格统一，追求简单与实用的平衡",
-      "image": "/images/templates/simple.jpg"
-    },
-    "1-1743321465430": {
-      "name": "1",
-      "requirements": "1",
-      "image": ""
-    },
-    "22-1743321480724": {
-      "name": "22",
-      "requirements": "22",
-      "image": ""
-    },
-    "123-1743321774623": {
-      "name": "123",
-      "requirements": "333",
-      "image": "",
+    "小朋友的学习资料：加入更多高亮内容和颜色变化-1743752388802": {
+      "name": "小朋友的学习资料：加入更多高亮内容和颜色变化",
+      "requirements": "请将以下HTML文档内容进行色彩美化，使其适合小朋友阅读学习，提高记忆效果和专注力：\r\n\r\n1. 所有标题（h1, h2, h3等标签内容）请用<b>加粗</b>并使用<span style=\"color:#4B0082\">深紫色</span>\r\n2. 重要概念或关键词请用<span style=\"background-color:#FFFF00\">黄色高亮</span>并<b>加粗</b>\r\n3. 数字和数学符号请用<span style=\"color:#FF4500\">橙红色</span>\r\n4. 列表项目的第一个词用<b>加粗</b>\r\n5. 示例或例子请用<i>斜体</i>并在开头和结尾添加<span style=\"color:#008000\">绿色</span>的\"例：\"和\"。\"\r\n6. 重要提示或注意事项用<span style=\"background-color:#FFB6C1\">粉色高亮</span>\r\n7. 难词或专业术语请添加<u>下划线</u>并使用<span style=\"color:#1E90FF\">蓝色</span>\r\n8. 每个段落的第一句话中的主语和谓语动词用<span style=\"color:#9932CC\">紫色</span>\r\n9. 表示步骤的词语（\"第一\"、\"首先\"、\"然后\"等）用<span style=\"color:#FF8C00\">深橙色</span>并<b>加粗</b>\r\n10. 故事或比喻部分用<span style=\"color:#2E8B57\">海绿色</span>\r\n11. 日期和时间信息用<span style=\"background-color:#E6E6FA\">淡紫色高亮</span>\r\n12. 人物名称或角色用<span style=\"color:#FF1493\">粉红色</span>并<b>加粗</b>\r\n13. 地点名称用<span style=\"background-color:#AFEEEE\">淡绿松石色高亮</span>\r\n14. 动物名称用<span style=\"color:#A52A2A\">褐色</span>并<i>斜体</i>\r\n15. 问题句用<span style=\"background-color:#FFDEAD\">淡橙色高亮</span>\r\n16. 答案内容用<span style=\"background-color:#98FB98\">淡绿色高亮</span>\r\n17. 表示情感的词语（高兴、伤心等）用<span style=\"color:#FF69B4\">热粉色</span>\r\n18. 季节相关词语用<span style=\"background-color:#F0F8FF\">淡蓝色高亮</span>\r\n19. 颜色名称本身用对应的颜色标记，如<span style=\"color:#FF0000\">红色</span>\r\n20. 引用或名言用<span style=\"background-color:#D8BFD8\">淡紫色高亮</span>并<i>斜体</i>\r\n\r\n请保持原有HTML结构不变，只进行上述文本样式的美化，不要添加任何复杂CSS，不要使用class、id、div等布局元素。根据内容的实际情况灵活应用这些样式，确保页面美观且有助于小朋友的学习和记忆。",
+      "image": "/images/templates/template-小朋友的学习资料：加入更多高亮内容和颜色变化-1743752388802.png",
       "format": "word"
     }
   }

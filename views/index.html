@@ -80,7 +80,7 @@
                     <div class="card-body">
                         <form id="upload-form" enctype="multipart/form-data">
                             <div class="mb-3">
-                                <label for="fileInput" class="form-label">选择Word文档或PDF文件</label>
+                                <label for="fileInput" id="fileInputLabel" class="form-label">选择Word文档或PDF文件</label>
                                 <div class="upload-zone mini-upload-zone mb-3">
                                     <input type="file" id="fileInput" name="document" accept=".docx,.pdf" class="form-control">
                                     <div class="upload-prompt text-center p-1 d-none">
@@ -89,8 +89,8 @@
                                     </div>
                                 </div>
                                 <div class="mb-3 mt-2">
-                                    <label class="form-label small">请选择最终输出格式：</label>
-                                    <div class="d-flex gap-3">
+                                    <label id="targetFormatLabel" class="form-label small">请选择最终输出格式：</label>
+                                    <div class="d-flex gap-3" role="radiogroup" aria-labelledby="targetFormatLabel">
                                         <label class="form-check small">
                                             <input type="radio" name="targetFormat" value="word" class="form-check-input" checked>
                                             <span class="form-check-label">Word文档(.docx)</span>
@@ -102,7 +102,7 @@
                                     </div>
                                 </div>
                                 
-                                <button type="button" id="uploadBtn" class="btn btn-primary-custom w-100">
+                                <button type="submit" id="uploadBtn" class="btn btn-primary-custom w-100">
                                     <i class="fas fa-upload me-2"></i>上传文档
                                 </button>
                             </div>
@@ -138,7 +138,7 @@
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
-                            <label class="form-label">选择预设的美化模板：</label>
+                            <label for="template-select" class="form-label">选择预设的美化模板：</label>
                             <select id="template-select" class="form-select mb-2">
                                 <option value="" selected>-- 请选择美化模板 --</option>
                                 <option value="academic">学术论文</option>
@@ -153,24 +153,39 @@
                         <!-- 模板预览图 -->
                         <div class="template-preview-container">
                             <div id="template-preview-academic" class="template-preview d-none">
-                                <img src="/images/templates/academic.jpg" alt="学术论文模板预览" class="img-fluid rounded">
-                                <p class="text-center mt-2">学术论文样式</p>
+                                <div class="text-center p-4">
+                                    <i class="fas fa-book fa-4x text-primary mb-3"></i>
+                                    <h5>学术论文样式</h5>
+                                    <p class="text-muted small">专业排版，适合学术研究和论文文档</p>
+                                </div>
                             </div>
                             <div id="template-preview-business" class="template-preview d-none">
-                                <img src="/images/templates/business.jpg" alt="商务报告模板预览" class="img-fluid rounded">
-                                <p class="text-center mt-2">商务报告样式</p>
+                                <div class="text-center p-4">
+                                    <i class="fas fa-chart-pie fa-4x text-info mb-3"></i>
+                                    <h5>商务报告样式</h5>
+                                    <p class="text-muted small">清晰直观，适合商业报告和专业文档</p>
+                                </div>
                             </div>
                             <div id="template-preview-education" class="template-preview d-none">
-                                <img src="/images/templates/education.jpg" alt="教育教材模板预览" class="img-fluid rounded">
-                                <p class="text-center mt-2">教育教材样式</p>
+                                <div class="text-center p-4">
+                                    <i class="fas fa-graduation-cap fa-4x text-success mb-3"></i>
+                                    <h5>教育教材样式</h5>
+                                    <p class="text-muted small">生动易懂，适合教学资料和学习文档</p>
+                                </div>
                             </div>
                             <div id="template-preview-creative" class="template-preview d-none">
-                                <img src="/images/templates/creative.jpg" alt="创意设计模板预览" class="img-fluid rounded">
-                                <p class="text-center mt-2">创意设计样式</p>
+                                <div class="text-center p-4">
+                                    <i class="fas fa-paint-brush fa-4x text-warning mb-3"></i>
+                                    <h5>创意设计样式</h5>
+                                    <p class="text-muted small">富有创意，适合设计案例和创意文档</p>
+                                </div>
                             </div>
                             <div id="template-preview-simple" class="template-preview d-none">
-                                <img src="/images/templates/simple.jpg" alt="简约清晰模板预览" class="img-fluid rounded">
-                                <p class="text-center mt-2">简约清晰样式</p>
+                                <div class="text-center p-4">
+                                    <i class="fas fa-feather fa-4x text-secondary mb-3"></i>
+                                    <h5>简约清晰样式</h5>
+                                    <p class="text-muted small">简洁明了，适合一般用途的文档</p>
+                                </div>
                             </div>
                         </div>
                         

@@ -1,3 +1,18 @@
+/**
+ * HTML编码工具函数
+ * @param {string} html - 需要编码的HTML字符串
+ * @returns {string} - 编码后的HTML字符串
+ */
+function encodeHTML(html) {
+    if (!html) return '';
+    return html
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 $(document).ready(function() {
     // 当前处理的文件信息
     let currentProcessedFile = null;
@@ -5,7 +20,7 @@ $(document).ready(function() {
     let beautificationResults = []; // 新增：用于存储所有美化结果
     
     // 全局变量
-    const BEAUTIFY_TEMPLATES = {}; // 存储美化模板
+    let BEAUTIFY_TEMPLATES = {}; // 存储美化模板
     const FIXED_API_KEY = 'sk-8540a084e1774f9980019e37a9086781'; // 使用正确的API密钥
     
     // 页面加载时从服务器获取模板
@@ -16,6 +31,28 @@ $(document).ready(function() {
             if (response.success && response.templates) {
                 // 更新模板变量
                 BEAUTIFY_TEMPLATES = response.templates;
+                
+                // 打印详细的模板数据
+                console.log('模板加载成功，详细数据:', response.templates);
+                console.log('模板数量:', Object.keys(response.templates).length);
+                
+                // 检查模板图片路径
+                Object.keys(response.templates).forEach(key => {
+                    const template = response.templates[key];
+                    console.log(`模板 ${key} (${template.name}) 图片路径:`, template.image || '无图片');
+                    
+                    // 如果有图片路径，预加载图片以检查是否可访问
+                    if (template.image) {
+                        const img = new Image();
+                        img.onload = function() {
+                            console.log(`模板 ${key} 图片加载成功:`, template.image);
+                        };
+                        img.onerror = function() {
+                            console.error(`模板 ${key} 图片加载失败:`, template.image);
+                        };
+                        img.src = template.image;
+                    }
+                });
                 
                 // 初始化模板选择功能
                 initTemplateSelection();
@@ -39,12 +76,6 @@ $(document).ready(function() {
     
     // 初始化预览区域折叠功能
     initTogglePreview();
-    
-    // 绑定上传按钮的点击事件
-    $('#uploadBtn').on('click', function() {
-        // 触发表单提交
-        $('#upload-form').submit();
-    });
     
     // 初始化模板选择功能
     function initTemplateSelection() {
@@ -71,6 +102,9 @@ $(document).ready(function() {
         
         // 更新可用模板的函数
         function updateAvailableTemplates(targetFormat) {
+            console.log('开始更新可用模板，目标格式:', targetFormat);
+            console.log('当前所有模板数据:', BEAUTIFY_TEMPLATES);
+            
             // 保存当前选择
             const currentSelection = templateSelect.value;
             
@@ -82,6 +116,19 @@ $(document).ready(function() {
                 console.log('没有可用的模板数据');
                 return;
             }
+            
+            let availableCount = 0;
+            
+            // 清空所有动态创建的模板预览
+            const templatePreviewContainer = document.querySelector('.template-preview-container');
+            // 保留原始的静态预览元素
+            const staticPreviews = {};
+            document.querySelectorAll('.template-preview').forEach(preview => {
+                staticPreviews[preview.id.replace('template-preview-', '')] = preview;
+            });
+            
+            // 清空预览容器
+            templatePreviewContainer.innerHTML = '';
             
             // 根据当前格式筛选模板
             Object.keys(BEAUTIFY_TEMPLATES).forEach(key => {
@@ -99,16 +146,65 @@ $(document).ready(function() {
                     }
                     
                     templateSelect.appendChild(option);
+                    availableCount++;
+                    
+                    console.log('添加模板选项:', key, template.name, '格式:', template.format || 'all');
+                    
+                    // 创建或恢复该模板的预览元素
+                    if (staticPreviews[key]) {
+                        // 如果是静态预定义的预览，添加回容器
+                        templatePreviewContainer.appendChild(staticPreviews[key]);
+                    } else {
+                        // 创建动态预览元素
+                        const previewElement = document.createElement('div');
+                        previewElement.id = `template-preview-${key}`;
+                        previewElement.className = 'template-preview d-none';
+                        
+                        // 如果模板有图片，显示图片
+                        if (template.image) {
+                            previewElement.innerHTML = `
+                                <div class="text-center p-4">
+                                    <img src="${template.image}" alt="${template.name}" class="img-fluid mb-3" style="max-height: 150px;">
+                                    <h5>${template.name}</h5>
+                                    <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
+                                </div>
+                            `;
+                        } else {
+                            // 没有图片时使用图标
+                            previewElement.innerHTML = `
+                                <div class="text-center p-4">
+                                    <i class="fas fa-file-alt fa-4x text-primary mb-3"></i>
+                                    <h5>${template.name}</h5>
+                                    <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
+                                </div>
+                            `;
+                        }
+                        
+                        templatePreviewContainer.appendChild(previewElement);
+                        console.log('为模板创建预览元素:', key, '图片路径:', template.image || '无图片');
+                    }
+                } else {
+                    console.log('模板不适用于当前格式，跳过:', key, template.name, '模板格式:', template.format, '当前格式:', targetFormat);
                 }
             });
+            
+            console.log('已添加的可用模板数量:', availableCount);
             
             // 尝试恢复之前的选择
             if (currentSelection && templateSelect.querySelector(`option[value="${currentSelection}"]`)) {
                 templateSelect.value = currentSelection;
+                console.log('恢复之前的模板选择:', currentSelection);
+                
+                // 显示对应的预览
+                const previewElement = document.getElementById(`template-preview-${currentSelection}`);
+                if (previewElement) {
+                    previewElement.classList.remove('d-none');
+                }
             } else {
                 // 如果之前的选择不再可用，则重置
                 templateSelect.value = '';
                 applyTemplateBtn.disabled = true;
+                console.log('之前的选择不可用，已重置选择器');
             }
         }
         
@@ -126,6 +222,44 @@ $(document).ready(function() {
                 const previewElement = document.getElementById(`template-preview-${selectedValue}`);
                 if (previewElement) {
                     previewElement.classList.remove('d-none');
+                    console.log('显示模板预览:', selectedValue);
+                } else {
+                    console.log('未找到预览元素:', `template-preview-${selectedValue}`);
+                    
+                    // 如果没有找到预览元素，检查是否有动态模板数据并创建预览
+                    if (BEAUTIFY_TEMPLATES[selectedValue]) {
+                        const template = BEAUTIFY_TEMPLATES[selectedValue];
+                        console.log('尝试为模板创建预览元素:', selectedValue, template);
+                        
+                        // 创建预览元素
+                        const templatePreviewContainer = document.querySelector('.template-preview-container');
+                        const newPreviewElement = document.createElement('div');
+                        newPreviewElement.id = `template-preview-${selectedValue}`;
+                        newPreviewElement.className = 'template-preview';
+                        
+                        // 如果模板有图片，显示图片
+                        if (template.image) {
+                            newPreviewElement.innerHTML = `
+                                <div class="text-center p-4">
+                                    <img src="${template.image}" alt="${template.name}" class="img-fluid mb-3" style="max-height: 150px;">
+                                    <h5>${template.name}</h5>
+                                    <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
+                                </div>
+                            `;
+                        } else {
+                            // 没有图片时使用图标
+                            newPreviewElement.innerHTML = `
+                                <div class="text-center p-4">
+                                    <i class="fas fa-file-alt fa-4x text-primary mb-3"></i>
+                                    <h5>${template.name}</h5>
+                                    <p class="text-muted small">适用于${template.format === 'word' ? 'Word文档' : template.format === 'pdf' ? 'PDF文档' : '所有文档格式'}</p>
+                                </div>
+                            `;
+                        }
+                        
+                        templatePreviewContainer.appendChild(newPreviewElement);
+                        console.log('动态创建了模板预览元素:', selectedValue);
+                    }
                 }
                 
                 // 启用应用按钮
@@ -350,30 +484,39 @@ $(document).ready(function() {
     // 表单提交处理 - 仅上传文件
     $('#upload-form').on('submit', function(e) {
         e.preventDefault();
+        console.log('表单提交事件触发');
         
         // 获取选择的目标格式
         const targetFormat = $('input[name="targetFormat"]:checked').val();
-        
-        const formData = new FormData(this);
-        formData.append('targetFormat', targetFormat); // 添加目标格式到表单数据
+        console.log('选择的目标格式:', targetFormat);
         
         // 验证文件类型
-        const fileInput = $('#fileInput')[0]; // 修正为正确的文件输入元素ID
-        if (fileInput.files.length === 0) {
+        const fileInput = $('#fileInput')[0];
+        if (!fileInput || fileInput.files.length === 0) {
+            console.error('未选择文件');
             showMessage('请选择文件', 'warning');
-            return;
+            return false;
         }
         
         const file = fileInput.files[0];
+        console.log('选择的文件:', file.name, '大小:', file.size, 'bytes');
+        
         const fileType = file.name.split('.').pop().toLowerCase();
+        console.log('文件类型:', fileType);
         
         if (fileType !== 'docx' && fileType !== 'pdf') {
+            console.error('不支持的文件类型:', fileType);
             showMessage('只支持Word文档(.docx)和PDF文件', 'warning');
-            return;
+            return false;
         }
+        
+        // 创建FormData对象
+        const formData = new FormData(this);
+        formData.append('targetFormat', targetFormat); // 添加目标格式到表单数据
         
         // 显示加载状态
         showLoading('正在上传文件...');
+        console.log('开始上传文件:', file.name);
         
         // 发送AJAX请求 - 仅上传
         $.ajax({
@@ -382,9 +525,13 @@ $(document).ready(function() {
             data: formData,
             processData: false,
             contentType: false,
+            timeout: 60000, // 设置60秒超时
+            beforeSend: function() {
+                console.log('开始发送上传请求');
+            },
             success: function(response) {
                 hideLoading();
-                console.log('上传成功，服务器响应:', response); // 添加调试日志
+                console.log('上传成功，服务器响应:', response);
                 
                 if (response.success && response.uploadedFile) {
                     // 存储目标格式信息到sessionStorage
@@ -392,7 +539,7 @@ $(document).ready(function() {
                     
                     // 保存当前上传的文件信息
                     currentUploadedFile = response.uploadedFile;
-                    console.log('当前上传文件信息:', currentUploadedFile); // 添加调试日志
+                    console.log('当前上传文件信息:', currentUploadedFile);
                     
                     // 处理文件路径 - 兼容不同的API响应格式
                     // 如果uploadedFile没有path属性，则使用filename属性构建路径
@@ -480,7 +627,37 @@ $(document).ready(function() {
             },
             error: function(xhr, status, error) {
                 hideLoading();
-                showMessage('上传出错: ' + (xhr.responseJSON?.message || error), 'danger');
+                console.error('上传请求失败:', {
+                    status: status,
+                    error: error,
+                    responseText: xhr.responseText,
+                    statusCode: xhr.status
+                });
+                
+                let errorMsg = '上传出错';
+                
+                try {
+                    // 尝试解析响应JSON
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg += ': ' + xhr.responseJSON.message;
+                    } else if (xhr.responseText) {
+                        // 尝试解析responseText为JSON
+                        const jsonResponse = JSON.parse(xhr.responseText);
+                        if (jsonResponse.message) {
+                            errorMsg += ': ' + jsonResponse.message;
+                        }
+                    }
+                } catch (e) {
+                    // 如果解析失败，使用普通错误消息
+                    errorMsg += ': ' + (error || '服务器连接失败，请稍后重试');
+                    console.error('解析错误响应失败:', e);
+                }
+                
+                if (xhr.status) {
+                    errorMsg += ' (状态码: ' + xhr.status + ')';
+                }
+                
+                showMessage(errorMsg, 'danger');
             }
         });
     });
@@ -865,7 +1042,7 @@ $(document).ready(function() {
 
                 if (!previewWrapper.hasClass('collapsed')) { // 仅在未折叠时执行
                     previewWrapper.addClass('collapsed');
-                    previewIconElement.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                    previewIconElement.removeClass('fa-chevron-down').addClass('fa-chevron-up');
                     previewToggleIcon.addClass('collapsed');
                 }
                 
@@ -934,6 +1111,11 @@ $(document).ready(function() {
                 console.error(`处理结果 ${index+1} 文件路径出错:`, error);
             }
 
+            // 确保提示词被正确处理，强制只保留前十个字符用于显示
+            const fullPrompt = result.prompt || '无';
+            const displayPrompt = fullPrompt === '无' ? '无' : (fullPrompt.substring(0, 10) + (fullPrompt.length > 10 ? '...' : ''));
+            console.log(`结果 ${index+1} 提示词处理: ${fullPrompt.length > 20 ? fullPrompt.substring(0, 20) + '...' : fullPrompt} -> ${displayPrompt}`);
+
             const cardHtml = `
                 <div class="card shadow-sm mb-3 result-card" id="${resultId}">
                     <div class="card-header card-header-result-item">
@@ -941,7 +1123,7 @@ $(document).ready(function() {
                             <h5 class="mb-0">
                                 <i class="fas fa-check-circle me-2"></i>美化结果 ${index + 1}
                             </h5>
-                            <span class="badge bg-secondary">提示词: ${result.prompt || '无'}</span>
+                            <!-- 移除提示词显示 -->
                         </div>
                     </div>
                     <div class="card-body">
@@ -967,7 +1149,7 @@ $(document).ready(function() {
             const cardElement = $(cardHtml);
             resultsList.append(cardElement);
             
-            // 向侧边导航栏添加导航项
+            // 向侧边导航栏添加导航项，只显示索引编号，不显示提示词
             const navItemHtml = `<div class="result-nav-item" data-target="${resultId}" data-index="${index + 1}">${index + 1}</div>`;
             sidebarNav.append(navItemHtml);
 
@@ -981,6 +1163,97 @@ $(document).ready(function() {
                     const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                     const baseUrl = window.location.origin;
                     
+                    // 处理HTML内容，彻底移除提示词显示
+                    let processedHtml = result.html || '<p>预览内容加载失败</p>';
+                    
+                    // 1. 查找紫色背景和提示词区域
+                    // 注意：从之前的错误看，通常提示词区域在内容的开头，并且有紫色背景
+                    // 我们将尝试识别并彻底删除这个区域
+                    let contentStartIndex = 0;
+                    let bodyContentStart = processedHtml.indexOf('<body>');
+                    if (bodyContentStart !== -1) {
+                        // 如果找到<body>标签，我们从这里开始扫描
+                        contentStartIndex = bodyContentStart + 6; // '<body>'的长度是6
+                    }
+
+                    // 从开始位置扫描1000个字符，查找紫色背景或提示词特征
+                    const headPart = processedHtml.substring(contentStartIndex, contentStartIndex + 5000);
+                    let purpleBackgroundStart = -1;
+                    let purpleBackgroundEnd = -1;
+
+                    // 查找紫色背景的开始位置
+                    const bgColorPatterns = [
+                        'background-color: purple',
+                        'background-color:#',
+                        'background-color: rgb',
+                        'background: purple',
+                        'background:#',
+                        'background: rgb'
+                    ];
+
+                    for (const pattern of bgColorPatterns) {
+                        const idx = headPart.indexOf(pattern);
+                        if (idx !== -1) {
+                            // 找到紫色背景，现在向前查找最近的div或section开始标签
+                            const beforeBg = headPart.substring(0, idx);
+                            const divStart = beforeBg.lastIndexOf('<div');
+                            const sectionStart = beforeBg.lastIndexOf('<section');
+                            
+                            if (divStart !== -1 || sectionStart !== -1) {
+                                // 使用找到的最靠近的标签开始位置
+                                purpleBackgroundStart = Math.max(divStart, sectionStart);
+                                break;
+                            }
+                        }
+                    }
+
+                    // 如果找到了开始位置，查找结束位置
+                    if (purpleBackgroundStart !== -1) {
+                        // 向后查找匹配的结束标签
+                        const afterStart = headPart.substring(purpleBackgroundStart);
+                        const divEndIdx = afterStart.indexOf('</div>');
+                        const sectionEndIdx = afterStart.indexOf('</section>');
+                        
+                        // 使用找到的最近的结束标签
+                        if (divEndIdx !== -1) {
+                            purpleBackgroundEnd = purpleBackgroundStart + divEndIdx + 6; // '</div>'的长度是6
+                        } else if (sectionEndIdx !== -1) {
+                            purpleBackgroundEnd = purpleBackgroundStart + sectionEndIdx + 10; // '</section>'的长度是10
+                        }
+                    }
+
+                    // 如果找到了紫色背景区域，从HTML中删除它
+                    if (purpleBackgroundStart !== -1 && purpleBackgroundEnd !== -1) {
+                        // 构建新的HTML，删除紫色背景区域
+                        const beforePurple = processedHtml.substring(0, contentStartIndex + purpleBackgroundStart);
+                        const afterPurple = processedHtml.substring(contentStartIndex + purpleBackgroundEnd);
+                        processedHtml = beforePurple + afterPurple;
+                        console.log('已删除紫色背景区域:', purpleBackgroundStart, purpleBackgroundEnd);
+                    } else {
+                        // 如果未找到明确的紫色背景区域，尝试使用正则表达式
+                        console.log('未找到明确的紫色背景区域，尝试使用正则表达式');
+                        
+                        // 移除可能的大型紫色背景和提示词区域
+                        processedHtml = processedHtml.replace(/<div[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{100,5000}?<\/div>/gi, '');
+                        processedHtml = processedHtml.replace(/<section[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{100,5000}?<\/section>/gi, '');
+                        
+                        // 移除包含提示词或美化要求的大型区块
+                        processedHtml = processedHtml.replace(/<div[^>]*>[^<]{0,50}(?:提示词|美化提示|美化要求|使用以下)[^<]{0,5000}?<\/div>/gi, '');
+                    }
+
+                    // 再次添加一些额外的过滤，以防万一
+                    const purpleBackgroundPatterns = [
+                        /<div[^>]*style="[^"]*background(?:-color)?:\s*purple[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+                        /<div[^>]*style="[^"]*background(?:-color)?:\s*#[a-fA-F0-9]{3,6}[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+                        /<div[^>]*style="[^"]*background(?:-color)?:\s*rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)[^"]*"[^>]*>[\s\S]*?<\/div>/gi
+                    ];
+
+                    // 应用所有紫色背景移除模式
+                    purpleBackgroundPatterns.forEach(pattern => {
+                        processedHtml = processedHtml.replace(pattern, '');
+                    });
+
+                    // 生成iframe内容
                     iframeDoc.open();
                     iframeDoc.write(`
                         <!DOCTYPE html>
@@ -1011,43 +1284,69 @@ $(document).ready(function() {
                                 ::-webkit-scrollbar-thumb:hover {
                                     background: #555;
                                 }
+                                
+                                /* 隐藏提示词区域 */
+                                [class*="prompt"], [id*="prompt"],
+                                [class*="提示"], [id*="提示"] { 
+                                    display: none !important; 
+                                }
+                                
+                                /* 隐藏紫色背景的元素 */
+                                [style*="background-color: purple"],
+                                [style*="background: purple"],
+                                [style*="background-color: #"],
+                                [style*="background: #"],
+                                [style*="background-color: rgb"],
+                                [style*="background: rgb"] {
+                                    display: none !important;
+                                }
+                                
+                                /* 移除顶部可能的提示词 */
+                                body > div:first-child > div:first-child {
+                                    background: none !important;
+                                }
                             </style>
                         </head>
-                        <body>${result.html || '<p>预览内容加载失败</p>'}</body>
+                        <body>${processedHtml}</body>
                         </html>
                     `);
                     iframeDoc.close();
                     
-                    // 调整iframe高度
+                    // 在iframe加载完成后执行额外的过滤
                     setTimeout(() => {
                         try {
-                            // 获取iframe内容实际高度
-                            const scrollHeight = iframeDoc.body.scrollHeight;
+                            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+                            const allElements = iframeDocument.querySelectorAll('body *');
                             
-                            // 设置最小高度为400px，最大高度可以更高以适应内容
-                            const iframeHeight = Math.max(scrollHeight, 400);
-                            $(iframe).css('height', iframeHeight + 'px');
-                            
-                            // 移除iframe容器的最大高度限制
-                            const iframeContainer = cardElement.find('.iframe-container');
-                            iframeContainer.css({
-                                'height': 'auto !important',
-                                'max-height': 'none !important',
-                                'overflow-y': 'visible !important',
-                                'border': '1px solid #e0e0e0',
-                                'border-radius': '4px'
+                            // 检查第一个大型元素是否可能包含提示词
+                            const firstLargeElement = Array.from(allElements).find(el => {
+                                const text = el.textContent || '';
+                                return text.length > 200 && el.tagName.toLowerCase() === 'div';
                             });
-
-                            // 在每个iframe加载后，确保页面可以滚动
-                            ensurePageScrollable();
-                        } catch (e) {
-                            console.warn(`调整结果 ${index+1} iframe高度时出错:`, e);
-                            $(iframe).css('height', '400px'); // 回退到默认高度
                             
-                            // 即使调整失败，也要确保页面可滚动
-                            ensurePageScrollable();
+                            if (firstLargeElement) {
+                                const text = firstLargeElement.textContent || '';
+                                // 检查是否包含常见的提示词特征
+                                if (text.includes('提示词') || text.includes('美化要求') || 
+                                    text.includes('请将') || text.includes('加粗') || 
+                                    text.includes('颜色') || text.includes('高亮')) {
+                                    // 移除可能的提示词元素
+                                    firstLargeElement.parentNode.removeChild(firstLargeElement);
+                                    console.log('已移除可能的提示词元素');
+                                }
+                            }
+                            
+                            // 隐藏任何有紫色背景的元素
+                            allElements.forEach(element => {
+                                const style = element.getAttribute('style') || '';
+                                if (style.includes('background') || style.includes('rgb')) {
+                                    element.style.display = 'none';
+                                }
+                            });
+                        } catch (e) {
+                            console.warn('iframe后处理失败:', e);
                         }
-                    }, 300);
+                    }, 500);
                 } catch (error) {
                     console.error(`设置结果 ${index+1} iframe内容时出错:`, error);
                     // 如果iframe操作失败，尝试直接在容器中显示HTML
@@ -1490,5 +1789,208 @@ $(document).ready(function() {
                 func.apply(context, args);
             }, wait);
         };
+    }
+
+    /**
+     * 显示美化结果到页面
+     * @param {Object} result - 美化结果对象
+     */
+    function showBeautifyResult(result) {
+        const resultElement = document.getElementById('beautifyResult');
+        if (!resultElement) return;
+        
+        console.log('开始处理美化结果显示');
+        
+        // 美化结果展示前，预处理HTML内容，移除紫色背景和提示词
+        let processedContent = result.content || '';
+        
+        // 从HTML中移除所有紫色背景和提示词区域
+        // 1. 尝试找到紫色背景特征
+        const purpleBackgroundPatterns = [
+            /<div[^>]*style="[^"]*background(?:-color)?:\s*purple[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+            /<div[^>]*style="[^"]*background(?:-color)?:\s*#[a-fA-F0-9]{3,6}[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+            /<div[^>]*style="[^"]*background(?:-color)?:\s*rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+            /<section[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]*?<\/section>/gi
+        ];
+        
+        // 应用所有紫色背景移除模式
+        purpleBackgroundPatterns.forEach(pattern => {
+            processedContent = processedContent.replace(pattern, '');
+        });
+        
+        // 2. 移除提示词相关内容
+        const promptRelatedPatterns = [
+            /<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/div>/gi,
+            /<span[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/span>/gi,
+            /<p[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/p>/gi
+        ];
+        
+        // 应用所有提示词内容移除模式
+        promptRelatedPatterns.forEach(pattern => {
+            processedContent = processedContent.replace(pattern, '');
+        });
+        
+        // 3. 移除开头的大块内容（通常是提示词）
+        // 查找body标签
+        const bodyStartTag = processedContent.match(/<body[^>]*>/i);
+        const bodyEndTag = processedContent.match(/<\/body>/i);
+        
+        if (bodyStartTag && bodyEndTag) {
+            const bodyStartIndex = processedContent.indexOf(bodyStartTag[0]) + bodyStartTag[0].length;
+            const bodyEndIndex = processedContent.indexOf(bodyEndTag[0]);
+            
+            // 提取body内容
+            let bodyContent = processedContent.substring(bodyStartIndex, bodyEndIndex);
+            
+            // 判断开头是否有大段文本（通常是提示词）
+            const firstTagMatch = bodyContent.match(/<[a-z][^>]*>/i);
+            if (firstTagMatch && firstTagMatch.index > 150) {
+                // 如果第一个HTML标签之前有超过150字符的内容，认为是提示词，删除它
+                bodyContent = bodyContent.substring(firstTagMatch.index);
+                
+                // 重新构建HTML
+                processedContent = processedContent.substring(0, bodyStartIndex) + 
+                                   bodyContent + 
+                                   processedContent.substring(bodyEndIndex);
+            }
+        }
+        
+        // 4. 添加一些内部样式用于隐藏任何可能漏掉的提示词
+        const hidePromptStyle = `
+        <style>
+            /* 隐藏所有紫色背景元素 */
+            [style*="background-color: purple"],
+            [style*="background-color:#"],
+            [style*="background-color: rgb"],
+            [style*="background: purple"],
+            [style*="background:#"],
+            [style*="background: rgb"] {
+                display: none !important;
+            }
+            
+            /* 强制所有内容可见 */
+            body {
+                display: block !important;
+                overflow: visible !important;
+            }
+        </style>
+        `;
+        
+        // 在head标签结束前插入样式
+        if (processedContent.includes('</head>')) {
+            processedContent = processedContent.replace('</head>', hidePromptStyle + '</head>');
+        } else {
+            // 如果没有head标签，添加到开头
+            processedContent = hidePromptStyle + processedContent;
+        }
+        
+        // 不再显示提示词，直接使用固定标题
+        const title = '文档美化结果';
+        
+        // 构建结果卡片 - 不包含任何提示词信息
+        const cardHtml = `
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-truncate">${title}</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary download-beautified" data-id="${result.id}">
+                            <i class="fas fa-download"></i> 下载
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger remove-beautified" data-id="${result.id}">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="iframe-container">
+                        <iframe class="beautified-content" sandbox="allow-same-origin" style="width:100%; height:600px; border:1px solid #ddd;"></iframe>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 将结果添加到页面
+        resultElement.insertAdjacentHTML('afterbegin', cardHtml);
+        
+        // 防止HTML实体编码问题，使用文档写入方式设置iframe内容
+        const iframe = resultElement.querySelector('.beautified-content');
+        if (iframe) {
+            setTimeout(() => {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    iframeDoc.open();
+                    iframeDoc.write(processedContent);
+                    iframeDoc.close();
+                    
+                    // 在iframe加载完成后执行额外处理
+                    iframe.onload = function() {
+                        try {
+                            const doc = iframe.contentDocument || iframe.contentWindow.document;
+                            
+                            // 查找并删除所有紫色背景元素和提示词
+                            const allElements = doc.querySelectorAll('*');
+                            allElements.forEach(el => {
+                                // 检查元素内联样式
+                                const style = el.getAttribute('style') || '';
+                                if (style.includes('background') && 
+                                    (style.includes('purple') || style.includes('#') || style.includes('rgb'))) {
+                                    console.log('删除紫色背景元素:', el.tagName);
+                                    if (el.parentNode) {
+                                        el.parentNode.removeChild(el);
+                                    }
+                                }
+                                
+                                // 检查文本内容中的提示词特征
+                                const text = el.textContent || '';
+                                if (text.length > 100 && 
+                                    (text.includes('提示词') || text.includes('美化要求') || 
+                                     text.includes('使用以下') || text.includes('请按照'))) {
+                                    console.log('删除提示词元素:', el.tagName);
+                                    if (el.parentNode) {
+                                        el.parentNode.removeChild(el);
+                                    }
+                                }
+                            });
+                            
+                            // 特别处理：检查文档开头的大段文本（通常是提示词）
+                            const bodyElement = doc.body;
+                            if (bodyElement && bodyElement.childNodes.length > 0) {
+                                // 处理第一个文本节点
+                                if (bodyElement.firstChild && 
+                                    bodyElement.firstChild.nodeType === Node.TEXT_NODE &&
+                                    bodyElement.firstChild.textContent &&
+                                    bodyElement.firstChild.textContent.length > 100) {
+                                    console.log('删除开头文本节点');
+                                    bodyElement.removeChild(bodyElement.firstChild);
+                                }
+                                
+                                // 处理第一个元素节点（如果包含大段文本）
+                                if (bodyElement.firstElementChild &&
+                                    bodyElement.firstElementChild.textContent &&
+                                    bodyElement.firstElementChild.textContent.length > 200) {
+                                    console.log('删除第一个元素节点');
+                                    bodyElement.removeChild(bodyElement.firstElementChild);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('处理iframe加载后内容时出错:', e);
+                        }
+                    };
+                } catch (e) {
+                    console.error('设置iframe内容时出错:', e);
+                    // 如果上面的方法失败，回退到srcdoc方式
+                    iframe.setAttribute('srcdoc', processedContent);
+                }
+            }, 100);
+        }
+        
+        // 添加事件监听器
+        document.querySelectorAll('.download-beautified').forEach(button => {
+            button.addEventListener('click', handleBeautifiedDownload);
+        });
+        
+        document.querySelectorAll('.remove-beautified').forEach(button => {
+            button.addEventListener('click', handleBeautifiedRemove);
+        });
     }
 });

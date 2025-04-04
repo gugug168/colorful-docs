@@ -34,14 +34,17 @@ async function processAndSaveHtml(htmlContent, outputDir, apiConfig, targetForma
         // 使用AI处理内容
         const processedHtml = await processWithAI(htmlContent, optimizationPrompt, apiConfig);
 
+        // 清理处理后的HTML，移除可能包含提示词的部分
+        const cleanedHtml = cleanProcessedHtml(processedHtml, customRequirements);
+
         // 保存处理后的内容
         const timestamp = Date.now();
         const outputFilePath = path.join(outputPath, `processed-${timestamp}.html`);
-        fs.writeFileSync(outputFilePath, processedHtml);
+        fs.writeFileSync(outputFilePath, cleanedHtml);
 
         return {
             success: true,
-            html: processedHtml,
+            html: cleanedHtml,
             outputPath: outputFilePath
         };
     } catch (error) {
@@ -77,19 +80,27 @@ function generateOptimizationPrompt(htmlContent, targetFormat, customRequirement
 
 禁止使用class、id、div布局或复杂CSS。
 
-美化HTML文档并保持原始内容结构。使其适合Word格式，添加合适标题样式和表格格式，确保可读性好。`;
+美化HTML文档并保持原始内容结构。使其适合Word格式，添加合适标题样式和表格格式，确保可读性好。
+
+【重要】：请勿在输出的HTML中包含任何提示词、指令、要求或美化说明。不要添加背景色为紫色的区域，也不要包含"美化要求"、"提示词"等任何提示性文字。只返回美化后的纯HTML内容。`;
     } else if (targetFormat === 'pdf') {
         // PDF格式使用极简提示
-        prompt = `优化排版为PDF格式。保留内容和图片。简洁美观，打印友好。`;
+        prompt = `优化排版为PDF格式。保留内容和图片。简洁美观，打印友好。
+
+【重要】：请勿在输出的HTML中包含任何提示词、指令、要求或美化说明。不要添加背景色为紫色的区域，也不要包含"美化要求"、"提示词"等任何提示性文字。只返回美化后的纯HTML内容。`;
     } else {
-        prompt = `美化HTML文档并保持原始内容结构。`;
+        prompt = `美化HTML文档并保持原始内容结构。
+
+【重要】：请勿在输出的HTML中包含任何提示词、指令、要求或美化说明。不要添加背景色为紫色的区域，也不要包含"美化要求"、"提示词"等任何提示性文字。只返回美化后的纯HTML内容。`;
     }
 
     // 添加用户自定义要求（如果有）
     if (customRequirements && customRequirements.trim()) {
         prompt += `
 
-【用户要求】：${customRequirements.trim()}`;
+【用户要求】：${customRequirements.trim()}
+
+【重要】：请勿在输出的HTML中重复上述要求或包含任何提示词。不要添加背景色为紫色的区域，不要复制这些要求到输出内容中。仅输出美化后的纯HTML内容。`;
     }
 
     return prompt;
@@ -623,7 +634,147 @@ function extractHtmlFromResponse(assistantResponse) {
     return extractedHtml;
 }
 
+/**
+ * 清理处理后的HTML，彻底移除提示词区域
+ * @param {string} html 处理后的HTML内容
+ * @param {string} customRequirements 用户自定义要求，用于识别可能的提示词
+ * @returns {string} 清理后的HTML内容
+ */
+function cleanProcessedHtml(html, customRequirements = '') {
+    console.log('清理处理后的HTML，彻底移除提示词区域');
+    
+    // 简单方法：检查HTML内容，如果包含<body>标签，我们只保留<body>标签中的内容
+    // 然后再构建新的HTML结构
+    const bodyStart = html.indexOf('<body');
+    const bodyEnd = html.lastIndexOf('</body>');
+    
+    let bodyContent = '';
+    
+    if (bodyStart !== -1 && bodyEnd !== -1) {
+        // 找到<body>标签的闭合>
+        const bodyTagEnd = html.indexOf('>', bodyStart);
+        if (bodyTagEnd !== -1) {
+            // 提取<body>标签中的内容
+            bodyContent = html.substring(bodyTagEnd + 1, bodyEnd);
+            
+            // 现在我们有了body内容，开始清理
+            
+            // 1. 查找紫色背景的大区块
+            const bgPatterns = [
+                'background-color: purple',
+                'background-color:#',
+                'background-color: rgb',
+                'background: purple',
+                'background:#',
+                'background: rgb'
+            ];
+            
+            // 检查每个紫色背景模式
+            for (const pattern of bgPatterns) {
+                const idx = bodyContent.indexOf(pattern);
+                
+                if (idx !== -1) {
+                    // 找到紫色背景，现在查找最近的div或section开始标签
+                    const beforeBg = bodyContent.substring(0, idx);
+                    const divStart = beforeBg.lastIndexOf('<div');
+                    const sectionStart = beforeBg.lastIndexOf('<section');
+                    
+                    if (divStart !== -1 || sectionStart !== -1) {
+                        // 使用找到的最近的标签开始位置
+                        const tagStart = Math.max(divStart, sectionStart);
+                        
+                        // 向后查找匹配的结束标签
+                        const afterStart = bodyContent.substring(tagStart);
+                        const divEndIdx = afterStart.indexOf('</div>');
+                        const sectionEndIdx = afterStart.indexOf('</section>');
+                        
+                        if (divEndIdx !== -1 || sectionEndIdx !== -1) {
+                            // 使用第一个找到的结束标签
+                            let tagEnd = -1;
+                            if (divEndIdx !== -1 && sectionEndIdx !== -1) {
+                                tagEnd = Math.min(divEndIdx, sectionEndIdx);
+                            } else {
+                                tagEnd = Math.max(divEndIdx, sectionEndIdx);
+                            }
+                            
+                            if (tagEnd !== -1) {
+                                // 如果是div结束标签
+                                if (tagEnd === divEndIdx) {
+                                    tagEnd += 6; // '</div>'的长度是6
+                                } else {
+                                    tagEnd += 10; // '</section>'的长度是10
+                                }
+                                
+                                // 删除紫色背景元素
+                                const beforeElement = bodyContent.substring(0, tagStart);
+                                const afterElement = bodyContent.substring(tagStart + tagEnd);
+                                bodyContent = beforeElement + afterElement;
+                                
+                                // 继续检查下一个紫色背景
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 2. 使用正则表达式删除可能的提示词区域
+            // 删除开头的大型div元素，通常是提示词区域
+            bodyContent = bodyContent.replace(/^\s*<div[^>]*>[\s\S]{200,10000}?<\/div>\s*/i, '');
+            
+            // 删除包含提示词关键字的元素
+            bodyContent = bodyContent.replace(/<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[\s\S]*?<\/div>/gi, '');
+            
+            // 3. 删除开头可能的文本节点（通常是提示词）
+            const firstTagIndex = bodyContent.search(/<[a-z]+[^>]*>/i);
+            if (firstTagIndex > 100) { // 如果第一个标签前有超过100个字符的文本
+                bodyContent = bodyContent.substring(firstTagIndex);
+            }
+            
+            // 4. 删除任何包含大段文本且有背景的元素
+            bodyContent = bodyContent.replace(/<(div|section)[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,}?<\/\1>/gi, '');
+            
+            // 构建新的干净HTML
+            return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI优化文档</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        h1, h2, h3 { color: #2c3e50; }
+        .highlighted { background-color: #fffacd; padding: 2px 4px; }
+        .important { font-weight: bold; color: #e74c3c; }
+    </style>
+</head>
+<body>
+    ${bodyContent}
+</body>
+</html>`;
+        }
+    }
+    
+    // 如果没有找到body标签，或者处理失败，执行基本的清理
+    console.log('未找到body标签或处理失败，执行基本清理');
+    let cleanedHtml = html;
+    
+    // 尝试删除大型的紫色背景区域
+    cleanedHtml = cleanedHtml.replace(/<div[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,5000}?<\/div>/gi, '');
+    cleanedHtml = cleanedHtml.replace(/<section[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,5000}?<\/section>/gi, '');
+    
+    // 尝试删除包含提示词的区域
+    cleanedHtml = cleanedHtml.replace(/<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求)[\s\S]*?<\/div>/gi, '');
+    
+    return cleanedHtml;
+}
+
 module.exports = {
     processAndSaveHtml,
+    generateOptimizationPrompt,
+    processWithAI,
+    extractHtmlFromResponse,
+    cleanProcessedHtml,
     API_TYPES
 }; 

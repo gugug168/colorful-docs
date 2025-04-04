@@ -1010,11 +1010,17 @@ app.post('/api/config', (req, res) => {
 // 获取模板列表
 app.get('/api/templates', (req, res) => {
   try {
+    console.log('收到模板列表请求');
     const templatesData = JSON.parse(fs.readFileSync(templatesPath, 'utf8'));
+    
+    console.log('读取模板成功，模板数量:', Object.keys(templatesData.templates).length);
+    console.log('模板ID列表:', Object.keys(templatesData.templates).join(', '));
+    
     res.json({
       success: true,
       templates: templatesData.templates
     });
+    console.log('已发送模板数据响应');
   } catch (err) {
     console.error('读取模板数据失败:', err);
     res.status(500).json({

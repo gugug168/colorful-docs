@@ -877,7 +877,7 @@ html, body {
 
 /* 添加提示文字 */
 .result-nav-item::after {
-    content: "结果" attr(data-index);
+    content: "提示词: " attr(data-prompt);
     position: absolute;
     right: 45px;
     top: 50%;
@@ -893,6 +893,9 @@ html, body {
     white-space: nowrap;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     pointer-events: none;
+    max-width: 200px; /* 限制最大宽度 */
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .result-nav-item:hover::after {
