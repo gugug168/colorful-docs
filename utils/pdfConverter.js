@@ -1,5 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const puppeteer = require('puppeteer-core');
+const htmlPdf = require('html-pdf-node');
+const chrome = require('chrome-launcher');
 
 // 安全地加载pdf-parse模块
 let pdfParse;
@@ -404,4 +407,254 @@ function generateTable(rows) {
     
     tableHtml += '</table>';
     return tableHtml;
-} 
+}
+
+/**
+ * 将HTML文件转换为PDF格式
+ * @param {string} htmlFilePath HTML文件路径
+ * @returns {string} 生成的PDF文件路径
+ */
+async function convertHtmlToPdf(htmlFilePath) {
+    try {
+        console.log(`开始将HTML转换为PDF: ${htmlFilePath}`);
+        
+        if (!fs.existsSync(htmlFilePath)) {
+            throw new Error(`HTML文件不存在: ${htmlFilePath}`);
+        }
+        
+        // 读取HTML内容
+        const htmlContent = fs.readFileSync(htmlFilePath, 'utf8');
+        
+        // 预处理HTML，确保图片路径正确
+        const processedHtml = preprocessHtmlForPdf(htmlContent);
+        
+        // 创建一个临时的预处理HTML文件
+        const tempHtmlPath = htmlFilePath.replace('.html', '-for-pdf.html');
+        fs.writeFileSync(tempHtmlPath, processedHtml);
+        
+        // 生成输出文件路径
+        const outputDir = path.join(path.dirname(htmlFilePath), '..', 'downloads');
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+        
+        const outputFilename = path.basename(htmlFilePath, '.html') + '.pdf';
+        const outputPath = path.join(outputDir, outputFilename);
+        
+        console.log(`将HTML转换为PDF: ${tempHtmlPath} => ${outputPath}`);
+        
+        // 启动Chrome
+        const chromeInstance = await launchChrome();
+        const browser = await connectToBrowser(chromeInstance.port);
+        
+        try {
+            // 打开新标签页
+            const page = await browser.newPage();
+            
+            // 设置视口大小
+            await page.setViewport({ width: 1024, height: 768 });
+            
+            // 加载HTML文件（使用file://协议加载本地文件）
+            await page.goto(`file://${tempHtmlPath}`, { 
+                waitUntil: 'networkidle0', 
+                timeout: 30000 
+            });
+            
+            // 等待所有图片加载完成
+            await page.evaluate(() => {
+                return new Promise((resolve) => {
+                    // 获取所有图片
+                    const imgs = document.querySelectorAll('img');
+                    // 如果没有图片，直接返回
+                    if (imgs.length === 0) {
+                        return resolve();
+                    }
+                    
+                    // 计数器，记录已加载完成的图片数量
+                    let loaded = 0;
+                    // 遍历所有图片，添加加载完成事件
+                    imgs.forEach(img => {
+                        // 如果图片已经加载完成
+                        if (img.complete) {
+                            loaded++;
+                            // 如果所有图片都加载完成，返回
+                            if (loaded === imgs.length) {
+                                resolve();
+                            }
+                        } else {
+                            // 图片加载完成事件
+                            img.addEventListener('load', () => {
+                                loaded++;
+                                // 如果所有图片都加载完成，返回
+                                if (loaded === imgs.length) {
+                                    resolve();
+                                }
+                            });
+                            // 图片加载失败事件
+                            img.addEventListener('error', () => {
+                                loaded++;
+                                console.warn(`图片加载失败: ${img.src}`);
+                                // 如果所有图片都加载完成，返回
+                                if (loaded === imgs.length) {
+                                    resolve();
+                                }
+                            });
+                        }
+                    });
+                });
+            });
+            
+            // 生成PDF
+            await page.pdf({
+                path: outputPath,
+                format: 'A4',
+                printBackground: true,
+                margin: {
+                    top: '20mm',
+                    right: '20mm',
+                    bottom: '20mm',
+                    left: '20mm'
+                }
+            });
+            
+            console.log(`PDF文件生成成功: ${outputPath}`);
+            
+            // 关闭页面
+            await page.close();
+        } finally {
+            // 关闭浏览器
+            await browser.close();
+            // 关闭Chrome
+            chromeInstance.kill();
+        }
+        
+        // 清理临时文件
+        try {
+            fs.unlinkSync(tempHtmlPath);
+        } catch (e) {
+            console.warn(`清理临时文件失败: ${tempHtmlPath} - ${e.message}`);
+        }
+        
+        return outputPath;
+    } catch (error) {
+        console.error('HTML转PDF失败:', error);
+        throw error;
+    }
+}
+
+/**
+ * 预处理HTML内容，准备转换为PDF
+ * @param {string} htmlContent 原始HTML内容
+ * @returns {string} 处理后的HTML内容
+ */
+function preprocessHtmlForPdf(htmlContent) {
+    try {
+        console.log('处理HTML内容，准备转换为PDF...');
+        
+        // 1. 确保所有图片路径都是绝对路径
+        let processed = htmlContent;
+        
+        // 替换所有相对路径的图片为绝对路径
+        processed = processed.replace(/<img[^>]+src=["'](?!\w+:\/\/)([^"']+)["']/gi, (match, src) => {
+            // 如果是相对路径，转换为绝对路径
+            if (src.startsWith('./') || src.startsWith('../')) {
+                src = src.replace(/^\.\.\/|^\.\//g, '');
+            }
+            
+            // 如果包含"_colorized"，确保优先使用上色版本
+            const isColorized = src.includes('_colorized');
+            if (isColorized) {
+                console.log(`PDF处理: 发现上色图片 ${src}`);
+            }
+            
+            // 确保路径正确，根据实际情况调整
+            if (!src.startsWith('/')) {
+                src = '/' + src;
+            }
+            
+            // 把src中的双斜杠替换为单斜杠
+            src = src.replace(/\/\//g, '/');
+            
+            // 返回替换后的图片标签
+            const newSrc = path.join(__dirname, '..', 'public' + src).replace(/\\/g, '/');
+            return match.replace(/src=["'][^"']+["']/, `src="file://${newSrc}"`);
+        });
+        
+        // 2. 为没有宽度和高度的图片添加默认值
+        processed = processed.replace(/<img(?![^>]*width)[^>]*>/gi, (match) => {
+            return match.replace(/<img/, '<img width="100%"');
+        });
+        
+        // 3. 确保表格有边框
+        processed = processed.replace(/<table(?![^>]*border)[^>]*>/gi, '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">');
+        
+        // 4. 确保文档有适合PDF的CSS样式
+        const pdfStyles = `
+        <style>
+            @page { size: A4; margin: 20mm; }
+            body { font-family: Arial, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0; }
+            h1 { font-size: 24pt; margin: 24pt 0 12pt 0; }
+            h2 { font-size: 20pt; margin: 20pt 0 10pt 0; }
+            h3 { font-size: 16pt; margin: 16pt 0 8pt 0; }
+            p { margin: 8pt 0; }
+            table { width: 100%; border-collapse: collapse; margin: 12pt 0; }
+            th, td { padding: 6pt; border: 1pt solid #ddd; text-align: left; }
+            th { background-color: #f2f2f2; }
+            img { max-width: 100%; height: auto; }
+        </style>
+        `;
+        
+        // 查找 <head> 标签，添加样式
+        if (processed.includes('<head>')) {
+            processed = processed.replace('</head>', `${pdfStyles}</head>`);
+        } else if (processed.includes('<html>')) {
+            processed = processed.replace('<html>', `<html><head>${pdfStyles}</head>`);
+        } else {
+            processed = `<!DOCTYPE html><html><head>${pdfStyles}</head><body>${processed}</body></html>`;
+        }
+        
+        console.log('HTML内容处理完成，准备转换为PDF');
+        return processed;
+    } catch (error) {
+        console.error('预处理HTML内容失败:', error);
+        return htmlContent; // 出错时返回原始内容
+    }
+}
+
+/**
+ * 启动Chrome浏览器
+ * @returns {object} 启动的Chrome实例
+ */
+async function launchChrome() {
+    console.log('启动Chrome浏览器...');
+    const chromeInstance = await chrome.launch({
+        chromeFlags: [
+            '--headless',
+            '--disable-gpu',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-setuid-sandbox',
+            '--disable-software-rasterizer'
+        ]
+    });
+    console.log(`Chrome已启动，端口: ${chromeInstance.port}`);
+    return chromeInstance;
+}
+
+/**
+ * 连接到Chrome浏览器
+ * @param {number} port Chrome端口
+ * @returns {object} 浏览器实例
+ */
+async function connectToBrowser(port) {
+    console.log(`连接到Chrome浏览器端口: ${port}`);
+    const browser = await puppeteer.connect({
+        browserURL: `http://localhost:${port}`,
+        defaultViewport: null
+    });
+    return browser;
+}
+
+module.exports = {
+    convertHtmlToPdf
+}; 

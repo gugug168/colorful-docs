@@ -3,12 +3,21 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 
+// 简单的日志记录器对象
+const logger = {
+  info: (message, ...args) => console.log(`[INFO] ${message}`, ...args),
+  warn: (message, ...args) => console.warn(`[WARN] ${message}`, ...args),
+  error: (message, ...args) => console.error(`[ERROR] ${message}`, ...args),
+  debug: (message, ...args) => console.debug(`[DEBUG] ${message}`, ...args)
+};
+
 // 导入自定义工具
 const docxConverter = require('./utils/docxConverter');
 const pdfConverter = require('./utils/pdfConverter');
 const aiProcessor = require('./utils/aiProcessor');
 const exportUtils = require('./utils/exportUtils');
 const aiOptimizer = require('./utils/aiOptimizer');
+const imageColorizer = require('./utils/imageColorizer');
 
 // 输出导入的模块信息，检查是否正确
 console.log('工具模块加载状态:');
@@ -17,11 +26,12 @@ console.log('- pdfConverter 模块:', typeof pdfConverter.convertPdfToHtml === '
 console.log('- aiProcessor 模块:', typeof aiProcessor === 'object' ? '正常' : '异常');
 console.log('- exportUtils 模块:', typeof exportUtils === 'object' ? '正常' : '异常');
 console.log('- aiOptimizer 模块:', typeof aiOptimizer === 'object' && typeof aiOptimizer.processAndSaveHtml === 'function' ? '正常' : '异常');
+console.log('- imageColorizer 模块:', typeof imageColorizer === 'object' && typeof imageColorizer.colorizeImages === 'function' ? '正常' : '异常');
 
 // 配置默认API配置对象
 let globalApiConfig = {
   // 使用更新的API密钥 - 请替换为您的有效API密钥
-  apiKey: 'sk-8540a084e1774f9980019e37a9086781', // 已更新为正确的API密钥
+  apiKey: 'sk-8540a084e1774f9980019e37a9086781', // deepseek的API密钥
   apiType: 'deepseek', // 当前使用的API类型
   apiModel: 'deepseek-chat', // 使用的模型名称
   apiParams: {
@@ -30,8 +40,8 @@ let globalApiConfig = {
       max_tokens: 16384
     },
     deepseek: {
-      temperature: 0.5, // 降低温度以获得更一致的结果
-      max_tokens: 4000  // 减少token以避免超出限制
+      temperature: 1.0, // 用户设置的温度值
+      max_tokens: 8000  // 用户设置的最大token值
     },
     qianwen: {
       temperature: 0.7,
@@ -93,7 +103,7 @@ if (!fs.existsSync(configPath)) {
         max_tokens: 16384
       },
       deepseek: {
-        temperature: 0.7,
+        temperature: 1.0,
         max_tokens: 8000
       },
       qianwen: {
@@ -180,13 +190,14 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   fileFilter: function (req, file, cb) {
-    // 接受docx、pdf和图片文件
+    // 接受doc、docx、pdf和图片文件
     if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+        file.mimetype === 'application/msword' ||
         file.mimetype === 'application/pdf' ||
         file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('只支持Word文档(.docx)、PDF文件和图片!'), false);
+      cb(new Error('只支持Word文档(.doc/.docx)、PDF文件和图片!'), false);
     }
   }
 });
@@ -238,64 +249,66 @@ app.post('/upload', upload.single('document'), async (req, res) => {
     try {
     // 判断文件类型并处理
     if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
-        originalname.endsWith('.docx')) {
-      // 处理DOCX文件
-      fileType = 'docx';
-        console.log('检测到Word文档，开始处理...');
+        mimetype === 'application/msword' ||
+        originalname.endsWith('.docx') ||
+        originalname.endsWith('.doc')) {
+      // 处理DOCX/DOC文件
+      fileType = originalname.endsWith('.doc') ? 'doc' : 'docx';
+      console.log('检测到Word文档，开始处理...');
+      
+      // 检查转换函数是否存在
+      if (typeof docxConverter.convertDocxToHtml !== 'function') {
+        throw new Error('docxConverter.convertDocxToHtml 不是有效函数，模块加载失败');
+      }
+      
+      try {
+        console.log('调用 docxConverter.convertDocxToHtml...');
+        const result = await docxConverter.convertDocxToHtml(filepath);
+        console.log('Word转换结果:', Object.keys(result).join(', '));
         
-        // 检查转换函数是否存在
-        if (typeof docxConverter.convertDocxToHtml !== 'function') {
-          throw new Error('docxConverter.convertDocxToHtml 不是有效函数，模块加载失败');
+        htmlContent = result.html;
+        htmlPath = result.htmlPath;
+        
+        if (!htmlContent) {
+          console.warn('警告: HTML内容为空');
         }
         
-        try {
-          console.log('调用 docxConverter.convertDocxToHtml...');
-      const result = await docxConverter.convertDocxToHtml(filepath);
-          console.log('Word转换结果:', Object.keys(result).join(', '));
-          
-      htmlContent = result.html;
-      htmlPath = result.htmlPath;
-          
-          if (!htmlContent) {
-            console.warn('警告: HTML内容为空');
-          }
-          
-          if (!htmlPath) {
-            console.warn('警告: HTML路径为空');
-          } else {
-            console.log('生成的HTML路径:', htmlPath);
-          }
-          
-          if (result.error) {
-            errorMessage = result.error;
-            console.warn('Word转换警告:', result.error);
-          }
-        } catch (docxError) {
-          console.error('Word转换错误:', docxError);
-          console.error('错误堆栈:', docxError.stack);
-          // 不抛出错误，而是继续处理
-          errorMessage = docxError.message;
-          
-          // 创建一个备用的HTML路径和内容
-          const outputDir = path.join(__dirname, 'temp');
-          const tempHtmlPath = path.join(outputDir, `error-${Date.now()}.html`);
-          if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-          }
-          
-          // 简单的错误HTML
-          htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head><title>转换错误</title></head>
-            <body><p>转换文档时出错: ${docxError.message}</p></body>
-            </html>
-          `;
-          
-          fs.writeFileSync(tempHtmlPath, htmlContent);
-          htmlPath = tempHtmlPath;
-          console.log('创建了Word错误备用页面:', tempHtmlPath);
+        if (!htmlPath) {
+          console.warn('警告: HTML路径为空');
+        } else {
+          console.log('生成的HTML路径:', htmlPath);
         }
+        
+        if (result.error) {
+          errorMessage = result.error;
+          console.warn('Word转换警告:', result.error);
+        }
+      } catch (docxError) {
+        console.error('Word转换错误:', docxError);
+        console.error('错误堆栈:', docxError.stack);
+        // 不抛出错误，而是继续处理
+        errorMessage = docxError.message;
+        
+        // 创建一个备用的HTML路径和内容
+        const outputDir = path.join(__dirname, 'temp');
+        const tempHtmlPath = path.join(outputDir, `error-${Date.now()}.html`);
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+        
+        // 简单的错误HTML
+        htmlContent = `
+          <!DOCTYPE html>
+          <html>
+          <head><title>转换错误</title></head>
+          <body><p>转换文档时出错: ${docxError.message}</p></body>
+          </html>
+        `;
+        
+        fs.writeFileSync(tempHtmlPath, htmlContent);
+        htmlPath = tempHtmlPath;
+        console.log('创建了Word错误备用页面:', tempHtmlPath);
+      }
     } else if (mimetype === 'application/pdf' || originalname.endsWith('.pdf')) {
       // 处理PDF文件
       fileType = 'pdf';
@@ -473,212 +486,138 @@ app.post('/upload', upload.single('document'), async (req, res) => {
 
 // 美化文档处理路由
 app.post('/beautify', async (req, res) => {
-  try {
-    const { filename, targetFormat = 'word', htmlContent, customRequirements } = req.body;
-
-    console.log('收到美化请求:', { 
-      filename, 
-      targetFormat,
-      customRequirements: customRequirements?.length || 0,
-      hasHtmlContent: !!htmlContent
-    });
-    
-    // API配置状态日志
-    console.log('当前使用的API配置:', {
-      apiType: globalApiConfig.apiType,
-      apiModel: globalApiConfig.apiModel,
-      apiKeyLength: globalApiConfig.apiKey ? globalApiConfig.apiKey.length : 0
-    });
-    
-    // 检查aiOptimizer模块是否可用
-    if (!aiOptimizer || typeof aiOptimizer.processAndSaveHtml !== 'function') {
-      console.error('aiOptimizer模块不可用或不完整', typeof aiOptimizer);
-        return res.status(500).json({
-          success: false,
-        message: 'AI优化模块不可用，请联系管理员'
-      });
-    }
-    
-    let processedContent;
-    let htmlToProcess = '';
-    let htmlFilePath = '';
-    
-    // 如果提供了HTML内容，直接使用
-    if (htmlContent) {
-      console.log('使用请求中提供的HTML内容');
-      htmlToProcess = htmlContent;
-    } else if (filename) {
-      // 尝试多个可能的文件路径
-      console.log('尝试通过文件名加载HTML:', filename);
-      const possiblePaths = [
-        path.join(__dirname, 'uploads', filename),
-        path.join(__dirname, 'temp', filename),
-        path.join(__dirname, 'downloads', filename)
-      ];
-      
-      // 查找存在的HTML文件路径
-      let foundHtmlPath = null;
-      for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-          console.log('找到HTML文件:', p);
-          foundHtmlPath = p;
-          break;
+    try {
+        console.log('收到美化请求:', req.body.filename);
+        
+        const { filename, targetFormat, htmlContent, customRequirements, colorizedImages } = req.body;
+        
+        if (!filename || !targetFormat || !htmlContent) {
+            return res.status(400).json({ error: '缺少必要参数' });
         }
-      }
-      
-      if (foundHtmlPath) {
+        
+        // 生成优化提示
+        const optimizationPrompt = aiOptimizer.generateOptimizationPrompt(targetFormat, customRequirements);
+        
+        // 根据当前配置选择AI服务
+        const aiProvider = globalApiConfig.apiType.toLowerCase();
+        console.log(`使用AI提供商: ${aiProvider}`);
+        
+        let optimizedHTML;
+        let usedBackupMode = false;
+        
         try {
-          htmlFilePath = foundHtmlPath;
-          console.log('读取HTML文件:', htmlFilePath);
-          htmlToProcess = fs.readFileSync(htmlFilePath, 'utf8');
-          console.log('HTML文件读取成功，大小:', htmlToProcess.length);
-        } catch (readError) {
-          console.error('读取HTML文件失败:', readError);
-          return res.status(500).json({
-            success: false,
-            message: '读取HTML文件失败: ' + readError.message
-          });
+            if (aiProvider === 'openai') {
+                // 不再使用OpenAI，转而使用DeepSeek处理
+                console.log('不使用OpenAI，改用DeepSeek处理');
+                optimizedHTML = await aiOptimizer.processWithDeepseek(
+                    htmlContent,
+                    optimizationPrompt,
+                    globalApiConfig.apiKey,
+                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
+                );
+            } else if (aiProvider === 'baidu') {
+                // 使用百度文心处理HTML
+                optimizedHTML = await aiOptimizer.beautifyWithBaidu(
+                    htmlContent,
+                    optimizationPrompt,
+                    globalApiConfig.apiKey,
+                    globalApiConfig.apiSecret,
+                    globalApiConfig.apiParams.baidu || { temperature: 0.7, max_tokens: 4000 }  // 使用全局配置参数或默认值
+                );
+            } else if (aiProvider === 'deepseek') {
+                // 使用DeepSeek处理HTML
+                optimizedHTML = await aiOptimizer.processWithDeepseek(
+                    htmlContent,
+                    optimizationPrompt,
+                    globalApiConfig.apiKey,
+                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
+                );
+            } else {
+                // 默认使用DeepSeek
+                console.log(`不支持的AI提供商: ${aiProvider}，改用DeepSeek`);
+                optimizedHTML = await aiOptimizer.processWithDeepseek(
+                    htmlContent,
+                    optimizationPrompt,
+                    globalApiConfig.apiKey,
+                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
+                );
+            }
+            
+            if (!optimizedHTML) {
+                throw new Error('AI处理返回了空内容');
+            }
+            
+        } catch (aiError) {
+            console.error('AI处理失败:', aiError);
+            console.log('使用本地备用模式处理HTML...');
+            
+            // 使用本地备用美化功能
+            optimizedHTML = aiOptimizer.beautifyWithRules(htmlContent, targetFormat, customRequirements);
+            usedBackupMode = true;
+            
+            // 如果本地处理也失败，则向客户端返回错误
+            if (!optimizedHTML) {
+                return res.status(500).json({ error: `AI处理失败，备用模式也失败: ${aiError.message}` });
+            }
+            
+            console.log('本地备用模式成功处理了HTML内容');
         }
-      } else {
-        console.error('未找到HTML文件:', filename);
-        return res.status(404).json({
-          success: false,
-          message: '找不到HTML文件: ' + filename
-        });
-      }
-    } else {
-      // 如果没有提供HTML内容或文件名
-      console.error('请求中未包含HTML内容或有效的文件名');
-      return res.status(400).json({
-        success: false,
-        message: '请求中缺少必要参数：HTML内容或有效的文件名'
-      });
+        
+        // 处理上色图片 - 替换HTML中的图片路径
+        if (colorizedImages && Array.isArray(colorizedImages) && colorizedImages.length > 0) {
+            console.log(`应用 ${colorizedImages.length} 张上色图片到美化结果`);
+            const replaceResult = imageColorizer.replaceImagesInHtml(optimizedHTML, colorizedImages);
+            optimizedHTML = replaceResult.content;
+            console.log(`成功替换了 ${replaceResult.replacedCount} 张上色图片`);
+        }
+        
+        // 保存和处理优化后的HTML
+        try {
+            // 保存处理后的HTML到temp目录
+            const timestamp = Date.now();
+            const outputDir = path.join(__dirname, 'temp');
+            const outputFileName = `beautified-${timestamp}.html`;
+            const outputPath = path.join(outputDir, outputFileName);
+            
+            // 确保输出目录存在
+            if (!fs.existsSync(outputDir)) {
+                fs.mkdirSync(outputDir, { recursive: true });
+            }
+            
+            // 保存HTML到文件
+            fs.writeFileSync(outputPath, optimizedHTML);
+            console.log(`美化后的HTML已保存到: ${outputPath}`);
+            
+            // 复制到downloads目录供下载
+            const downloadsDir = path.join(__dirname, 'downloads');
+            const downloadPath = path.join(downloadsDir, outputFileName);
+            
+            if (!fs.existsSync(downloadsDir)) {
+                fs.mkdirSync(downloadsDir, { recursive: true });
+            }
+            
+            fs.copyFileSync(outputPath, downloadPath);
+            console.log(`已复制到下载目录: ${downloadPath}`);
+            
+            // 返回成功响应
+            res.json({
+                success: true,
+                processedFile: {
+                    path: outputPath,
+                    html: optimizedHTML,
+                    type: targetFormat,
+                    originalname: filename,
+                    wasBackupMode: usedBackupMode
+                }
+            });
+        } catch (saveError) {
+            console.error('保存处理后的HTML失败:', saveError);
+            return res.status(500).json({ error: `保存处理后的HTML失败: ${saveError.message}` });
+        }
+    } catch (error) {
+        console.error('美化处理出错:', error);
+        res.status(500).json({ error: error.message });
     }
-    
-    // 验证HTML内容是否有效
-    if (!htmlToProcess || htmlToProcess.trim() === '') {
-      console.error('HTML内容为空');
-      return res.status(400).json({
-        success: false,
-        message: 'HTML内容为空，无法处理'
-      });
-    }
-    
-    // 获取API密钥 - 优先使用请求中的API密钥，如果未提供则使用全局配置
-    const apiKey = req.body.apiKey || globalApiConfig.apiKey;
-    
-    // 确保API密钥有效
-    if (!apiKey || apiKey.length < 20) {
-      console.error('美化请求中未提供有效的API密钥');
-      return res.status(500).json({
-        success: false,
-        message: '未提供有效的API密钥，无法进行美化处理'
-      });
-    }
-    
-    // 记录API密钥信息（只记录部分，保护隐私）
-    console.log('使用API密钥:', apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供');
-    
-    // 创建API配置对象，确保包含所有必要的参数
-    const apiConfig = {
-      apiKey: apiKey,
-      apiType: req.body.apiType || globalApiConfig.apiType,
-      apiParams: globalApiConfig.apiParams
-    };
-    
-    console.log('处理美化请求使用的API配置:', { 
-      apiType: apiConfig.apiType, 
-      apiKeyLength: apiConfig.apiKey ? apiConfig.apiKey.length : 0 
-    });
-    
-    // 创建临时目录（如果不存在）
-    const tempDir = path.join(__dirname, 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    
-    // 时间戳，用于生成唯一文件名
-    const timestamp = Date.now();
-    
-    // 输出处理后的HTML文件路径
-    const processedFilePath = path.join(tempDir, `processed-${timestamp}.html`);
-    
-    console.log('调用AI处理器美化HTML...');
-    
-    try {
-      processedContent = await aiOptimizer.processAndSaveHtml(
-        htmlToProcess,
-        tempDir,
-        apiConfig, // 传递完整的apiConfig对象
-        targetFormat,
-        customRequirements
-      );
-      
-      // 检查处理结果
-      if (!processedContent || !processedContent.html) {
-        console.error('AI处理器未返回有效结果');
-        return res.status(500).json({
-          success: false,
-          message: 'AI处理过程未返回有效的处理结果'
-        });
-      }
-      
-      console.log('AI处理完成，获得处理后的HTML内容，大小:', processedContent.html.length);
-    } catch (aiError) {
-      console.error('AI处理发生错误:', aiError);
-      return res.status(500).json({
-        success: false,
-        message: 'AI处理过程中发生错误: ' + aiError.message
-      });
-    }
-    
-    // 保存处理后的内容到文件
-    try {
-      fs.writeFileSync(processedFilePath, processedContent.html);
-      console.log('处理后的内容已保存到:', processedFilePath);
-    } catch (writeError) {
-      console.error('保存处理后的内容时出错:', writeError);
-      return res.status(500).json({
-        success: false,
-        message: '保存处理后的内容时出错: ' + writeError.message
-      });
-    }
-
-    // 复制到downloads目录以便查看
-    try {
-      const downloadsDir = path.join(__dirname, 'downloads');
-      if (!fs.existsSync(downloadsDir)) {
-        fs.mkdirSync(downloadsDir, { recursive: true });
-      }
-      
-      // 使用相同的文件名复制
-      const downloadFilePath = path.join(downloadsDir, path.basename(processedFilePath));
-      fs.copyFileSync(processedFilePath, downloadFilePath);
-      console.log('处理后的HTML已复制到downloads目录:', downloadFilePath);
-    } catch (copyError) {
-      console.error('复制到downloads目录失败:', copyError);
-      // 这不是致命错误，继续处理
-    }
-    
-    // 返回成功响应
-    return res.json({
-      success: true,
-      processedFile: {
-        originalFilename: filename,
-        path: processedFilePath,
-        html: processedContent.html,
-        targetFormat, // 在响应中包含目标格式
-        wasBackupMode: processedContent.wasBackupMode // 标记是否使用了备用模式
-      }
-    });
-  } catch (error) {
-    console.error('文档美化处理错误:', error);
-    console.error('完整错误堆栈:', error.stack);
-    return res.status(500).json({
-      success: false,
-      message: '服务器处理文档时出错: ' + error.message
-    });
-  }
 });
 
 // 预览处理后的HTML
@@ -1261,6 +1200,438 @@ app.get('/view-document/:filename', (req, res) => {
   }
 });
 
+// 获取文档中的所有图片
+app.get('/api/document/images', (req, res) => {
+    try {
+        const { filePath } = req.query;
+        
+        if (!filePath) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少文件路径参数'
+            });
+        }
+        
+        console.log('请求图片，原始路径:', filePath);
+        
+        // 尝试多种可能的文件路径组合
+        const possiblePaths = [
+            // 原始路径
+            filePath,
+            // 以服务器根目录为基础
+            path.join(__dirname, filePath),
+            // 在temp目录中查找
+            path.join(__dirname, 'temp', filePath),
+            path.join(__dirname, 'temp', path.basename(filePath)),
+            // 在uploads目录中查找
+            path.join(__dirname, 'uploads', filePath),
+            path.join(__dirname, 'uploads', path.basename(filePath)),
+            // 在downloads目录中查找
+            path.join(__dirname, 'downloads', filePath),
+            path.join(__dirname, 'downloads', path.basename(filePath))
+        ];
+        
+        console.log('尝试以下路径:', possiblePaths);
+        
+        // 找到第一个存在的文件
+        let foundPath = null;
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                foundPath = p;
+                console.log('找到匹配文件:', p);
+                break;
+            }
+        }
+        
+        if (!foundPath) {
+            console.log('未找到匹配的文件路径');
+            return res.status(404).json({
+                success: false,
+                message: '文件不存在: 已尝试以下路径: ' + possiblePaths.join(', ')
+            });
+        }
+        
+        // 检查是否为HTML文件
+        const fileExt = path.extname(foundPath).toLowerCase();
+        if (fileExt !== '.html') {
+            console.log('非HTML文件:', foundPath);
+            return res.status(400).json({
+                success: false,
+                message: '仅支持HTML文档，当前文件类型: ' + fileExt
+            });
+        }
+        
+        // 读取HTML文件
+        const htmlContent = fs.readFileSync(foundPath, 'utf8');
+        console.log('读取HTML成功，内容长度:', htmlContent.length);
+        
+        // 匹配文档中的图片
+        console.log(`分析文档中的图片: ${foundPath}`);
+        const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+        const images = [];
+        let match;
+        
+        let matchCount = 0;
+        console.log('开始解析图片标签...');
+        
+        // 先收集所有图片标签和源属性
+        const imgTags = [];
+        while ((match = imgRegex.exec(htmlContent)) !== null) {
+            matchCount++;
+            const src = match[1];
+            console.log(`找到第 ${matchCount} 个图片标签，src=${src}`);
+            
+            // 跳过数据URL
+            if (src.startsWith('data:')) {
+                console.log('跳过数据URL图片');
+                continue;
+            }
+            
+            // 跳过外部链接
+            if (src.startsWith('http://') || src.startsWith('https://')) {
+                console.log('跳过外部链接图片');
+                continue;
+            }
+            
+            imgTags.push(src);
+        }
+        
+        console.log(`共找到 ${matchCount} 个图片标签，有效的本地图片源 ${imgTags.length} 个`);
+        
+        // 对每个图片标签尝试解析路径
+        for (const src of imgTags) {
+            // 尝试多种可能的图片路径
+            const imgPossiblePaths = [
+                // 相对于HTML文件的路径
+                path.join(path.dirname(foundPath), src),
+                // 相对于服务器根目录的路径
+                path.join(__dirname, src.replace(/^\//, '')),
+                // 相对于uploads目录的路径
+                path.join(__dirname, 'uploads', src),
+                // 相对于public目录的路径 
+                path.join(__dirname, 'public', src.replace(/^\//, '')),
+                // 路径本身（如果是绝对路径）
+                src
+            ];
+            
+            console.log(`尝试解析图片 ${src} 的路径:`, imgPossiblePaths.map(p => path.basename(p)));
+            
+            // 查找第一个存在的图片文件
+            let imgPath = null;
+            for (const p of imgPossiblePaths) {
+                if (fs.existsSync(p)) {
+                    imgPath = p;
+                    console.log('找到图片文件:', p);
+                    break;
+                }
+            }
+            
+            // 如果找到图片文件，添加到结果中
+            if (imgPath) {
+                const stats = fs.statSync(imgPath);
+                const imgExt = path.extname(imgPath).toLowerCase();
+                
+                // 检查是否为支持的图片格式
+                if (['.jpg', '.jpeg', '.png', '.gif', '.bmp'].includes(imgExt)) {
+                    images.push({
+                        src,
+                        path: imgPath,
+                        name: path.basename(imgPath),
+                        type: imgExt.replace('.', ''),
+                        size: stats.size,
+                        isBlackAndWhite: true // 默认假设所有图片都是黑白的
+                    });
+                    console.log('添加图片到结果列表:', path.basename(imgPath));
+                } else {
+                    console.log('不支持的图片格式:', imgExt);
+                }
+            } else {
+                console.log('未找到图片文件:', src);
+            }
+        }
+        
+        console.log(`分析完成，共有 ${images.length} 张有效图片`);
+        
+        // 返回结果
+        res.json({
+            success: true,
+            images,
+            message: images.length > 0 ? `找到 ${images.length} 张图片` : '文档中没有找到可上色的图片',
+            stats: {
+                totalImgTags: matchCount,
+                validSources: imgTags.length,
+                foundImages: images.length
+            }
+        });
+        
+    } catch (error) {
+        console.error('获取文档图片错误:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: '获取图片失败: ' + error.message,
+            stack: error.stack
+        });
+    }
+});
+
+// 上色指定的图片
+app.post('/api/image/colorize', async (req, res) => {
+    const { imagePaths } = req.body;
+    
+    if (!imagePaths || !Array.isArray(imagePaths) || imagePaths.length === 0) {
+        return res.status(400).json({ 
+            success: false, 
+            message: '缺少有效的图片路径，请确保选择了至少一张图片' 
+        });
+    }
+    
+    if (imagePaths.length > 20) {
+        return res.status(400).json({ 
+            success: false, 
+            message: '一次最多处理20张图片，请减少选择的图片数量' 
+        });
+    }
+    
+    logger.info(`收到上色请求，共 ${imagePaths.length} 张图片`);
+    
+    // 检查图片是否存在
+    const nonExistentImages = imagePaths.filter(imgPath => !fs.existsSync(imgPath));
+    if (nonExistentImages.length > 0) {
+        return res.status(400).json({
+            success: false,
+            message: `有 ${nonExistentImages.length} 张图片不存在`,
+            nonExistentImages
+        });
+    }
+    
+    try {
+        // 处理图片上色
+        logger.info('开始批量图片上色处理...');
+        const colorizeResult = await imageColorizer.colorizeImages(imagePaths);
+        
+        logger.info(`图片上色处理完成: ${colorizeResult.successCount} 成功, ${colorizeResult.failCount} 失败`);
+        
+        if (colorizeResult.success) {
+            res.json({ 
+                success: true, 
+                message: colorizeResult.message,
+                results: colorizeResult.results
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: colorizeResult.message,
+                results: colorizeResult.results
+            });
+        }
+    } catch (error) {
+        logger.error('图片上色处理异常:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: '图片上色过程出错: ' + error.message 
+        });
+    }
+});
+
+// 重新上色指定的图片
+app.post('/api/image/recolorize', async (req, res) => {
+    const { imagePath, originalPath } = req.body;
+    
+    if (!imagePath) {
+        return res.status(400).json({ 
+            success: false, 
+            message: '缺少有效的图片路径' 
+        });
+    }
+    
+    logger.info(`收到重新上色请求: ${imagePath}`);
+    
+    // 检查图片是否存在
+    if (!fs.existsSync(imagePath)) {
+        return res.status(400).json({
+            success: false,
+            message: `图片文件不存在: ${imagePath}`
+        });
+    }
+    
+    try {
+        // 处理图片重新上色
+        logger.info('开始图片重新上色处理...');
+        
+        // 生成新的路径，添加时间戳避免覆盖原文件
+        const timestamp = Date.now();
+        const extname = path.extname(imagePath);
+        const basename = path.basename(imagePath, extname);
+        let newPath = '';
+        
+        // 如果是已经上色过的图片，使用原始路径生成新文件名
+        if (originalPath && fs.existsSync(originalPath)) {
+            // 使用原始图片再次上色
+            const result = await imageColorizer.processImage(originalPath, true, timestamp);
+            
+            if (result.success) {
+                res.json({ 
+                    success: true, 
+                    message: '重新上色成功',
+                    result: result
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: '重新上色失败: ' + result.error,
+                    result: result
+                });
+            }
+        } else {
+            // 找不到原始图片，尝试从当前上色图片路径推断原始图片路径
+            let inferredOriginalPath = '';
+            if (imagePath.includes('_colorized')) {
+                inferredOriginalPath = imagePath.replace('_colorized', '');
+                if (fs.existsSync(inferredOriginalPath)) {
+                    logger.info(`找到推断的原始图片: ${inferredOriginalPath}`);
+                    
+                    const result = await imageColorizer.processImage(inferredOriginalPath, true, timestamp);
+                    
+                    if (result.success) {
+                        res.json({ 
+                            success: true, 
+                            message: '根据推断原图重新上色成功',
+                            result: result
+                        });
+                    } else {
+                        res.status(500).json({
+                            success: false,
+                            message: '重新上色失败: ' + result.error,
+                            result: result
+                        });
+                    }
+                } else {
+                    res.status(400).json({
+                        success: false,
+                        message: '无法找到原始图片，重新上色失败'
+                    });
+                }
+            } else {
+                // 如果不是上色过的图片格式，直接尝试上色
+                const result = await imageColorizer.processImage(imagePath, true, timestamp);
+                
+                if (result.success) {
+                    res.json({ 
+                        success: true, 
+                        message: '直接上色成功',
+                        result: result
+                    });
+                } else {
+                    res.status(500).json({
+                        success: false,
+                        message: '上色失败: ' + result.error,
+                        result: result
+                    });
+                }
+            }
+        }
+    } catch (error) {
+        logger.error('图片重新上色处理异常:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: '图片重新上色过程出错: ' + error.message 
+        });
+    }
+});
+
+// 将上色后的图片应用到文档
+app.post('/api/document/apply-colorized-images', (req, res) => {
+    try {
+        const { filePath, imageResults } = req.body;
+        
+        if (!filePath) {
+            return res.status(400).json({ success: false, message: '缺少文件路径参数' });
+        }
+        
+        if (!imageResults || !Array.isArray(imageResults)) {
+            return res.status(400).json({ success: false, message: '缺少有效的图片结果数据' });
+        }
+        
+        // 修改路径处理方式，正确处理绝对路径和相对路径
+        let fullPath = filePath;
+        
+        // 检查是否为绝对路径
+        if (!path.isAbsolute(filePath)) {
+            // 如果是相对路径，转换为绝对路径
+            fullPath = path.join(__dirname, filePath.replace(/^\//, ''));
+        }
+        
+        console.log('处理文件路径:', fullPath);
+        
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({ success: false, message: '文件不存在: ' + fullPath });
+        }
+        
+        logger.info(`准备将上色图片应用到文档: ${path.basename(fullPath)}`);
+        
+        // 只处理成功的结果
+        const successfulResults = imageResults.filter(result => result.success);
+        logger.info(`共有 ${successfulResults.length} 张图片上色成功，将应用到文档`);
+        
+        if (successfulResults.length === 0) {
+            return res.json({ 
+                success: true, 
+                message: '没有成功上色的图片可应用',
+                replacedCount: 0
+            });
+        }
+        
+        // 读取HTML文件内容
+        const htmlContent = fs.readFileSync(fullPath, 'utf8');
+        
+        // 替换HTML中的图片路径
+        const { content, replacedCount } = imageColorizer.replaceImagesInHtml(htmlContent, successfulResults);
+        
+        // 保存更新后的HTML
+        fs.writeFileSync(fullPath, content, 'utf8');
+        
+        logger.info(`成功替换了 ${replacedCount} 张图片`);
+        
+        res.json({ 
+            success: true, 
+            message: `已成功应用 ${replacedCount} 张上色后的图片到文档`,
+            replacedCount
+        });
+    } catch (error) {
+        logger.error('应用上色图片错误:', error);
+        res.status(500).json({ success: false, message: '应用上色图片失败: ' + error.message });
+    }
+});
+
+// 确保所有必要的目录都存在
+function ensureDirectories() {
+    // 要检查和创建的目录列表
+    const directories = [
+        path.join(__dirname, 'public', 'images', 'temp'),
+        path.join(__dirname, 'temp'),
+        path.join(__dirname, 'temp', 'images'),
+        path.join(__dirname, 'uploads'),
+        path.join(__dirname, 'downloads')
+    ];
+
+    // 遍历目录列表
+    directories.forEach(dir => {
+        try {
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+                console.log(`已创建目录: ${dir}`);
+            } else {
+                console.log(`目录已存在: ${dir}`);
+            }
+        } catch (error) {
+            console.error(`创建目录失败: ${dir}`, error);
+        }
+    });
+}
+
+// 应用启动时确保目录
+ensureDirectories();
+
 // 启动服务器
 app.listen(port, () => {
   // 打印所有已注册的路由
@@ -1303,41 +1674,39 @@ async function validateApiKey() {
           {
             model: 'deepseek-chat',
             messages: [
-              { role: 'system', content: '你好' },
-              { role: 'user', content: '测试API密钥是否有效' }
+              { role: 'system', content: 'You are a helpful assistant.' },
+              { role: 'user', content: 'Hello, please respond with just the word "Verified" to validate API connection.' }
             ],
-            max_tokens: 5,
-            temperature: 0.7,
-            stream: false  // 明确指定不使用流式传输
+            temperature: 0.1,
+            max_tokens: 10
           },
           {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${globalApiConfig.apiKey}`
-            },
-            timeout: 10000 // 10秒超时
+            }
           }
         );
         
-        if (response.status === 200) {
-          console.log('DeepSeek API密钥验证成功！美化功能可以正常使用。');
-        }
-      } catch (error) {
-        if (error.response && error.response.status === 401) {
-          throw new Error('DeepSeek API密钥无效。美化功能将使用本地备用模式。');
-        } else if (error.response && error.response.status === 400) {
-          throw new Error('DeepSeek API请求格式有误，请检查API版本是否更新。错误详情: ' + 
-                         (error.response.data.error?.message || JSON.stringify(error.response.data)));
+        if (response.data && response.data.choices && response.data.choices[0]) {
+          console.log('DeepSeek API密钥验证成功');
+          return true;
         } else {
-          throw new Error(`DeepSeek API验证失败: ${error.message}。美化功能将使用本地备用模式。`);
+          console.warn('DeepSeek API返回了意外的响应格式');
+          return false;
         }
+      } catch (err) {
+        console.warn('DeepSeek API密钥验证失败:', err.message);
+        if (err.response && err.response.status === 401) {
+          console.error('DeepSeek API密钥无效，请检查apiKey设置');
+        }
+        return false;
       }
     }
     
-    // 其他API类型的验证可以类似实现
-    
-  } catch (error) {
-    console.error('API密钥验证错误:', error);
-    throw error;
+    return true;
+  } catch (err) {
+    console.warn('API密钥验证过程出错:', err.message);
+    return false;
   }
 }

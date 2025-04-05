@@ -1,0 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+
+// 这是一张黑白照片的base64编码，大小适合API测试
+// 这是一个50x50像素的黑白PNG图像
+const betterTestImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAJESURBVGhD7ZaxattQFIa1ZO/QpWTImDlj9q5dO3Xp0CWP0KFLl+55iK55gixZsrRQKJRAoZSEQChoDBYVDAbDwWAwGBSCz71HVmVbw1k32FLODz9cTq7E/T+de4+QZ/nh6YpSXa+J/EM7vVkS+U/DbbFBJcbUzm5XqP98TPTPYZrEroxYytPVGtXTW+JwV0Q+ybj89Lglau3shpg1cX/8VVAdM5JJkYdCLFTuFQiTIhGVe40wIRJTuRfJWSQmcq/uZ5GYyP1BDiIxkcfDfEViIhfL7EViIpdHF5GYyOWzK/JcRVi7+rE9iNws82tXr2VY5K6RX4LXYiwSG7k8qMdB5NF5lF+Ctws0IrHi/iFyVGmIaZCfLcJETJPYyFGlMaZAMUUsEhu5Vxhi7Cwk2eLdUr0Ei1w11dY35XLcqFQxwbdOG3X+i9LbHi3FKZbIZ09KVCzXYmYvwEtxziKdmV3R7nqUvvlMSWUTVGfRUzmmyP3a7/+U4V3CiXxJrTXN+cuxNFcRrqt9kWP18wEZ3Oc7rHdvdDc4lhxD5Mtqh5ILJaXzkbVzEiM6dh+KeLWTzk+jCDCOHaJ0u0vpvZGY8P7gYnJzV5S+Hke+CI851mZG7D4Gi1y316LTn+prIrE9SKmY+VtDRJ9nExTf6GutC0F09U3eJGFRXWv58HxJ5E8fEmmkbXRjNZvhRUTnVrbxXzT5CbXWrb7W+QKgdh7/dIGxkZ2yU0qXs1P9W+9hJZ1xHBm9A+LsXO+5wvEEAAAAAElFTkSuQmCC';
+
+// 保存图片
+const imageBuffer = Buffer.from(betterTestImageBase64, 'base64');
+fs.writeFileSync('better-test-bw.png', imageBuffer);
+
+console.log('更好的黑白测试图片已保存到: better-test-bw.png'); 

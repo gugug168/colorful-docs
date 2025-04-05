@@ -120,17 +120,38 @@ async function replaceImagesWithBase64(html) {
         // 跳过已经是base64的图片
         if (imgUrl.startsWith('data:')) continue;
         
+        // 提取data-colorized和data-original属性，如果存在
+        let isColorized = fullTag.includes('data-colorized="true"');
+        let originalPath = '';
+        const originalMatch = fullTag.match(/data-original=["']([^"']+)["']/i);
+        if (originalMatch) {
+            originalPath = originalMatch[1];
+        }
+        
+        console.log(`处理图片: ${imgUrl}, 是否已上色: ${isColorized}, 原始路径: ${originalPath || '无'}`);
+        
         // 创建一个唯一的占位符ID
         const placeholderId = `img_placeholder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        // 将图片标签替换为占位符
-        resultHtml = resultHtml.replace(fullTag, `<img data-placeholder-id="${placeholderId}" src="${imgUrl}" />`);
+        // 将图片标签替换为占位符，保留data-colorized属性
+        let placeholderTag = `<img data-placeholder-id="${placeholderId}" src="${imgUrl}"`;
+        if (isColorized) {
+            placeholderTag += ` data-colorized="true"`;
+        }
+        if (originalPath) {
+            placeholderTag += ` data-original="${originalPath}"`;
+        }
+        placeholderTag += ' />';
+        
+        resultHtml = resultHtml.replace(fullTag, placeholderTag);
         
         promises.push(downloadImageAsBase64(imgUrl).then(base64 => {
             if (base64) {
                 replacements.push({
                     placeholderId: placeholderId,
-                    base64: base64
+                    base64: base64,
+                    isColorized: isColorized,
+                    originalPath: originalPath
                 });
             }
         }));
@@ -140,9 +161,20 @@ async function replaceImagesWithBase64(html) {
     await Promise.all(promises);
 
     // 恢复占位符为带Base64编码的图片
-    for (const { placeholderId, base64 } of replacements) {
-        const placeholderRegex = new RegExp(`<img[^>]*data-placeholder-id="${placeholderId}"[^>]*src="[^"]*"[^>]*>`, 'gi');
-        resultHtml = resultHtml.replace(placeholderRegex, `<img src="${base64}" style="max-width: 100%; height: auto; display: block; margin: 10px auto;" />`);
+    for (const { placeholderId, base64, isColorized, originalPath } of replacements) {
+        const placeholderRegex = new RegExp(`<img[^>]*data-placeholder-id="${placeholderId}"[^>]*>`, 'gi');
+        let imgTag = `<img src="${base64}" style="max-width: 100%; height: auto; display: block; margin: 10px auto;"`;
+        
+        // 保留data-colorized和data-original属性
+        if (isColorized) {
+            imgTag += ` data-colorized="true"`;
+        }
+        if (originalPath) {
+            imgTag += ` data-original="${originalPath}"`;
+        }
+        imgTag += ' />';
+        
+        resultHtml = resultHtml.replace(placeholderRegex, imgTag);
     }
 
     return resultHtml;
@@ -1169,6 +1201,45 @@ async function processImagesForWord(htmlContent) {
             console.error('无法将HTML内容转换为字符串:', e);
             return '';
         }
+    }
+
+    // 先尝试修复可能的相对路径图片
+    try {
+        console.log('修复图片路径，确保能正确嵌入到Word...');
+        // 检查是否有上色后的图片路径需要修复
+        const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*data-colorized=["']true["'][^>]*>/gi;
+        let match;
+        let tempHtml = htmlContent;
+        
+        while ((match = imgRegex.exec(htmlContent)) !== null) {
+            const fullTag = match[0];
+            const imgSrc = match[1];
+            
+            console.log(`找到上色图片: ${imgSrc}`);
+            
+            // 如果路径不是绝对路径也不是base64，尝试修复
+            if (!imgSrc.startsWith('data:') && !imgSrc.startsWith('http')) {
+                let fixedSrc = imgSrc;
+                
+                // 确保路径以/开头
+                if (!fixedSrc.startsWith('/')) {
+                    fixedSrc = '/' + fixedSrc;
+                }
+                
+                // 构建完整URL (使用localhost作为基础)
+                const fullUrl = `http://localhost:3000${fixedSrc}`;
+                console.log(`修复图片路径: ${imgSrc} -> ${fullUrl}`);
+                
+                // 替换src属性
+                const updatedTag = fullTag.replace(/src=["'][^"']+["']/i, `src="${fullUrl}"`);
+                tempHtml = tempHtml.replace(fullTag, updatedTag);
+            }
+        }
+        
+        htmlContent = tempHtml;
+    } catch (error) {
+        console.error('修复图片路径时出错:', error);
+        // 继续处理，不中断导出流程
     }
 
     // 调用已有的图片处理函数

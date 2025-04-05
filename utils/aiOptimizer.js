@@ -3,66 +3,140 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// 支持的API类型常量
-const API_TYPES = {
-    OPENAI: 'openai',
-    DEEPSEEK: 'deepseek',
-    QIANWEN: 'qianwen',
-    QWQ: 'qwq'
+// 添加访问令牌缓存机制
+let accessTokenCache = {
+    token: null,
+    expireTime: 0
 };
+
+/**
+ * 获取百度ERNIE API的访问令牌
+ * @param {string} apiKey API密钥
+ * @param {string} secretKey 密钥
+ * @returns {Promise<string>} 访问令牌
+ */
+async function getAccessToken(apiKey, secretKey) {
+    try {
+        // 检查缓存的令牌是否有效
+        const now = Date.now();
+        if (accessTokenCache.token && accessTokenCache.expireTime > now) {
+            console.log('使用缓存的访问令牌');
+            return accessTokenCache.token;
+        }
+        
+        console.log('获取新的百度ERNIE API访问令牌');
+        
+        // 构建获取令牌的URL
+        const tokenUrl = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${apiKey}&client_secret=${secretKey}`;
+        
+        // 发送请求获取令牌
+        const response = await axios.post(tokenUrl, {}, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.data || !response.data.access_token) {
+            throw new Error('获取访问令牌失败: 响应中没有access_token');
+        }
+        
+        // 更新令牌缓存
+        accessTokenCache.token = response.data.access_token;
+        // 设置过期时间比实际提前1小时，以确保安全边际
+        accessTokenCache.expireTime = now + (response.data.expires_in - 3600) * 1000;
+        
+        console.log('成功获取新的访问令牌，有效期至:', new Date(accessTokenCache.expireTime).toLocaleString());
+        
+        return accessTokenCache.token;
+    } catch (error) {
+        console.error('获取百度ERNIE API访问令牌失败:', error);
+        throw error;
+    }
+}
 
 /**
  * 使用AI处理HTML内容并保存
  * @param {string} htmlContent HTML内容
- * @param {string} outputDir 输出目录
- * @param {object} apiConfig API配置对象，包含apiKey和apiType
- * @param {string} targetFormat 目标格式 (word或pdf)
- * @param {string} customRequirements 用户自定义美化要求
- * @returns {object} 处理结果
+ * @param {string} filename 原始文件名
+ * @param {string} targetFormat 目标格式 (pdf/word/html)
+ * @returns {string} 输出文件的路径
  */
-async function processAndSaveHtml(htmlContent, outputDir, apiConfig, targetFormat = 'word', customRequirements = '') {
+async function processAndSaveHtml(htmlContent, filename, targetFormat = 'html') {
     try {
-        // 确保输出目录存在
-        const outputPath = path.resolve(outputDir);
-        if (!fs.existsSync(outputPath)) {
-            fs.mkdirSync(outputPath, { recursive: true });
+        console.log(`处理HTML内容保存为${targetFormat}格式，原始文件名: ${filename}`);
+        
+        // 处理HTML内容，包括清理和规范化
+        const cleanedHtml = cleanHtmlContent(htmlContent);
+        
+        if (!cleanedHtml) {
+            console.error('清理后的HTML内容为空');
+            throw new Error('处理后的HTML内容为空');
         }
-
-        // 根据目标格式生成不同的优化提示
-        const optimizationPrompt = generateOptimizationPrompt(htmlContent, targetFormat, customRequirements);
-
-        // 使用AI处理内容
-        const processedHtml = await processWithAI(htmlContent, optimizationPrompt, apiConfig);
-
-        // 清理处理后的HTML，移除可能包含提示词的部分
-        const cleanedHtml = cleanProcessedHtml(processedHtml, customRequirements);
-
-        // 保存处理后的内容
+        
+        // 创建临时目录（如果不存在）
+        const tempDir = path.join(__dirname, '..', 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        // 时间戳，用于生成唯一文件名
         const timestamp = Date.now();
-        const outputFilePath = path.join(outputPath, `processed-${timestamp}.html`);
-        fs.writeFileSync(outputFilePath, cleanedHtml);
-
-        return {
-            success: true,
-            html: cleanedHtml,
-            outputPath: outputFilePath
-        };
+        const baseFilename = path.basename(filename, path.extname(filename));
+        const safeBaseFilename = baseFilename.replace(/[^a-zA-Z0-9]/g, '-');
+        
+        // 输出处理后的HTML文件路径
+        const htmlFilePath = path.join(tempDir, `${safeBaseFilename}-ai-enhanced-${timestamp}.html`);
+        
+        // 保存HTML内容到文件
+        fs.writeFileSync(htmlFilePath, cleanedHtml, 'utf8');
+        console.log(`已保存增强的HTML内容到: ${htmlFilePath}`);
+        
+        // 根据目标格式决定下一步处理
+        if (targetFormat.toLowerCase() === 'word') {
+            // 转换为Word文档
+            const docxConverter = require('./docxConverter');
+            const docxPath = await docxConverter.convertHtmlToDocx(htmlFilePath);
+            console.log(`已生成Word文档: ${docxPath}`);
+            return docxPath;
+        } else if (targetFormat.toLowerCase() === 'pdf') {
+            // 转换为PDF文档
+            const pdfConverter = require('./pdfConverter');
+            const pdfPath = await pdfConverter.convertHtmlToPdf(htmlFilePath);
+            console.log(`已生成PDF文档: ${pdfPath}`);
+            return pdfPath;
+        } else {
+            // 默认返回HTML文件路径
+            console.log(`使用HTML格式: ${htmlFilePath}`);
+            // 复制到下载目录供下载
+            const downloadsDir = path.join(__dirname, '..', 'downloads');
+            if (!fs.existsSync(downloadsDir)) {
+                fs.mkdirSync(downloadsDir, { recursive: true });
+            }
+            
+            const downloadFilePath = path.join(downloadsDir, path.basename(htmlFilePath));
+            fs.copyFileSync(htmlFilePath, downloadFilePath);
+            console.log(`HTML文件已复制到下载目录: ${downloadFilePath}`);
+            
+            return htmlFilePath;
+        }
     } catch (error) {
-        console.error('AI处理HTML内容时出错:', error);
+        console.error('处理和保存HTML时出错:', error);
         throw error;
     }
 }
 
 /**
  * 根据目标格式和自定义要求生成优化提示
- * @param {string} htmlContent 原始HTML内容
  * @param {string} targetFormat 目标格式
  * @param {string} customRequirements 用户自定义要求
  * @returns {string} 优化提示
  */
-function generateOptimizationPrompt(htmlContent, targetFormat, customRequirements = '') {
+function generateOptimizationPrompt(targetFormat, customRequirements = '') {
     // 极简提示词，减少token占用
     let prompt = '';
+    
+    console.log(`生成优化提示，目标格式: ${targetFormat}, 自定义要求长度: ${customRequirements ? customRequirements.length : 0}`);
     
     // 对于word格式，始终将格式限制放在最前面
     if (targetFormat === 'word') {
@@ -103,6 +177,7 @@ function generateOptimizationPrompt(htmlContent, targetFormat, customRequirement
 【重要】：请勿在输出的HTML中重复上述要求或包含任何提示词。不要添加背景色为紫色的区域，不要复制这些要求到输出内容中。仅输出美化后的纯HTML内容。`;
     }
 
+    console.log(`生成的提示长度: ${prompt.length}`);
     return prompt;
 }
 
@@ -164,116 +239,165 @@ async function processWithAI(htmlContent, prompt, apiConfig) {
  * @param {string} htmlContent 原始HTML内容
  * @param {string} prompt 优化提示
  * @param {string} apiKey OpenAI API密钥
- * @param {object} params 高级参数
- * @returns {string} 处理后的HTML内容
+ * @param {object} params 其他参数
+ * @returns {Promise<string>} 处理后的HTML内容
  */
 async function processWithOpenAI(htmlContent, prompt, apiKey, params = {}) {
     try {
-        // 编写API请求内容
-        const userInput = `${prompt}\n\n这是要优化的HTML内容:\n\n${htmlContent}`;
+        console.log('使用OpenAI进行文档美化');
         
-        // 使用配置的参数或默认值
-        const temperature = params.temperature || 0.7;
-        const max_tokens = params.max_tokens || 4000;
+        // 预处理HTML内容，替换图片为占位符
+        const { processedHtml, imageReferences } = preprocessHtmlForAI(htmlContent);
         
-        console.log(`OpenAI API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
-        
-        // 确定是否为Word格式，以添加相应的系统提示
-        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        // 准备API请求参数
+        const requestData = {
+            model: params.model || 'gpt-4',
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是一个专业的文档美化助手，擅长改进HTML文档的排版和样式。请保留所有原始内容和结构，包括所有图片标签。不要丢失任何信息。'
+                },
+                {
+                    role: 'user',
+                    content: `${prompt}\n\n原始HTML：\n\`\`\`html\n${processedHtml}\n\`\`\``
+                }
+            ],
+            temperature: params.temperature || 0.7,
+            max_tokens: params.max_tokens || 4000,
+        };
         
         // 调用OpenAI API
-        const response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            {
-                model: 'gpt-4-turbo', // 使用适当的模型
-                messages: [
-                    { 
-                        role: 'system', 
-                        content: isWordFormat ?
-                            '你是一个专业的文档美化和排版专家。请仅使用以下HTML/CSS修改文本样式，其他标签和样式将被忽略：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止使用class、id、div布局或复杂CSS。' :
-                            '你是一个专业的文档美化和排版专家。你擅长将简单的HTML文档转换为视觉吸引力强、结构清晰的文档。保持原始内容的完整性，同时改进其呈现方式。'
-                    },
-                    { role: 'user', content: userInput }
-                ],
-                temperature: temperature,
-                max_tokens: max_tokens
+        console.log('发送OpenAI API请求...');
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
             },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                }
-            }
-        );
-
-        // 提取响应中的HTML内容
-        const assistantResponse = response.data.choices[0].message.content;
-        return extractHtmlFromResponse(assistantResponse);
-    } catch (error) {
-        console.error('调用OpenAI API时出错:', error);
-        if (error.response) {
-            console.error('API响应:', error.response.data);
+            body: JSON.stringify(requestData)
+        });
+        
+        // 检查响应状态
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+            console.error('OpenAI API响应错误:', errorData);
+            throw new Error(`OpenAI API错误 (${response.status}): ${errorData.error?.message || '未知错误'}`);
         }
-        throw new Error(`OpenAI处理失败: ${error.message}`);
+        
+        // 解析响应
+        const data = await response.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            console.error('OpenAI API响应格式异常:', data);
+            throw new Error('OpenAI API响应无效');
+        }
+        
+        // 获取响应内容
+        const content = data.choices[0].message.content;
+        console.log('收到OpenAI响应，长度:', content.length);
+        
+        // 从响应中提取HTML内容
+        const extractedHtml = extractHtmlFromResponse(content, imageReferences);
+        
+        return extractedHtml;
+    } catch (error) {
+        console.error('OpenAI文档美化失败:', error);
+        // 重新抛出错误，确保错误能被上层函数正确捕获
+        throw error;
     }
 }
 
 /**
- * 预处理HTML内容，适应AI处理所需
+ * 预处理HTML内容，减少AI处理所需的标记数
+ * 1. 替换图片标签为占位符
+ * 2. 移除不必要的空白和注释
+ * 3. 如果内容太长，则截断它
  * @param {string} htmlContent 原始HTML内容
- * @returns {string} 处理后的HTML内容
+ * @returns {object} 包含处理后的HTML和图片引用信息的对象
  */
 function preprocessHtmlForAI(htmlContent) {
-    let processedHtml = htmlContent;
+    if (!htmlContent) return { processedHtml: '', imageReferences: [] };
     
-    // 1. 移除不必要的空白字符和注释
-    processedHtml = processedHtml.replace(/\s+/g, ' ');
-    processedHtml = processedHtml.replace(/<!--[\s\S]*?-->/g, '');
+    // 记录原始长度
+    console.log(`预处理前HTML长度: ${htmlContent.length}`);
     
-    // 2. 替换所有图片标签为占位符
-    // 先保存所有图片引用信息，用于后续恢复
+    // 删除注释
+    let processed = htmlContent.replace(/<!--[\s\S]*?-->/g, '');
+    
+    // 删除多余的空白，但保留换行
+    processed = processed.replace(/\s+/g, ' ').replace(/>\s+</g, '><');
+    
+    // 保存图片引用
     const imageReferences = [];
-    let imageCounter = 0;
+    let imageIndex = 0;
     
-    processedHtml = processedHtml.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, function(match, src) {
-        // 提取alt属性
-        const altMatch = match.match(/alt="([^"]*)"/i);
-        const alt = altMatch ? altMatch[1] : "图片";
+    // 替换图片标签为占位符，但保存引用
+    processed = processed.replace(/<img\s+([^>]*)src=["']([^"']*)["']([^>]*)>/gi, (match, beforeSrc, src, afterSrc) => {
+        // 提取所有属性
+        const fullTag = beforeSrc + 'src="' + src + '"' + afterSrc;
+        const attributes = {};
         
-        // 保存图片信息
-        const imageId = `img-placeholder-${imageCounter++}`;
+        // 提取所有关键属性
+        const altMatch = fullTag.match(/alt=["']([^"']*)["']/i);
+        const widthMatch = fullTag.match(/width=["']([^"']*)["']/i);
+        const heightMatch = fullTag.match(/height=["']([^"']*)["']/i);
+        const classMatch = fullTag.match(/class=["']([^"']*)["']/i);
+        const styleMatch = fullTag.match(/style=["']([^"']*)["']/i);
+        
+        if (altMatch) attributes.alt = altMatch[1];
+        if (widthMatch) attributes.width = widthMatch[1];
+        if (heightMatch) attributes.height = heightMatch[1];
+        if (classMatch) attributes.class = classMatch[1];
+        if (styleMatch) attributes.style = styleMatch[1];
+        
+        // 检查是否为上色后的图片
+        const isColorized = src.includes('_colorized');
+        
+        // 保存引用 - 特别处理上色后的图片，确保优先使用上色版本
         imageReferences.push({
-            id: imageId,
+            index: imageIndex,
             src: src,
-            alt: alt,
-            originalTag: match
+            isColorized: isColorized,
+            attributes: attributes,
+            originalMatch: match // 保存原始标签以备需要
         });
         
-        // 返回简化的图片占位符标签
-        return `<img id="${imageId}" src="image-placeholder.png" alt="[图片占位 - AI处理时保留此标签]" class="image-placeholder" />`;
+        // 创建包含所有原始属性数据的占位符标签
+        let placeholder = `<img id="img-placeholder-${imageIndex}" data-src="${src}"`;
+        
+        // 添加所有属性作为data属性
+        if (attributes.alt) placeholder += ` data-alt="${attributes.alt}"`;
+        if (attributes.width) placeholder += ` data-width="${attributes.width}"`;
+        if (attributes.height) placeholder += ` data-height="${attributes.height}"`;
+        if (attributes.class) placeholder += ` data-class="${attributes.class}"`;
+        if (attributes.style) placeholder += ` data-style="${attributes.style}"`;
+        if (isColorized) placeholder += ` data-colorized="true"`;
+        
+        placeholder += ` src="placeholder.jpg">`;
+        
+        console.log(`处理图片: ${isColorized ? '彩色版' : '普通'} - ${src}`);
+        
+        imageIndex++;
+        return placeholder;
     });
     
-    // 3. 如果内容超过限制，进行智能截断
-    const maxContentLength = 10000; // 最大内容长度
-    if (processedHtml.length > maxContentLength) {
-        // 提取头部信息
-        const headMatch = processedHtml.match(/<head>[\s\S]*?<\/head>/);
-        const headContent = headMatch ? headMatch[0] : '<head></head>';
-        
-        // 提取正文开始部分
-        const bodyStartMatch = processedHtml.match(/<body[^>]*>([\s\S]{0,3000})/);
-        const bodyStart = bodyStartMatch ? bodyStartMatch[1] : '';
-        
-        // 提取正文结束部分
-        const bodyEndMatch = processedHtml.match(/([\s\S]{0,2000})<\/body>/);
-        const bodyEnd = bodyEndMatch ? bodyEndMatch[1] : '';
-        
-        // 重组HTML结构
-        processedHtml = `<!DOCTYPE html><html>${headContent}<body>${bodyStart}...(中间内容已省略以减少token数)...${bodyEnd}</body></html>`;
+    // 如果处理后的内容过长，可能需要截断
+    const MAX_LENGTH = 10000; // 可根据需要调整
+    if (processed.length > MAX_LENGTH) {
+        console.log(`处理后HTML过长(${processed.length})，截断到${MAX_LENGTH}...`);
+        // 智能截断，尝试在HTML标签边界处截断
+        let truncated = processed.substring(0, MAX_LENGTH);
+        // 确保截断后的HTML结构完整
+        const openBodyIndex = truncated.indexOf('<body');
+        if (openBodyIndex !== -1) {
+            // 确保结尾处有</body></html>
+            truncated += '...</div></body></html>';
+        }
+        processed = truncated;
     }
     
-    console.log(`预处理后HTML长度: ${processedHtml.length}, 替换了${imageCounter}个图片为占位符`);
-    return { processedHtml, imageReferences };
+    console.log(`预处理后HTML长度: ${processed.length}, 图片引用数: ${imageReferences.length}`);
+    return { processedHtml: processed, imageReferences: imageReferences };
 }
 
 /**
@@ -315,7 +439,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         if (isPdfFormat) {
             // PDF格式使用极简提示和内容
-            enhancedPrompt = `${prompt}\n图片请保留。`;
+            enhancedPrompt = `${prompt}\n图片请保留。保持所有img标签，不要修改img标签中的src属性。`;
             userContent = processedHtml
                 // PDF格式下移除HTML文档结构，只保留body内容
                 .replace(/<\!DOCTYPE[^>]*>|<html[^>]*>|<\/html>|<head>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')
@@ -325,7 +449,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 .replace(/<!--[\s\S]*?-->/g, '');
         } else {
             // WORD格式使用更详细的提示和完整内容
-            enhancedPrompt = `${prompt}\n\n重要提示：文档中包含图片占位符标签，请保留所有<img>标签及其属性，不要改变它们的位置和结构。`;
+            enhancedPrompt = `${prompt}\n\n重要提示：文档中包含图片占位符标签，请保留所有<img>标签及其属性，不要改变它们的位置、属性和结构。特别是保留所有id属性和data-*属性。`;
             userContent = processedHtml;
         }
         
@@ -333,14 +457,24 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         const userInput = `${enhancedPrompt}\n${isPdfFormat ? '内容:' : '这是要优化的HTML内容(已优化大小):'}\n\n${userContent}`;
         console.log(`发送给API的内容长度: ${userInput.length}`);
         
+        // 检查内容长度是否超过10000字符，如果超过则拆分请求
+        const isLongContent = userInput.length > 10000;
+        if (isLongContent) {
+            console.log('内容较长，可能需要更长的处理时间');
+        }
+        
         // 添加超时和重试设置
         const axiosOptions = {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            timeout: 60000, // 60秒超时
+            timeout: isLongContent ? 180000 : 120000, // 根据内容长度调整超时时间
         };
+        
+        // 检查并输出关键参数
+        console.log(`使用的温度参数: ${temperature}, 最大token: ${max_tokens}`);
+        console.log(`提示词长度: ${enhancedPrompt.length}, 内容长度: ${userContent.length}`);
         
         // 确定是否为Word格式，以添加相应的系统提示
         const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
@@ -348,11 +482,11 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         // 构建系统提示
         let systemPrompt;
         if (isWordFormat) {
-            systemPrompt = '你是专业排版专家。请仅使用以下HTML/CSS修改文本样式：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止class、id、div布局或复杂CSS。保留图片标签。';
+            systemPrompt = '你是专业排版专家。请仅使用以下HTML/CSS修改文本样式：颜色（<span style="color:#FF0000">）、高亮（<span style="background-color:yellow">）、加粗（<b>或<strong>）、下划线（<u>）、斜体（<i>）。禁止class、id、div布局或复杂CSS。保留所有图片标签及其属性，特别是id和data-*属性。';
         } else if (isPdfFormat) {
-            systemPrompt = '你是排版专家，优化HTML为PDF。保留内容结构和图片，简洁美观。';
+            systemPrompt = '你是排版专家，优化HTML为PDF。保留内容结构和图片，简洁美观。保留所有图片标签及其属性，特别是id和data-*属性。';
         } else {
-            systemPrompt = '你是专业排版专家。保留原始内容完整性，保留所有图片标签。';
+            systemPrompt = '你是专业排版专家。保留原始内容完整性，保留所有图片标签及其属性。';
         }
         
         // 使用最新的DeepSeek API参数格式
@@ -376,40 +510,66 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         // 调用DeepSeek API
         console.log('开始请求DeepSeek API...');
         let response;
-        try {
-            response = await axios.post(
-                'https://api.deepseek.com/v1/chat/completions',
-                requestBody,
-                axiosOptions
-            );
-            
-            console.log('DeepSeek API返回状态码:', response.status);
-        } catch (apiError) {
-            // 捕获并处理API请求错误
-            if (apiError.response) {
-                // 服务器响应了错误状态码
-                console.error('DeepSeek API错误状态码:', apiError.response.status);
-                console.error('DeepSeek API错误详情:', apiError.response.data);
-                
-                // 特别处理401错误（未授权）
-                if (apiError.response.status === 401) {
-                    throw new Error('API密钥无效或未授权，请检查API密钥');
+        let retryCount = 0;
+        const maxRetries = 2;
+
+        async function tryDeepSeekRequest() {
+            try {
+                const requestStartTime = Date.now();
+                response = await axios.post(
+                    'https://api.deepseek.com/v1/chat/completions',
+                    requestBody,
+                    axiosOptions
+                );
+                const requestEndTime = Date.now();
+                console.log(`DeepSeek API请求时间: ${(requestEndTime - requestStartTime) / 1000}秒`);
+                console.log('DeepSeek API返回状态码:', response.status);
+                return true;
+            } catch (apiError) {
+                // 捕获并处理API请求错误
+                if (apiError.response) {
+                    // 服务器响应了错误状态码
+                    console.error('DeepSeek API错误状态码:', apiError.response.status);
+                    console.error('DeepSeek API错误详情:', apiError.response.data);
+                    
+                    // 特别处理401错误（未授权）
+                    if (apiError.response.status === 401) {
+                        throw new Error('API密钥无效或未授权，请检查API密钥');
+                    }
+                    
+                    // 特别处理429错误（请求过多）
+                    if (apiError.response.status === 429) {
+                        throw new Error('API请求次数超限，请稍后再试');
+                    }
+                    
+                    // 处理其他错误
+                    throw new Error(`DeepSeek API错误: ${apiError.response.status} - ${JSON.stringify(apiError.response.data)}`);
+                } else if (apiError.request) {
+                    // 请求已发送但没有收到响应
+                    console.error('DeepSeek API请求超时或无响应，尝试重试');
+                    return false; // 允许重试
+                } else {
+                    // 请求配置中发生错误
+                    throw new Error(`DeepSeek API请求配置错误: ${apiError.message}`);
                 }
-                
-                // 特别处理429错误（请求过多）
-                if (apiError.response.status === 429) {
-                    throw new Error('API请求次数超限，请稍后再试');
-                }
-                
-                // 处理其他错误
-                throw new Error(`DeepSeek API错误: ${apiError.response.status} - ${JSON.stringify(apiError.response.data)}`);
-            } else if (apiError.request) {
-                // 请求已发送但没有收到响应
-                throw new Error('DeepSeek API请求超时或无响应，请稍后再试');
-            } else {
-                // 请求配置中发生错误
-                throw new Error(`DeepSeek API请求配置错误: ${apiError.message}`);
             }
+        }
+
+        // 尝试请求，最多重试2次
+        while (retryCount <= maxRetries) {
+            const success = await tryDeepSeekRequest();
+            if (success) break;
+            
+            retryCount++;
+            if (retryCount <= maxRetries) {
+                console.log(`DeepSeek API请求失败，进行第${retryCount}次重试...`);
+                // 增加延迟，避免频繁请求
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+
+        if (!response) {
+            throw new Error('DeepSeek API请求失败，已达到最大重试次数');
         }
         
         // 提取响应中的HTML内容
@@ -421,38 +581,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         const assistantResponse = response.data.choices[0].message.content;
         console.log('DeepSeek响应内容长度:', assistantResponse.length);
         
-        let extractedHTML = extractHtmlFromResponse(assistantResponse);
-        console.log('提取的HTML内容长度:', extractedHTML.length);
-        
-        // 恢复图片引用
-        if (imageReferences && imageReferences.length > 0) {
-            console.log(`需要恢复${imageReferences.length}个图片引用`);
-            
-            // 遍历所有图片引用并恢复到响应HTML中
-            imageReferences.forEach(imgRef => {
-                const placeholderRegex = new RegExp(`<img[^>]*id=["']${imgRef.id}["'][^>]*>`, 'gi');
-                
-                // 检查占位符是否存在
-                if (extractedHTML.match(placeholderRegex)) {
-                    // 替换占位符为原始图片标签的src属性
-                    extractedHTML = extractedHTML.replace(placeholderRegex, match => {
-                        // 保留AI可能更新的其他属性，但恢复原始src
-                        return match.replace(/src=["'][^"']*["']/, `src="${imgRef.src}"`);
-                    });
-                    console.log(`已恢复图片: ${imgRef.id} -> ${imgRef.src}`);
-                } else {
-                    console.warn(`未找到图片占位符: ${imgRef.id}`);
-                }
-            });
-            
-            console.log('图片引用恢复完成');
-        }
+        // 提取HTML内容并还原图片
+        let extractedHTML = extractHtmlFromResponse(assistantResponse, imageReferences);
         
         return extractedHTML;
     } catch (error) {
-        console.error('调用DeepSeek API时出错:', error);
-        // 简化错误消息，不显示原始错误
-        throw new Error(`DeepSeek API处理失败: ${error.message}`);
+        console.error('DeepSeek API处理错误:', error);
+        throw error;
     }
 }
 
@@ -583,198 +718,530 @@ async function processWithQwq(htmlContent, prompt, apiKey, params = {}) {
 }
 
 /**
- * 从AI响应中提取HTML内容
- * @param {string} assistantResponse AI响应内容
- * @returns {string} 提取的HTML内容
+ * 从助手响应中提取HTML内容
+ * @param {string} response 助手响应
+ * @param {Array} imageReferences 图片引用数组
+ * @returns {string} 处理后的HTML内容
  */
-function extractHtmlFromResponse(assistantResponse) {
-    console.log('正在提取HTML内容，原始响应长度:', assistantResponse.length);
-    console.log('响应前100个字符:', assistantResponse.substring(0, 100));
+function extractHtmlFromResponse(response, imageReferences = []) {
+    if (!response) return '';
     
-    // 从响应中提取HTML代码块
-    const htmlMatch = assistantResponse.match(/```html\n([\s\S]*?)\n```/) || 
-                     assistantResponse.match(/```([\s\S]*?)```/) ||
-                     assistantResponse.match(/<html[\s\S]*<\/html>/) ||
-                     assistantResponse.match(/<body[\s\S]*<\/body>/);
-                     
-    console.log('HTML匹配结果:', htmlMatch ? '找到匹配' : '未找到匹配');
+    console.log(`响应内容长度: ${response.length}`);
     
-    // 如果找到HTML代码块，返回它；否则返回整个响应
-    let extractedHtml = htmlMatch ? htmlMatch[1] || htmlMatch[0] : assistantResponse;
+    // 尝试匹配常见HTML格式
+    const htmlMatches = response.match(/```html\n([\s\S]*?)\n```/);
+    const directHtmlMatches = response.match(/<html[^>]*>([\s\S]*?)<\/html>/i);
     
-    // 如果提取的内容以```开头或结尾，需要清理这些标记
-    extractedHtml = extractedHtml.replace(/^```(html)?\n/g, '').replace(/\n```$/g, '');
+    let htmlContent = '';
     
-    console.log('提取后HTML长度:', extractedHtml.length);
-    
-    // 如果返回的不是有效的HTML，进行简单的后处理
-    if (!extractedHtml.includes('<html') && !extractedHtml.includes('<body')) {
-        console.log('提取的内容不是完整HTML，进行包装');
-        // 包装为完整HTML
-        return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI优化文档</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        h1, h2, h3 { color: #2c3e50; }
-        .highlighted { background-color: #fffacd; padding: 2px 4px; }
-        .important { font-weight: bold; color: #e74c3c; }
-    </style>
-</head>
-<body>
-    ${extractedHtml}
-</body>
-</html>`;
-    }
-    
-    return extractedHtml;
-}
-
-/**
- * 清理处理后的HTML，彻底移除提示词区域
- * @param {string} html 处理后的HTML内容
- * @param {string} customRequirements 用户自定义要求，用于识别可能的提示词
- * @returns {string} 清理后的HTML内容
- */
-function cleanProcessedHtml(html, customRequirements = '') {
-    console.log('清理处理后的HTML，彻底移除提示词区域');
-    
-    // 简单方法：检查HTML内容，如果包含<body>标签，我们只保留<body>标签中的内容
-    // 然后再构建新的HTML结构
-    const bodyStart = html.indexOf('<body');
-    const bodyEnd = html.lastIndexOf('</body>');
-    
-    let bodyContent = '';
-    
-    if (bodyStart !== -1 && bodyEnd !== -1) {
-        // 找到<body>标签的闭合>
-        const bodyTagEnd = html.indexOf('>', bodyStart);
-        if (bodyTagEnd !== -1) {
-            // 提取<body>标签中的内容
-            bodyContent = html.substring(bodyTagEnd + 1, bodyEnd);
-            
-            // 现在我们有了body内容，开始清理
-            
-            // 1. 查找紫色背景的大区块
-            const bgPatterns = [
-                'background-color: purple',
-                'background-color:#',
-                'background-color: rgb',
-                'background: purple',
-                'background:#',
-                'background: rgb'
-            ];
-            
-            // 检查每个紫色背景模式
-            for (const pattern of bgPatterns) {
-                const idx = bodyContent.indexOf(pattern);
-                
-                if (idx !== -1) {
-                    // 找到紫色背景，现在查找最近的div或section开始标签
-                    const beforeBg = bodyContent.substring(0, idx);
-                    const divStart = beforeBg.lastIndexOf('<div');
-                    const sectionStart = beforeBg.lastIndexOf('<section');
-                    
-                    if (divStart !== -1 || sectionStart !== -1) {
-                        // 使用找到的最近的标签开始位置
-                        const tagStart = Math.max(divStart, sectionStart);
-                        
-                        // 向后查找匹配的结束标签
-                        const afterStart = bodyContent.substring(tagStart);
-                        const divEndIdx = afterStart.indexOf('</div>');
-                        const sectionEndIdx = afterStart.indexOf('</section>');
-                        
-                        if (divEndIdx !== -1 || sectionEndIdx !== -1) {
-                            // 使用第一个找到的结束标签
-                            let tagEnd = -1;
-                            if (divEndIdx !== -1 && sectionEndIdx !== -1) {
-                                tagEnd = Math.min(divEndIdx, sectionEndIdx);
-                            } else {
-                                tagEnd = Math.max(divEndIdx, sectionEndIdx);
-                            }
-                            
-                            if (tagEnd !== -1) {
-                                // 如果是div结束标签
-                                if (tagEnd === divEndIdx) {
-                                    tagEnd += 6; // '</div>'的长度是6
-                                } else {
-                                    tagEnd += 10; // '</section>'的长度是10
-                                }
-                                
-                                // 删除紫色背景元素
-                                const beforeElement = bodyContent.substring(0, tagStart);
-                                const afterElement = bodyContent.substring(tagStart + tagEnd);
-                                bodyContent = beforeElement + afterElement;
-                                
-                                // 继续检查下一个紫色背景
-                                continue;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 2. 使用正则表达式删除可能的提示词区域
-            // 删除开头的大型div元素，通常是提示词区域
-            bodyContent = bodyContent.replace(/^\s*<div[^>]*>[\s\S]{200,10000}?<\/div>\s*/i, '');
-            
-            // 删除包含提示词关键字的元素
-            bodyContent = bodyContent.replace(/<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[\s\S]*?<\/div>/gi, '');
-            
-            // 3. 删除开头可能的文本节点（通常是提示词）
-            const firstTagIndex = bodyContent.search(/<[a-z]+[^>]*>/i);
-            if (firstTagIndex > 100) { // 如果第一个标签前有超过100个字符的文本
-                bodyContent = bodyContent.substring(firstTagIndex);
-            }
-            
-            // 4. 删除任何包含大段文本且有背景的元素
-            bodyContent = bodyContent.replace(/<(div|section)[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,}?<\/\1>/gi, '');
-            
-            // 构建新的干净HTML
-            return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI优化文档</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        h1, h2, h3 { color: #2c3e50; }
-        .highlighted { background-color: #fffacd; padding: 2px 4px; }
-        .important { font-weight: bold; color: #e74c3c; }
-    </style>
-</head>
-<body>
-    ${bodyContent}
-</body>
-</html>`;
+    if (htmlMatches && htmlMatches[1]) {
+        console.log('从代码块中提取HTML');
+        htmlContent = htmlMatches[1];
+    } else if (directHtmlMatches && directHtmlMatches[0]) {
+        console.log('从直接HTML标记中提取');
+        htmlContent = directHtmlMatches[0];
+    } else {
+        // 如果没有明显的HTML标记，尽量清理文本并用作HTML内容
+        console.log('未找到明确的HTML标记，尝试清理响应内容');
+        htmlContent = response
+            // 删除非HTML代码块
+            .replace(/```(?!html)([\s\S]*?)```/g, '')
+            // 删除可能的Markdown标记
+            .replace(/#{1,6} /g, '')
+            .trim();
+        
+        // 检查内容是否包含基本HTML标记，如果没有，则包装它
+        if (!htmlContent.includes('<html') && !htmlContent.includes('<body')) {
+            htmlContent = `<html><body>${htmlContent}</body></html>`;
         }
     }
     
-    // 如果没有找到body标签，或者处理失败，执行基本的清理
-    console.log('未找到body标签或处理失败，执行基本清理');
-    let cleanedHtml = html;
+    console.log(`提取的HTML内容长度: ${htmlContent.length}`);
     
-    // 尝试删除大型的紫色背景区域
-    cleanedHtml = cleanedHtml.replace(/<div[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,5000}?<\/div>/gi, '');
-    cleanedHtml = cleanedHtml.replace(/<section[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]{200,5000}?<\/section>/gi, '');
+    // 找出所有上色图片引用，优先处理
+    const colorizedReferences = imageReferences ? 
+        imageReferences.filter(ref => ref.isColorized) : [];
     
-    // 尝试删除包含提示词的区域
-    cleanedHtml = cleanedHtml.replace(/<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求)[\s\S]*?<\/div>/gi, '');
+    if (colorizedReferences.length > 0) {
+        console.log(`发现${colorizedReferences.length}个上色图片引用，优先处理`);
+        
+        // 查找普通图片和占位符，替换为上色版本
+        const originalImagePattern = /<img[^>]*src=["']([^"']*?)(?:_colorized)?["'][^>]*>/gi;
+        
+        htmlContent = htmlContent.replace(originalImagePattern, (match, src) => {
+            // 尝试找到匹配的上色图片
+            const baseSrc = src.replace(/_colorized/g, ''); // 移除可能的colorized后缀
+            const colorizedRef = colorizedReferences.find(ref => 
+                ref.src.includes(baseSrc) || 
+                baseSrc.includes(ref.src.replace(/_colorized/g, '')));
+            
+            if (colorizedRef) {
+                console.log(`替换图片为上色版本: ${src} -> ${colorizedRef.src}`);
+                
+                // 确保使用正确的路径格式
+                let colorizedPath = colorizedRef.src;
+                
+                // 检查路径是否需要转换为web路径
+                if (!colorizedPath.startsWith('/') && !colorizedPath.startsWith('http')) {
+                    // 提取文件名并创建web路径
+                    const fileName = path.basename(colorizedPath);
+                    if (fileName.includes('_colorized')) {
+                        colorizedPath = '/temp/' + fileName;
+                        console.log(`转换为Web路径: ${colorizedPath}`);
+                    }
+                }
+                
+                // 构建新的图片标签，保留原始属性，添加data-colorized属性
+                let newTag = match.replace(/src=["'][^"']*["']/i, `src="${colorizedPath}" data-colorized="true"`);
+                return newTag;
+            }
+            
+            return match; // 没有找到匹配的上色图片，保持原样
+        });
+    }
     
-    return cleanedHtml;
+    // 恢复常规图片引用（包括上色图片）
+    if (imageReferences && imageReferences.length > 0) {
+        console.log(`开始恢复${imageReferences.length}个图片引用...`);
+        
+        // 创建图片占位符和原始图片标签的映射，用于更精确的替换
+        const placeholderMap = {};
+        imageReferences.forEach(ref => {
+            const placeholderId = `img-placeholder-${ref.index}`;
+            placeholderMap[placeholderId] = ref;
+        });
+        
+        // 查找所有图片标签
+        const imgTags = htmlContent.match(/<img[^>]*>/gi) || [];
+        console.log(`找到${imgTags.length}个图片标签等待处理`);
+        
+        // 替换所有图片占位符
+        for (const imgTag of imgTags) {
+            // 提取id属性
+            const idMatch = imgTag.match(/id=["']img-placeholder-(\d+)["']/i);
+            if (idMatch) {
+                const placeholderId = `img-placeholder-${idMatch[1]}`;
+                const ref = placeholderMap[placeholderId];
+                
+                if (ref) {
+                    // 获取正确的src路径
+                    let srcPath = ref.src;
+                    
+                    // 如果是上色图片，确保使用正确的web路径
+                    if (ref.isColorized && !srcPath.startsWith('/') && !srcPath.startsWith('http')) {
+                        const fileName = path.basename(srcPath);
+                        srcPath = '/temp/' + fileName;
+                        console.log(`转换上色图片为Web路径: ${srcPath}`);
+                    }
+                    
+                    // 构建还原后的图片标签
+                    let replacementTag = `<img src="${srcPath}"`;
+                    
+                    // 添加所有原始属性
+                    if (ref.attributes.alt) replacementTag += ` alt="${ref.attributes.alt}"`;
+                    if (ref.attributes.width) replacementTag += ` width="${ref.attributes.width}"`;
+                    if (ref.attributes.height) replacementTag += ` height="${ref.attributes.height}"`;
+                    if (ref.attributes.class) replacementTag += ` class="${ref.attributes.class}"`;
+                    if (ref.attributes.style) replacementTag += ` style="${ref.attributes.style}"`;
+                    
+                    // 添加colorized标记
+                    if (ref.isColorized) replacementTag += ` data-colorized="true"`;
+                    
+                    replacementTag += '>';
+                    
+                    // 执行精确替换
+                    htmlContent = htmlContent.replace(imgTag, replacementTag);
+                    console.log(`已恢复图片: ${ref.isColorized ? '彩色版' : '普通'} - ${srcPath}`);
+                }
+            }
+        }
+    }
+    
+    // 还有可能AI修改了占位符的格式，尝试使用正则表达式进行第二次匹配
+    imageReferences.forEach(ref => {
+        const placeholderRegex = new RegExp(`<img[^>]*id=["']img-placeholder-${ref.index}["'][^>]*>`, 'g');
+        
+        if (htmlContent.match(placeholderRegex)) {
+            // 获取正确的路径
+            let srcPath = ref.src;
+            
+            // 如果是上色图片，确保使用正确的web路径
+            if (ref.isColorized && !srcPath.startsWith('/') && !srcPath.startsWith('http')) {
+                const fileName = path.basename(srcPath);
+                srcPath = '/temp/' + fileName;
+                console.log(`第二阶段转换上色图片为Web路径: ${srcPath}`);
+            }
+            
+            // 构建还原后的图片标签
+            let imgTag = `<img src="${srcPath}"`;
+            
+            // 添加所有原始属性
+            if (ref.attributes.alt) imgTag += ` alt="${ref.attributes.alt}"`;
+            if (ref.attributes.width) imgTag += ` width="${ref.attributes.width}"`;
+            if (ref.attributes.height) imgTag += ` height="${ref.attributes.height}"`;
+            if (ref.attributes.class) imgTag += ` class="${ref.attributes.class}"`;
+            if (ref.attributes.style) imgTag += ` style="${ref.attributes.style}"`;
+            
+            // 添加colorized标记
+            if (ref.isColorized) imgTag += ` data-colorized="true"`;
+            
+            imgTag += '>';
+            
+            // 执行替换
+            const beforeReplace = htmlContent;
+            htmlContent = htmlContent.replace(placeholderRegex, imgTag);
+            
+            // 检查是否实际进行了替换
+            if (beforeReplace !== htmlContent) {
+                console.log(`通过正则表达式恢复图片: ${srcPath}`);
+            }
+        }
+    });
+    
+    console.log('图片引用恢复完成');
+    
+    // 最后一次检查未恢复的占位符
+    const remainingPlaceholders = htmlContent.match(/<img[^>]*id=["']img-placeholder-\d+["'][^>]*>/g);
+    if (remainingPlaceholders && remainingPlaceholders.length > 0) {
+        console.log(`发现${remainingPlaceholders.length}个未恢复的占位符，尝试最后处理`);
+        
+        for (const placeholder of remainingPlaceholders) {
+            const idMatch = placeholder.match(/id=["']img-placeholder-(\d+)["']/i);
+            const dataSrcMatch = placeholder.match(/data-src=["']([^"']*)["']/i);
+            
+            if (idMatch && dataSrcMatch) {
+                const src = dataSrcMatch[1];
+                // 查找是否有对应的上色图片
+                const colorizedSrc = src.includes('_colorized') ? src : src.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '_colorized.$1');
+                
+                // 处理路径格式
+                let webColorizedPath = colorizedSrc;
+                if (!webColorizedPath.startsWith('/') && !webColorizedPath.startsWith('http')) {
+                    const fileName = path.basename(webColorizedPath);
+                    webColorizedPath = '/temp/' + fileName;
+                    console.log(`转换占位符图片为Web路径: ${webColorizedPath}`);
+                }
+                
+                // 使用上色图片替换占位符
+                htmlContent = htmlContent.replace(placeholder, `<img src="${webColorizedPath}" data-colorized="true" alt="上色图片">`);
+                console.log(`替换未恢复的占位符为上色图片: ${webColorizedPath}`);
+            }
+        }
+    }
+    
+    // 确保所有相对路径都是正确的
+    htmlContent = htmlContent.replace(/src=["'](\.\/)?images\//g, 'src="/images/');
+    
+    return htmlContent;
+}
+
+/**
+ * 清理和规范化HTML内容
+ * @param {string} htmlContent 原始HTML内容
+ * @returns {string} 清理后的HTML内容
+ */
+function cleanHtmlContent(htmlContent) {
+    if (!htmlContent) return '';
+    
+    try {
+        // 1. 移除多余的空白字符
+        let cleaned = htmlContent.replace(/\s+/g, ' ');
+        
+        // 2. 确保HTML有正确的文档结构
+        if (!cleaned.includes('<html') && !cleaned.includes('<!DOCTYPE')) {
+            // 不是完整的HTML文档，添加必要的标签
+            cleaned = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI增强文档</title>
+</head>
+<body>
+    ${cleaned}
+</body>
+</html>`;
+        }
+        
+        // 3. 处理特殊情况：如果内容是嵌套的HTML代码块
+        if (cleaned.includes('```html')) {
+            // 提取代码块中的内容
+            const htmlMatch = cleaned.match(/```html\s*([\s\S]+?)\s*```/);
+            if (htmlMatch && htmlMatch[1]) {
+                cleaned = htmlMatch[1].trim();
+                
+                // 确保它有完整的HTML结构
+                if (!cleaned.includes('<html') && !cleaned.includes('<!DOCTYPE')) {
+                    cleaned = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI增强文档</title>
+</head>
+<body>
+    ${cleaned}
+</body>
+</html>`;
+                }
+            }
+        }
+        
+        // 4. 检查是否包含body标签，如果没有则添加
+        if (!cleaned.includes('<body')) {
+            const htmlEndMatch = cleaned.match(/<html[^>]*>([\s\S]+)<\/html>/i);
+            if (htmlEndMatch && htmlEndMatch[1]) {
+                const htmlContent = htmlEndMatch[1];
+                if (!htmlContent.includes('<body')) {
+                    // 提取head部分
+                    const headMatch = htmlContent.match(/<head>[\s\S]*?<\/head>/i);
+                    const headPart = headMatch ? headMatch[0] : '<head><meta charset="UTF-8"></head>';
+                    
+                    // 除去head部分的剩余内容
+                    const bodyContent = headMatch 
+                        ? htmlContent.replace(headMatch[0], '') 
+                        : htmlContent;
+                    
+                    // 重建HTML
+                    cleaned = cleaned.replace(htmlEndMatch[1], `${headPart}<body>${bodyContent}</body>`);
+                }
+            }
+        }
+        
+        // 5. 确保图片路径是正确的
+        cleaned = cleaned.replace(/src="(\.\/|\/)?images\//g, 'src="/images/');
+        
+        return cleaned;
+    } catch (error) {
+        console.error('清理HTML内容时出错:', error);
+        return htmlContent; // 出错时返回原始内容
+    }
+}
+
+/**
+ * 使用百度API美化HTML内容
+ * @param {string} htmlContent 原始HTML内容
+ * @param {string} prompt 优化提示
+ * @param {string} apiKey 百度API Key
+ * @param {string} secretKey 百度Secret Key
+ * @param {object} params 参数
+ * @returns {Promise<string>} 美化后的HTML内容
+ */
+async function beautifyWithBaidu(htmlContent, prompt, apiKey, secretKey, params = {}) {
+    try {
+        console.log('使用百度文心API进行文档美化');
+        
+        // 预处理HTML内容，将图片替换为占位符
+        const { processedHtml, imageReferences } = preprocessHtmlForAI(htmlContent);
+        
+        // 获取访问令牌
+        const accessToken = await getAccessToken(apiKey, secretKey);
+        
+        // 准备请求参数
+        const requestData = {
+            messages: [
+                {
+                    role: "user",
+                    content: `${prompt}\n\n原始HTML：\n\`\`\`html\n${processedHtml}\n\`\`\``
+                }
+            ],
+            temperature: params.temperature || 0.7,
+            top_p: params.top_p || 0.8
+        };
+        
+        // API请求URL
+        const apiUrl = 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro';
+        
+        console.log('发送百度文心API请求...');
+        const response = await axios.post(
+            `${apiUrl}?access_token=${accessToken}`,
+            requestData,
+            {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        
+        // 验证响应
+        if (!response.data || !response.data.result) {
+            console.error('百度API响应无效:', response.data);
+            throw new Error('百度API响应格式错误');
+        }
+        
+        // 从响应中提取HTML内容
+        const result = response.data.result;
+        console.log('收到百度API响应，长度:', result.length);
+        
+        // 提取HTML内容并恢复图片
+        const extractedHtml = extractHtmlFromResponse(result, imageReferences);
+        
+        return extractedHtml;
+    } catch (error) {
+        console.error('百度文心API文档美化失败:', error);
+        // 重新抛出错误，确保错误能被上层函数正确捕获
+        throw error;
+    }
+}
+
+/**
+ * 本地备用美化函数，用于在API连接失败时提供基本的HTML美化
+ * 这是一个简单的实现，无需网络连接，可以在API服务不可用时使用
+ * @param {string} htmlContent 原始HTML内容
+ * @param {string} targetFormat 目标格式 (pdf/word)
+ * @param {string} customRequirements 自定义要求
+ * @returns {string} 美化后的HTML内容
+ */
+function beautifyWithRules(htmlContent, targetFormat = 'word', customRequirements = '') {
+    try {
+        console.log('使用本地备用规则进行文档美化');
+        
+        if (!htmlContent) {
+            return htmlContent;
+        }
+        
+        // 确保HTML结构完整
+        let enhancedHtml = htmlContent;
+        
+        // 添加基本样式
+        let styles = `
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                color: #2c3e50;
+                margin-top: 24px;
+                margin-bottom: 16px;
+                font-weight: 600;
+                line-height: 1.25;
+            }
+            h1 { font-size: 2em; color: #1a365d; }
+            h2 { font-size: 1.5em; color: #2a4365; }
+            h3 { font-size: 1.25em; color: #2c5282; }
+            p { margin-bottom: 16px; }
+            img { max-width: 100%; height: auto; }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                margin-bottom: 16px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+            }
+            th {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+        `;
+        
+        // 根据目标格式添加特定样式
+        if (targetFormat.toLowerCase() === 'pdf') {
+            styles += `
+                body { 
+                    font-size: 12pt;
+                    line-height: 1.5;
+                }
+                @page {
+                    margin: 2cm;
+                }
+                li { margin-bottom: 8px; }
+                blockquote {
+                    border-left: 3px solid #ccc;
+                    margin-left: 0;
+                    padding-left: 16px;
+                    color: #555;
+                }
+            `;
+        } else { // word格式
+            styles += `
+                body { 
+                    font-size: 11pt; 
+                    line-height: 1.4;
+                }
+                ul, ol { margin-bottom: 16px; }
+            `;
+        }
+        
+        // 根据自定义要求调整样式
+        if (customRequirements) {
+            if (customRequirements.includes('学术') || customRequirements.includes('论文')) {
+                styles += `
+                    body { font-family: "Times New Roman", Times, serif; }
+                    h1, h2, h3 { font-weight: bold; }
+                    p { text-align: justify; }
+                `;
+            } else if (customRequirements.includes('商务') || customRequirements.includes('报告')) {
+                styles += `
+                    body { font-family: Arial, sans-serif; }
+                    h1, h2, h3 { color: #003366; }
+                    strong { color: #003366; }
+                `;
+            } else if (customRequirements.includes('创意') || customRequirements.includes('设计')) {
+                styles += `
+                    h1 { color: #6200ea; }
+                    h2 { color: #7c4dff; }
+                    h3 { color: #651fff; }
+                `;
+            } else if (customRequirements.includes('教育') || customRequirements.includes('教材')) {
+                styles += `
+                    h1 { color: #2e7d32; }
+                    h2 { color: #388e3c; }
+                    h3 { color: #43a047; }
+                    strong { background-color: #e8f5e9; padding: 0 3px; }
+                `;
+            }
+        }
+        
+        styles += `</style>`;
+        
+        // 检查是否有<head>标签
+        if (enhancedHtml.includes('<head>')) {
+            // 在head标签内添加样式
+            enhancedHtml = enhancedHtml.replace('</head>', `${styles}</head>`);
+        } else if (enhancedHtml.includes('<html>')) {
+            // 添加head标签和样式
+            enhancedHtml = enhancedHtml.replace('<html>', `<html><head>${styles}</head>`);
+        } else {
+            // 创建完整的HTML结构
+            enhancedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>美化文档</title>
+  ${styles}
+</head>
+<body>
+  ${enhancedHtml}
+</body>
+</html>`;
+        }
+        
+        console.log('本地备用美化完成，内容长度:', enhancedHtml.length);
+        return enhancedHtml;
+    } catch (error) {
+        console.error('本地备用美化失败:', error);
+        // 出错时返回原始内容
+        return htmlContent;
+    }
 }
 
 module.exports = {
     processAndSaveHtml,
+    cleanHtmlContent,
     generateOptimizationPrompt,
-    processWithAI,
+    processWithDeepseek,
     extractHtmlFromResponse,
-    cleanProcessedHtml,
-    API_TYPES
+    preprocessHtmlForAI,
+    beautifyWithBaidu,
+    beautifyWithRules,
+    getAccessToken
 }; 

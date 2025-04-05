@@ -18,6 +18,7 @@ $(document).ready(function() {
     let currentProcessedFile = null;
     let currentUploadedFile = null;
     let beautificationResults = []; // 新增：用于存储所有美化结果
+    let documentImages = []; // 存储文档中的图片
     
     // 全局变量
     let BEAUTIFY_TEMPLATES = {}; // 存储美化模板
@@ -79,6 +80,9 @@ $(document).ready(function() {
     
     // 初始化预览区域折叠功能
     initTogglePreview();
+    
+    // 初始化图片上色功能
+    initColorizeImagesBtn();
     
     // 初始化模板选择功能
     function initTemplateSelection() {
@@ -516,9 +520,9 @@ $(document).ready(function() {
         const fileType = file.name.split('.').pop().toLowerCase();
         console.log('文件类型:', fileType);
         
-        if (fileType !== 'docx' && fileType !== 'pdf') {
+        if (fileType !== 'docx' && fileType !== 'doc' && fileType !== 'pdf') {
             console.error('不支持的文件类型:', fileType);
-            showMessage('只支持Word文档(.docx)和PDF文件', 'warning');
+            showMessage('只支持Word文档(.doc/.docx)和PDF文件', 'warning');
             return false;
         }
         
@@ -626,6 +630,7 @@ $(document).ready(function() {
                         
                         // 启用美化按钮
                         $('#beautify-btn').prop('disabled', false);
+                        $('#colorize-images-btn').prop('disabled', false);
                     } else if (filePath) {
                         // 尝试加载原始文档预览
                         loadOriginalPreview(filePath);
@@ -742,6 +747,7 @@ $(document).ready(function() {
                 
                 // 确保美化按钮启用
                 $('#beautify-btn').prop('disabled', false);
+                $('#colorize-images-btn').prop('disabled', false);
             },
             error: function(xhr, status, error) {
                 console.error('预览加载失败:', error, xhr.status, xhr.responseText);
@@ -992,7 +998,10 @@ $(document).ready(function() {
                 filename: htmlFilename, // 使用HTML文件名
                 targetFormat: targetFormat,
                 apiKey: FIXED_API_KEY, // 使用固定的API密钥
-                customRequirements: customRequirements
+                customRequirements: customRequirements,
+                htmlContent: $('#preview-content').html(), // 添加HTML内容参数
+                colorizedImages: currentProcessedFile && currentProcessedFile.colorizedImages ? 
+                    currentProcessedFile.colorizedImages : [] // 传递之前上色的图片信息
             })
         })
         .then(response => {
@@ -1023,14 +1032,19 @@ $(document).ready(function() {
                 console.log('处理后的文件路径:', resultFilePath);
                 console.log('处理后的文件名:', window.processedFilename);
                 
-                // 更新当前处理后的文件（可能仍用于某些地方，暂时保留）
+                // 保存原始图片信息（如果存在）
+                const colorizedImages = currentProcessedFile && currentProcessedFile.colorizedImages ? 
+                    currentProcessedFile.colorizedImages : [];
+                
+                // 更新当前处理后的文件
                 currentProcessedFile = {
                     path: resultFilePath,
                     html: data.processedFile.html,
                     filename: window.processedFilename,
                     type: data.processedFile.type,
                     originalname: data.processedFile.originalname,
-                    prompt: customRequirements // 保存提示词
+                    prompt: customRequirements, // 保存提示词
+                    colorizedImages: colorizedImages // 保留原来上色的图片信息
                 };
 
                 // 将新结果添加到数组
@@ -1038,7 +1052,8 @@ $(document).ready(function() {
                     html: data.processedFile.html,
                     path: resultFilePath,
                     prompt: customRequirements, // 记录本次提示词
-                    targetFormat: targetFormat // 记录目标格式
+                    targetFormat: targetFormat, // 记录目标格式
+                    colorizedImages: colorizedImages // 保留原来上色的图片信息
                 });
 
                 // 显示主下载按钮（曾经被隐藏的）
@@ -1068,19 +1083,22 @@ $(document).ready(function() {
 
                 // 重新启用美化按钮，允许再次美化
                 $('#beautify-btn').prop('disabled', false);
+                $('#colorize-images-btn').prop('disabled', false);
             } else {
                 console.error('美化失败原因:', data.message);
                 showMessage('美化文档失败: ' + data.message, 'danger');
                  // 美化失败时也要重新启用按钮
                 $('#beautify-btn').prop('disabled', false);
+                $('#colorize-images-btn').prop('disabled', false);
             }
         })
         .catch(error => {
             hideLoading();
             console.error('处理美化请求时发生错误:', error);
-            showMessage('处理请求时发生错误: ' + error.message, 'danger');
-             // 出错时也要重新启用按钮
+            showMessage('处理请求时发生错误: ' + (error.message || '未知错误'), 'danger');
+            // 出错时也要重新启用按钮
             $('#beautify-btn').prop('disabled', false);
+            $('#colorize-images-btn').prop('disabled', false);
         });
     }
     
@@ -1371,8 +1389,67 @@ $(document).ready(function() {
                                     element.style.display = 'none';
                                 }
                             });
+                            
+                            // 应用已上色图片 - 遍历iframe中的所有图片
+                            console.log('处理iframe中的图片，应用上色效果');
+                            
+                            // 检查是否有上色图片信息
+                            if (currentProcessedFile && currentProcessedFile.colorizedImages && 
+                                currentProcessedFile.colorizedImages.length > 0) {
+                                
+                                const colorizedImages = currentProcessedFile.colorizedImages;
+                                console.log(`找到 ${colorizedImages.length} 张上色图片记录`);
+                                
+                                // 获取iframe中的所有图片
+                                const iframeImages = doc.querySelectorAll('img');
+                                console.log(`iframe中有 ${iframeImages.length} 张图片`);
+                                
+                                // 处理每张图片
+                                iframeImages.forEach(img => {
+                                    const imgSrc = img.getAttribute('src');
+                                    if (!imgSrc) return;
+                                    
+                                    // 提取图片文件名
+                                    const imgFilename = imgSrc.split('/').pop();
+                                    console.log(`检查图片: ${imgFilename}`);
+                                    
+                                    // 在上色记录中查找匹配
+                                    for (const colorized of colorizedImages) {
+                                        if (!colorized.success || !colorized.originalPath) continue;
+                                        
+                                        const originalFilename = colorized.originalPath.split('/').pop().split('\\').pop();
+                                        
+                                        // 检查文件名是否匹配
+                                        if (imgFilename === originalFilename || imgSrc.includes(originalFilename)) {
+                                            // 找到匹配，替换图片路径
+                                            const colorizedFilename = colorized.colorizedPath.split('/').pop().split('\\').pop();
+                                            let newSrc = '';
+                                            
+                                            // 在public/images/temp目录中查找
+                                            newSrc = `/images/temp/${colorizedFilename}`;
+                                            console.log(`将图片 ${imgSrc} 替换为 ${newSrc}`);
+                                            
+                                            // 更新图片属性
+                                            img.setAttribute('src', newSrc);
+                                            img.setAttribute('data-colorized', 'true');
+                                            img.setAttribute('data-original', originalFilename);
+                                            
+                                            // 添加加载失败时的回退处理
+                                            img.onerror = function() {
+                                                console.log(`图片加载失败，尝试使用备用路径: ${imgSrc}`);
+                                                this.src = imgSrc; // 恢复原始路径
+                                                this.onerror = null; // 防止循环
+                                            };
+                                            
+                                            break;
+                                        }
+                                    }
+                                });
+                            } else {
+                                console.log('没有找到上色图片记录');
+                            }
                         } catch (e) {
-                            console.warn('iframe后处理失败:', e);
+                            console.error('处理iframe加载后内容时出错:', e);
                         }
                     }, 500);
                 } catch (error) {
@@ -1950,12 +2027,13 @@ $(document).ready(function() {
                     iframeDoc.write(processedContent);
                     iframeDoc.close();
                     
-                    // 在iframe加载完成后执行额外处理
-                    iframe.onload = function() {
+                    // 不再使用onload事件，而是延迟处理
+                    setTimeout(() => {
                         try {
                             const doc = iframe.contentDocument || iframe.contentWindow.document;
+                            console.log('处理iframe内容 (延迟处理)');
                             
-                            // 查找并删除所有紫色背景元素和提示词
+                            // 1. 查找并删除所有紫色背景元素和提示词
                             const allElements = doc.querySelectorAll('*');
                             allElements.forEach(el => {
                                 // 检查元素内联样式
@@ -1980,7 +2058,7 @@ $(document).ready(function() {
                                 }
                             });
                             
-                            // 特别处理：检查文档开头的大段文本（通常是提示词）
+                            // 2. 特别处理：检查文档开头的大段文本（通常是提示词）
                             const bodyElement = doc.body;
                             if (bodyElement && bodyElement.childNodes.length > 0) {
                                 // 处理第一个文本节点
@@ -2000,16 +2078,163 @@ $(document).ready(function() {
                                     bodyElement.removeChild(bodyElement.firstElementChild);
                                 }
                             }
+                            
+                            // 3. 应用上色图片
+                            applyColorizedImages(doc);
                         } catch (e) {
-                            console.error('处理iframe加载后内容时出错:', e);
+                            console.error('处理iframe内容时出错:', e);
                         }
-                    };
+                    }, 500); // 延迟500毫秒处理
                 } catch (e) {
                     console.error('设置iframe内容时出错:', e);
                     // 如果上面的方法失败，回退到srcdoc方式
                     iframe.setAttribute('srcdoc', processedContent);
+                    
+                    // 为srcdoc方式添加相同的处理
+                    const oldOnload = iframe.onload;
+                    iframe.onload = function() {
+                        // 移除事件监听器，避免重复触发
+                        iframe.onload = null;
+                        
+                        // 直接处理图片，不依赖onload事件循环
+                        setTimeout(function() {
+                            try {
+                                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                                console.log('srcdoc方式处理iframe加载事件');
+                                
+                                // 如果没有获取到文档，尝试直接添加处理逻辑
+                                if (!doc || !doc.body) {
+                                    console.warn('srcdoc方式无法获取iframe文档，将在加载完成后重试');
+                                    setTimeout(applyColorizedImages, 1000);
+                                    return;
+                                }
+                                
+                                // 直接应用上色图片
+                                applyColorizedImages(doc);
+                            } catch (e) {
+                                console.error('srcdoc方式处理iframe加载后内容时出错:', e);
+                            }
+                        }, 800); // 更长的延迟
+                    };
                 }
             }, 100);
+        }
+        
+        // 抽取应用上色图片的函数，便于复用
+        function applyColorizedImages(doc) {
+            // 应用已上色图片 - 直接在iframe中应用
+            console.log('-------- 开始处理iframe中的图片，应用上色效果 --------');
+            
+            // 检查是否有上色图片信息
+            if (!currentProcessedFile) {
+                console.log('没有当前处理文件信息');
+                return;
+            }
+            
+            if (!currentProcessedFile.colorizedImages) {
+                console.log('当前处理文件中没有上色图片记录');
+                return;
+            }
+            
+            if (!currentProcessedFile.colorizedImages.length) {
+                console.log('上色图片记录为空数组');
+                return;
+            }
+            
+            const colorizedImages = currentProcessedFile.colorizedImages;
+            console.log(`找到 ${colorizedImages.length} 张上色图片记录：`, 
+                        colorizedImages.map(img => img.originalPath.split('/').pop()).join(', '));
+            
+            // 分析上色记录
+            console.log('上色记录详情:');
+            colorizedImages.forEach((img, index) => {
+                if (img.originalPath && img.colorizedPath) {
+                    const originalName = img.originalPath.split('/').pop().split('\\').pop();
+                    const colorizedName = img.colorizedPath.split('/').pop().split('\\').pop();
+                    console.log(`[${index+1}] 原图: ${originalName} -> 上色图: ${colorizedName}`);
+                }
+            });
+            
+            // 获取iframe中的所有图片
+            if (!doc) {
+                console.error('文档对象无效');
+                return;
+            }
+            
+            if (!doc.querySelectorAll) {
+                console.error('文档对象不支持querySelectorAll方法');
+                return;
+            }
+            
+            const iframeImages = doc.querySelectorAll('img');
+            console.log(`iframe中有 ${iframeImages.length} 张图片：`, 
+                       Array.from(iframeImages).map(img => img.getAttribute('src')).join(', '));
+            
+            // 处理每张图片
+            let replacedCount = 0;
+            iframeImages.forEach((img, imgIndex) => {
+                const imgSrc = img.getAttribute('src');
+                if (!imgSrc) {
+                    console.log(`[图片${imgIndex+1}] 没有src属性，跳过`);
+                    return;
+                }
+                
+                // 提取图片文件名
+                const imgFilename = imgSrc.split('/').pop();
+                console.log(`[图片${imgIndex+1}] 检查: ${imgFilename}`);
+                
+                // 在上色记录中查找匹配
+                let matchFound = false;
+                for (const colorized of colorizedImages) {
+                    if (!colorized.success || !colorized.originalPath) continue;
+                    
+                    const originalFilename = colorized.originalPath.split('/').pop().split('\\').pop();
+                    
+                    // 检查文件名是否匹配
+                    const isExactMatch = imgFilename === originalFilename;
+                    const isPartialMatch = imgSrc.includes(originalFilename);
+                    
+                    if (isExactMatch || isPartialMatch) {
+                        // 找到匹配，替换图片路径
+                        const colorizedFilename = colorized.colorizedPath.split('/').pop().split('\\').pop();
+                        const newSrc = `/images/temp/${colorizedFilename}`;
+                        
+                        console.log(`[图片${imgIndex+1}] 匹配成功! 匹配类型: ${isExactMatch ? '精确匹配' : '部分匹配'}`);
+                        console.log(`[图片${imgIndex+1}] 将 ${imgSrc} 替换为 ${newSrc}`);
+                        
+                        // 保存旧路径用于回退
+                        const oldSrc = imgSrc;
+                        
+                        // 更新图片属性
+                        img.setAttribute('src', newSrc);
+                        img.setAttribute('data-colorized', 'true');
+                        img.setAttribute('data-original', originalFilename);
+                        
+                        // 添加加载失败时的回退处理
+                        img.onerror = function() {
+                            console.log(`[图片${imgIndex+1}] 加载失败，恢复原路径: ${oldSrc}`);
+                            this.src = oldSrc; // 恢复原始路径
+                            this.onerror = null; // 防止循环
+                        };
+                        
+                        replacedCount++;
+                        matchFound = true;
+                        break;
+                    }
+                }
+                
+                if (!matchFound) {
+                    console.log(`[图片${imgIndex+1}] 没有找到匹配的上色图片`);
+                }
+            });
+            
+            if (replacedCount > 0) {
+                console.log(`✓ 成功替换了 ${replacedCount}/${iframeImages.length} 张图片为上色版本`);
+            } else {
+                console.log('✗ 未找到要替换的图片');
+            }
+            
+            console.log('-------- 图片处理完成 --------');
         }
         
         // 添加事件监听器
@@ -2058,5 +2283,444 @@ $(document).ready(function() {
                 console.log('为已存在的模板预览图片添加了放大功能');
             }
         });
+    }
+
+    // 初始化图片上色按钮事件
+    function initColorizeImagesBtn() {
+        const colorizeImagesBtn = $('#colorize-images-btn');
+        
+        // 图片上色按钮点击事件
+        colorizeImagesBtn.on('click', function() {
+            if (!currentProcessedFile) {
+                showMessage('请先上传并处理文档', 'warning');
+                return;
+            }
+            
+            // 加载文档中的图片
+            loadDocumentImages();
+        });
+        
+        // 选择/取消选择图片
+        $(document).on('click', '.image-item-checkbox', function() {
+            updateSelectedImagesCount();
+        });
+        
+        // 选择全部/取消全部按钮
+        $(document).on('click', '#select-all-images', function() {
+            const isChecked = $(this).prop('checked');
+            $('.image-item-checkbox').prop('checked', isChecked);
+            updateSelectedImagesCount();
+        });
+        
+        // 开始上色按钮
+        $('#start-colorize-btn').on('click', function() {
+            const selectedImages = getSelectedImages();
+            if (selectedImages.length === 0) {
+                showMessage('请至少选择一张图片进行上色', 'warning');
+                return;
+            }
+            
+            // 禁用开始上色按钮，防止重复点击
+            $(this).prop('disabled', true);
+            
+            startImageColorization(selectedImages);
+        });
+        
+        // 重试按钮点击事件
+        $('#colorize-retry-btn').on('click', function() {
+            // 隐藏重试按钮
+            $(this).addClass('d-none');
+            // 重新加载图片
+            loadDocumentImages();
+        });
+        
+        // 添加预览图片点击可以选择/取消选择功能
+        $(document).on('click', '.image-preview-container img', function() {
+            const checkbox = $(this).closest('.card').find('.image-item-checkbox');
+            checkbox.prop('checked', !checkbox.prop('checked'));
+            updateSelectedImagesCount();
+        });
+    }
+    
+    // 加载文档中的图片
+    function loadDocumentImages() {
+        const imagesContainer = $('#images-container');
+        imagesContainer.html(`
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在加载文档中的图片...</p>
+            </div>
+        `);
+        
+        // 重置开始上色按钮状态
+        $('#start-colorize-btn').prop('disabled', true);
+        $('.selected-count').text('(0)');
+        
+        // 显示模态框
+        const colorizeModal = new bootstrap.Modal(document.getElementById('colorizeImagesModal'));
+        colorizeModal.show();
+        
+        // 获取文档中的图片
+        const filePath = typeof currentProcessedFile === 'object' ? currentProcessedFile.path : currentProcessedFile;
+        
+        if (!filePath) {
+            imagesContainer.html(`
+                <div class="col-12 text-center py-3">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>无法获取文档路径，请重新上传文档
+                    </div>
+                </div>
+            `);
+            return;
+        }
+        
+        console.log('原始文件路径:', filePath);
+        
+        // 使用简单处理 - 只获取文件名
+        const fileName = filePath.split(/[\/\\]/).pop();
+        // 构建相对路径 - 假设文件在temp目录下
+        const requestPath = `temp/${fileName}`;
+        
+        console.log('请求路径:', requestPath);
+        
+        $.ajax({
+            url: `/api/document/images?filePath=${encodeURIComponent(requestPath)}`,
+            type: 'GET',
+            success: function(response) {
+                if (response.success && response.images && response.images.length > 0) {
+                    documentImages = response.images;
+                    displayDocumentImages(documentImages);
+                    console.log('成功加载图片:', documentImages.length);
+                } else if (response.success && response.images && response.images.length === 0) {
+                    imagesContainer.html(`
+                        <div class="col-12 text-center py-3">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>文档中没有找到可上色的图片
+                            </div>
+                            <div class="p-3 mt-3 border rounded bg-light">
+                                <h6>可能的原因：</h6>
+                                <ul class="text-start">
+                                    <li>文档中不包含任何图片</li>
+                                    <li>图片格式不受支持（仅支持JPG、PNG、GIF和BMP）</li>
+                                    <li>图片路径无法解析（如使用了相对路径或外部链接）</li>
+                                </ul>
+                                <p>如需测试，请确保文档中包含本地图片</p>
+                            </div>
+                        </div>
+                    `);
+                } else {
+                    imagesContainer.html(`
+                        <div class="col-12 text-center py-3">
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle me-2"></i>${response.message || '无法加载文档中的图片'}
+                            </div>
+                            <div class="small text-muted mt-2">
+                                <code>返回数据: ${JSON.stringify(response)}</code>
+                            </div>
+                        </div>
+                    `);
+                }
+            },
+            error: function(xhr) {
+                const errorMsg = xhr.responseJSON?.message || '服务器错误';
+                console.error('加载图片请求失败:', errorMsg);
+                console.error('状态码:', xhr.status);
+                console.error('请求路径:', requestPath);
+                console.error('响应文本:', xhr.responseText);
+                
+                imagesContainer.html(`
+                    <div class="col-12 text-center py-3">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>加载图片时出错: ${errorMsg}
+                        </div>
+                        <div class="small text-muted mt-2">
+                            <h6>错误详情:</h6>
+                            <p>状态码: ${xhr.status}</p>
+                            <p>路径: ${requestPath}</p>
+                            <p>响应: ${xhr.responseText}</p>
+                            <p>原路径: ${filePath}</p>
+                        </div>
+                    </div>
+                `);
+                
+                // 显示重试按钮
+                $('#colorize-retry-btn').removeClass('d-none');
+            }
+        });
+    }
+    
+    // 显示文档中的图片列表
+    function displayDocumentImages(images) {
+        const imagesContainer = $('#images-container');
+        
+        if (images.length === 0) {
+            imagesContainer.html(`
+                <div class="col-12 text-center py-3">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>文档中没有找到图片
+                    </div>
+                </div>
+            `);
+            return;
+        }
+        
+        let html = `
+            <div class="col-12 mb-3">
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>已找到 ${images.length} 张图片，点击图片或选择框可选择/取消选择
+                </div>
+            </div>
+            <div class="col-12 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="select-all-images">
+                    <label class="form-check-label" for="select-all-images">
+                        全选/取消全选
+                    </label>
+                </div>
+            </div>
+        `;
+        
+        // 分批显示图片，避免加载过多
+        images.forEach((image, index) => {
+            html += `
+                <div class="col-md-4 col-sm-6">
+                    <div class="card h-100">
+                        <div class="card-img-top image-preview-container" style="cursor: pointer;" title="点击选择/取消选择">
+                            <img src="${image.src}" class="img-fluid" alt="${image.name}">
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input image-item-checkbox" type="checkbox" value="${image.path}" id="img-check-${index}" data-index="${index}">
+                                <label class="form-check-label" for="img-check-${index}">
+                                    选择上色
+                                </label>
+                            </div>
+                            <h6 class="card-title text-truncate" title="${image.name}">${image.name}</h6>
+                            <p class="card-text small">
+                                <span class="badge bg-secondary">${image.type.toUpperCase()}</span>
+                                <span class="text-muted">${formatFileSize(image.size)}</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        imagesContainer.html(html);
+    }
+    
+    // 格式化文件大小
+    function formatFileSize(size) {
+        if (size < 1024) {
+            return size + ' B';
+        } else if (size < 1024 * 1024) {
+            return (size / 1024).toFixed(2) + ' KB';
+        } else {
+            return (size / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+    }
+    
+    // 更新已选择的图片数量
+    function updateSelectedImagesCount() {
+        const selectedCount = $('.image-item-checkbox:checked').length;
+        $('.selected-count').text(`(${selectedCount})`);
+        $('#start-colorize-btn').prop('disabled', selectedCount === 0);
+        
+        // 根据数量更新提示信息
+        if (selectedCount > 20) {
+            $('#colorize-warning').remove();
+            $('.modal-body').prepend(`
+                <div id="colorize-warning" class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>一次最多处理20张图片，请减少选择
+                </div>
+            `);
+            $('#start-colorize-btn').prop('disabled', true);
+        } else {
+            $('#colorize-warning').remove();
+        }
+    }
+    
+    // 获取选中的图片
+    function getSelectedImages() {
+        const selectedImages = [];
+        $('.image-item-checkbox:checked').each(function() {
+            const imagePath = $(this).val();
+            const imageIndex = $(this).data('index');
+            if (imagePath && documentImages[imageIndex]) {
+                selectedImages.push(documentImages[imageIndex]);
+            }
+        });
+        return selectedImages;
+    }
+    
+    // 开始图片上色处理
+    function startImageColorization(selectedImages) {
+        // 关闭选择图片的模态框
+        const colorizeModal = bootstrap.Modal.getInstance(document.getElementById('colorizeImagesModal'));
+        colorizeModal.hide();
+        
+        // 显示上色进度模态框
+        const progressModal = new bootstrap.Modal(document.getElementById('colorizeProgressModal'));
+        progressModal.show();
+        
+        // 收集图片路径
+        const imagePaths = selectedImages.map(img => img.path);
+        
+        // 更新进度状态
+        $('#colorize-status').text(`正在处理 ${imagePaths.length} 张图片，请稍候...`);
+        $('#colorize-progress-bar').css('width', '30%');
+        
+        // 发送上色请求
+        $.ajax({
+            url: '/api/image/colorize',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ imagePaths }),
+            success: function(response) {
+                if (response.success && response.results) {
+                    // 更新进度状态
+                    $('#colorize-status').text(response.message || '图片上色成功，正在应用到文档...');
+                    $('#colorize-progress-bar').css('width', '70%');
+                    
+                    // 将上色后的图片应用到文档
+                    applyColorizedImages(response.results);
+                } else {
+                    // 隐藏进度模态框
+                    progressModal.hide();
+                    
+                    showMessage(response.message || '图片上色失败: 未知错误', 'error');
+                    
+                    // 重新启用上色按钮
+                    $('#start-colorize-btn').prop('disabled', false);
+                }
+            },
+            error: function(xhr) {
+                // 隐藏进度模态框
+                progressModal.hide();
+                
+                const errorMsg = xhr.responseJSON?.message || '服务器错误';
+                showMessage('图片上色请求失败: ' + errorMsg, 'error');
+                
+                // 重新启用上色按钮
+                $('#start-colorize-btn').prop('disabled', false);
+            }
+        });
+    }
+    
+    // 将上色后的图片应用到文档
+    function applyColorizedImages(colorizeResults) {
+        const filePath = typeof currentProcessedFile === 'object' ? currentProcessedFile.path : currentProcessedFile;
+        
+        if (!filePath) {
+            const progressModal = bootstrap.Modal.getInstance(document.getElementById('colorizeProgressModal'));
+            progressModal.hide();
+            showMessage('无法获取文档路径，请重新上传文档', 'error');
+            return;
+        }
+        
+        // 处理文件路径，保持与loadDocumentImages函数一致
+        let requestPath = filePath;
+        
+        // 如果是绝对路径，则尝试提取相对于服务器的路径
+        if (filePath.includes('colorful-docs')) {
+            try {
+                // 尝试提取"colorful-docs"之后的部分作为相对路径
+                const relativePath = filePath.split('colorful-docs')[1];
+                if (relativePath) {
+                    requestPath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+                    console.log('替换图片时使用相对路径:', requestPath);
+                }
+            } catch (error) {
+                console.error('路径转换失败，使用原始路径:', error);
+            }
+        }
+        
+        console.log('应用上色图片，文件路径:', requestPath);
+        
+        $.ajax({
+            url: '/api/document/apply-colorized-images',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                filePath: requestPath,
+                imageResults: colorizeResults
+            }),
+            success: function(response) {
+                // 隐藏进度模态框
+                const progressModal = bootstrap.Modal.getInstance(document.getElementById('colorizeProgressModal'));
+                progressModal.hide();
+                
+                if (response.success) {
+                    $('#colorize-progress-bar').css('width', '100%');
+                    
+                    if (response.replacedCount > 0) {
+                        showMessage(`图片上色成功! ${response.replacedCount}张图片已应用到文档`, 'success');
+                        
+                        // 保存上色图片信息到当前处理文件
+                        if (currentProcessedFile) {
+                            // 合并新上色的图片和已有的上色图片
+                            currentProcessedFile.colorizedImages = currentProcessedFile.colorizedImages || [];
+                            currentProcessedFile.colorizedImages = currentProcessedFile.colorizedImages.concat(colorizeResults);
+                            
+                            // 更新最后一个美化结果的colorizedImages
+                            if (beautificationResults.length > 0) {
+                                const lastResultIndex = beautificationResults.length - 1;
+                                beautificationResults[lastResultIndex].colorizedImages = currentProcessedFile.colorizedImages;
+                            }
+                            
+                            console.log('更新上色图片记录，当前共有', currentProcessedFile.colorizedImages.length, '张上色图片');
+                        }
+                        
+                        // 刷新预览（如果当前有预览）
+                        if ($('#preview-iframe').length > 0) {
+                            const iframe = document.getElementById('preview-iframe');
+                            iframe.src = iframe.src; // 重新加载iframe以显示更新后的内容
+                        }
+                        
+                        // 刷新结果显示
+                        $('.beautified-content').each(function() {
+                            if (this.contentWindow) {
+                                this.src = this.src;
+                            }
+                        });
+                    } else {
+                        showMessage('图片上色过程完成，但没有可应用的图片', 'warning');
+                    }
+                } else {
+                    showMessage('应用上色图片到文档失败: ' + (response.message || '未知错误'), 'error');
+                }
+                
+                // 重新启用上色按钮
+                $('#start-colorize-btn').prop('disabled', false);
+            },
+            error: function(xhr) {
+                // 隐藏进度模态框
+                const progressModal = bootstrap.Modal.getInstance(document.getElementById('colorizeProgressModal'));
+                progressModal.hide();
+                
+                const errorMsg = xhr.responseJSON?.message || '服务器错误';
+                console.error('应用上色图片请求失败:', errorMsg);
+                console.error('状态码:', xhr.status);
+                console.error('请求路径:', requestPath);
+                
+                showMessage('应用上色图片请求失败: ' + errorMsg, 'error');
+                
+                // 重新启用上色按钮
+                $('#start-colorize-btn').prop('disabled', false);
+            }
+        });
+    }
+
+    // 在文档上传后（正确位置）启用图片上色按钮
+    function updateUiAfterFileUpload(filePath, fileType) {
+        // ... 保留现有代码 ...
+        
+        // 启用美化按钮和图片上色按钮
+        $('#beautify-btn').prop('disabled', false);
+        $('#colorize-images-btn').prop('disabled', false);
+        
+        // ... 保留现有代码 ...
     }
 });

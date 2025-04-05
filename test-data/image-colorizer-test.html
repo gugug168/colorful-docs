@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片上色API测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        button { padding: 8px 15px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background: #45a049; }
+        #result { margin-top: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 4px; }
+        .image-container { display: flex; margin-top: 15px; }
+        .image-container div { flex: 1; margin-right: 10px; text-align: center; }
+        img { max-width: 100%; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>图片上色API测试</h1>
+    
+    <div class="form-group">
+        <label for="image">选择一张黑白图片：</label>
+        <input type="file" id="image" accept="image/jpeg,image/png,image/bmp">
+    </div>
+    
+    <button onclick="uploadAndColorize()">上传并上色</button>
+    
+    <div id="result" style="display: none;">
+        <h3>处理结果：</h3>
+        <p id="message"></p>
+        <div class="image-container">
+            <div>
+                <h4>原始图片</h4>
+                <img id="original" src="" alt="原始图片">
+            </div>
+            <div>
+                <h4>上色后</h4>
+                <img id="colorized" src="" alt="上色后的图片">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function uploadAndColorize() {
+            const fileInput = document.getElementById('image');
+            const resultDiv = document.getElementById('result');
+            const messageP = document.getElementById('message');
+            
+            if (!fileInput.files.length) {
+                alert('请先选择一张图片');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            try {
+                // 1. 上传图片
+                messageP.textContent = '正在上传图片...';
+                resultDiv.style.display = 'block';
+                
+                const uploadResponse = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error('图片上传失败');
+                }
+                
+                const uploadData = await uploadResponse.json();
+                
+                if (!uploadData.success) {
+                    throw new Error(uploadData.message || '图片上传失败');
+                }
+                
+                const imagePath = uploadData.filePath;
+                
+                // 显示原始图片
+                document.getElementById('original').src = imagePath;
+                messageP.textContent = '图片上传成功，正在处理上色...';
+                
+                // 2. 调用上色API
+                const colorizeResponse = await fetch('/api/image/colorize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imagePaths: [imagePath]
+                    })
+                });
+                
+                if (!colorizeResponse.ok) {
+                    throw new Error('图片上色请求失败');
+                }
+                
+                const colorizeData = await colorizeResponse.json();
+                
+                if (!colorizeData.success) {
+                    throw new Error(colorizeData.message || '图片上色失败');
+                }
+                
+                // 显示上色后的图片
+                const result = colorizeData.results[0];
+                if (result && result.success) {
+                    document.getElementById('colorized').src = result.colorizedPath;
+                    messageP.textContent = '图片上色成功！';
+                } else {
+                    messageP.textContent = `图片上色失败: ${result ? result.message : '未知错误'}`;
+                }
+                
+            } catch (error) {
+                messageP.textContent = `错误: ${error.message}`;
+                console.error('处理过程中出错:', error);
+            }
+        }
+    </script>
+</body>
+</html> 

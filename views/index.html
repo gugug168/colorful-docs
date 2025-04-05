@@ -82,7 +82,7 @@
                             <div class="mb-3">
                                 <label for="fileInput" id="fileInputLabel" class="form-label">选择Word文档或PDF文件</label>
                                 <div class="upload-zone mini-upload-zone mb-3">
-                                    <input type="file" id="fileInput" name="document" accept=".docx,.pdf" class="form-control">
+                                    <input type="file" id="fileInput" name="document" accept=".doc,.docx,.pdf" class="form-control">
                                     <div class="upload-prompt text-center p-1 d-none">
                                         <i class="fas fa-cloud-upload-alt fs-5 mb-0"></i>
                                         <p class="small mb-0">拖放文件或点击选择</p>
@@ -124,6 +124,9 @@
                         <div class="d-grid gap-2">
                             <button id="beautify-btn" class="btn btn-success-custom" disabled>
                                 <i class="fas fa-wand-magic-sparkles me-2"></i>美化文档
+                            </button>
+                            <button id="colorize-images-btn" class="btn btn-info-custom" disabled>
+                                <i class="fas fa-palette me-2"></i>图片上色
                             </button>
                             <button id="download-btn" class="btn btn-download d-none">
                                 <i class="fas fa-download me-2"></i>下载美化后的文档
@@ -280,6 +283,8 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- 自定义JS -->
     <script src="/js/main.js"></script>
+    <!-- 重新上色功能 -->
+    <script src="/js/recolorizer.js"></script>
     <!-- 添加额外的脚本,确保页面可滚动 -->
     <script>
         // 页面加载后确保可以滚动
@@ -317,5 +322,57 @@
             }, 1000);
         });
     </script>
+
+    <!-- 图片上色弹窗 -->
+    <div class="modal fade" id="colorizeImagesModal" tabindex="-1" aria-labelledby="colorizeImagesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="colorizeImagesModalLabel">选择需要上色的图片</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>请选择需要进行黑白到彩色转换的图片
+                    </div>
+                    <div id="images-container" class="row g-3">
+                        <!-- 图片列表将在这里动态加载 -->
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">正在加载文档中的图片...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-warning d-none" id="colorize-retry-btn">
+                        <i class="fas fa-sync me-2"></i>重试
+                    </button>
+                    <button type="button" class="btn btn-primary" id="start-colorize-btn" disabled>
+                        开始上色 <span class="selected-count">(0)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 上色进度弹窗 -->
+    <div class="modal fade" id="colorizeProgressModal" tabindex="-1" aria-labelledby="colorizeProgressModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="colorizeProgressModalLabel">正在处理图片上色</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="progress mb-3">
+                        <div id="colorize-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <p id="colorize-status" class="text-center">正在准备处理...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
