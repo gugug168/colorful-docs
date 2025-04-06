@@ -204,10 +204,13 @@ const upload = multer({
 
 // 主页路由
 app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'landing.html'));
+});
+
+app.get('/app', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
 
-// 管理后台路由
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin.html'));
 });

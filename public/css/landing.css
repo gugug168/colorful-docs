@@ -1,0 +1,421 @@
+/* 首页专用样式 */
+
+/* 通用标题样式 */
+.section-title {
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.section-subtitle {
+    color: var(--text-light);
+    font-size: 1.1rem;
+    max-width: 700px;
+    margin: 0 auto 1.5rem;
+}
+
+/* Hero区域样式 */
+.hero-section {
+    padding: 100px 0;
+    background: linear-gradient(135deg, #f8fafb 0%, #e4eaf2 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-section h1 {
+    color: var(--primary-dark);
+    margin-bottom: 1.5rem;
+}
+
+.hero-section .lead {
+    color: var(--text-light);
+    font-size: 1.2rem;
+}
+
+/* 图片对比滑块样式 */
+.image-compare-container {
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.image-slider {
+    position: relative;
+    width: 100%;
+    height: 400px;
+}
+
+.img-before, .img-after {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.img-after {
+    width: 50%;
+    clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+}
+
+.slider-line {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 4px;
+    height: 100%;
+    background: var(--primary-color);
+    transform: translateX(-50%);
+    cursor: ew-resize;
+}
+
+.slider-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.image-slider.active .slider-button {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* 功能区域样式 */
+.features-section {
+    padding: 80px 0;
+    background-color: white;
+}
+
+.feature-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    height: 100%;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    text-align: center;
+}
+
+.feature-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+}
+
+.feature-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
+    background: var(--primary-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    color: var(--primary-color);
+}
+
+.feature-card h3 {
+    margin-bottom: 15px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.feature-card p {
+    color: var(--text-light);
+    line-height: 1.6;
+}
+
+/* 使用步骤区域样式 */
+.how-it-works-section {
+    padding: 80px 0;
+    background-color: var(--background-light);
+}
+
+.step-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    height: 100%;
+    position: relative;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    text-align: center;
+    overflow: hidden;
+}
+
+.step-number {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    width: 40px;
+    height: 40px;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.step-icon {
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 20px;
+    background: var(--primary-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 35px;
+    color: var(--primary-color);
+}
+
+.step-card h3 {
+    margin-bottom: 15px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.step-card p {
+    color: var(--text-light);
+    line-height: 1.6;
+}
+
+/* 用户评价区域样式 */
+.testimonials-section {
+    padding: 80px 0;
+    background-color: white;
+}
+
+.testimonial-card {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    height: 100%;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.testimonial-content {
+    flex-grow: 1;
+    margin-bottom: 20px;
+    position: relative;
+    padding: 5px 0 0 10px;
+}
+
+.testimonial-content:before {
+    content: '"';
+    position: absolute;
+    top: -20px;
+    left: -10px;
+    font-size: 60px;
+    color: var(--primary-light);
+    font-family: Georgia, serif;
+    opacity: 0.7;
+}
+
+.testimonial-content p {
+    position: relative;
+    z-index: 1;
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.testimonial-author {
+    display: flex;
+    align-items: center;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.testimonial-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    color: var(--primary-color);
+    font-size: 20px;
+}
+
+.testimonial-info h5 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.testimonial-info p {
+    margin: 0;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+/* 常见问题区域样式 */
+.faq-section {
+    padding: 80px 0;
+    background-color: var(--background-light);
+}
+
+.accordion-item {
+    margin-bottom: 15px;
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.accordion-button {
+    padding: 1.25rem;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: white;
+    border-radius: 10px;
+}
+
+.accordion-button:not(.collapsed) {
+    color: var(--primary-color);
+    background-color: white;
+    box-shadow: none;
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: rgba(0, 0, 0, 0.125);
+}
+
+.accordion-button:not(.collapsed)::after {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%235e7ce2'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-body {
+    padding: 1.5rem;
+    background-color: white;
+    color: var(--text-light);
+    line-height: 1.6;
+}
+
+/* 立即体验区域样式 */
+.cta-section {
+    padding: 80px 0;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+}
+
+.cta-section h2 {
+    font-weight: 700;
+}
+
+.cta-section p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.cta-section .btn-primary-custom {
+    background-color: white;
+    color: var(--primary-color);
+    border: none;
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+.cta-section .btn-primary-custom:hover {
+    background-color: var(--primary-light);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 导航栏定制样式 */
+.navbar-custom {
+    padding: 15px 0;
+}
+
+.navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link.active {
+    color: white;
+}
+
+.btn-light-outline {
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    padding: 0.5rem 1.25rem;
+    border-radius: 30px;
+    transition: all 0.3s ease;
+}
+
+.btn-light-outline:hover {
+    background-color: white;
+    color: var(--primary-color);
+}
+
+/* 页脚样式 */
+.footer-custom {
+    background-color: var(--primary-dark);
+    color: white;
+}
+
+.footer-custom a {
+    color: rgba(255, 255, 255, 0.8);
+    transition: all 0.3s ease;
+}
+
+.footer-custom a:hover {
+    color: white;
+}
+
+/* 响应式调整 */
+@media (max-width: 991.98px) {
+    .hero-section {
+        padding: 60px 0;
+    }
+    
+    .image-slider {
+        height: 300px;
+    }
+    
+    .section-title {
+        font-size: 1.75rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .hero-section {
+        padding: 40px 0;
+    }
+    
+    .image-slider {
+        height: 250px;
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+    }
+    
+    .feature-card, .step-card, .testimonial-card {
+        padding: 20px;
+    }
+} 
