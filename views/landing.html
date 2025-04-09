@@ -3,372 +3,912 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文档排版与美化系统 - 一键将黑白文档变成彩色精美文档</title>
+    <title>文档排版与美化系统 - 一键智能美化文档</title>
     <!-- SEO元标签 -->
-    <meta name="description" content="文档排版与美化系统 - 使用AI技术一键将普通黑白文档转变为精美彩色文档，提升阅读体验。支持智能排版、图片上色、多种精美模板。">
-    <meta name="keywords" content="文档美化,排版系统,AI文档处理,图片上色,文档排版,彩色文档,美化工具">
+    <meta name="description" content="文档排版与美化系统 - 利用先进AI技术，一键将普通黑白文档智能转换为排版精良、色彩生动的专业文档，显著提升阅读体验与内容吸引力。">
+    <meta name="keywords" content="文档美化, AI排版, 图片上色, 文档处理, 智能排版, 彩色文档, 文档格式化, PDF美化, Word美化">
     <meta name="author" content="文档排版与美化系统">
     <meta name="robots" content="index, follow">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://your-domain.com/">
-    <meta property="og:title" content="文档排版与美化系统 - 一键美化黑白文档">
-    <meta property="og:description" content="使用AI技术一键将普通黑白文档转变为精美彩色文档，提升阅读体验。">
-    <meta property="og:image" content="https://your-domain.com/images/og-image.jpg">
+    <meta property="og:url" content="https://your-domain.com/"> <!-- 请替换为您的域名 -->
+    <meta property="og:title" content="文档排版与美化系统 - AI驱动的智能文档美化工具">
+    <meta property="og:description" content="利用先进AI技术，一键将普通黑白文档智能转换为排版精良、色彩生动的专业文档。">
+    <meta property="og:image" content="https://your-domain.com/images/og-image.png"> <!-- 请替换为您的预览图 -->
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://your-domain.com/">
-    <meta property="twitter:title" content="文档排版与美化系统 - 一键美化黑白文档">
-    <meta property="twitter:description" content="使用AI技术一键将普通黑白文档转变为精美彩色文档，提升阅读体验。">
-    <meta property="twitter:image" content="https://your-domain.com/images/og-image.jpg">
+    <meta property="twitter:url" content="https://your-domain.com/"> <!-- 请替换为您的域名 -->
+    <meta property="twitter:title" content="文档排版与美化系统 - AI驱动的智能文档美化工具">
+    <meta property="twitter:description" content="利用先进AI技术，一键将普通黑白文档智能转换为排版精良、色彩生动的专业文档。">
+    <meta property="twitter:image" content="https://your-domain.com/images/og-image.png"> <!-- 请替换为您的预览图 -->
 
     <!-- 规范链接 -->
-    <link rel="canonical" href="https://your-domain.com/">
+    <link rel="canonical" href="https://your-domain.com/"> <!-- 请替换为您的域名 -->
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <!-- Favicon -->
+    <link rel="icon" href="/images/favicon.ico" type="image/x-icon"> <!-- 请准备您的favicon -->
+
     <!-- 自定义CSS -->
-    <link href="/css/style.css" rel="stylesheet">
-    <link href="/css/landing.css" rel="stylesheet">
-    
+    <style>
+        :root {
+            --primary-color: #4A90E2; /* 主题蓝 */
+            --secondary-color: #50E3C2; /* 辅助青色 */
+            --text-dark: #333333;
+            --text-light: #666666;
+            --bg-light: #F8F9FA;
+            --bg-white: #FFFFFF;
+            --border-color: #DEE2E6;
+            --card-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            --card-hover-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+            --border-radius-sm: 0.375rem; /* 6px */
+            --border-radius-md: 0.75rem; /* 12px */
+            --border-radius-lg: 1.25rem; /* 20px */
+            --transition-speed: 0.3s;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            color: var(--text-dark);
+            background-color: var(--bg-white);
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        p {
+            color: var(--text-light);
+            margin-bottom: 1rem;
+        }
+
+        .section-padding {
+            padding: 4rem 0;
+        }
+
+        .section-title {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-light);
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Navbar */
+        .navbar-custom {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+            padding: 0.8rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.4rem;
+            color: var(--primary-color);
+        }
+        .navbar-brand i {
+            margin-right: 0.5rem;
+        }
+
+        .navbar-nav .nav-link {
+            color: var(--text-dark);
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            transition: color var(--transition-speed);
+        }
+
+        .navbar-nav .nav-link:hover,
+        .navbar-nav .nav-link.active {
+            color: var(--primary-color);
+        }
+
+        .navbar-nav .btn-nav {
+            background-color: var(--primary-color);
+            color: var(--bg-white) !important;
+            border-radius: var(--border-radius-lg);
+            padding: 0.5rem 1.2rem !important;
+            font-weight: 500;
+            transition: background-color var(--transition-speed), transform var(--transition-speed);
+            box-shadow: 0 2px 8px rgba(74, 144, 226, 0.3);
+        }
+
+        .navbar-nav .btn-nav:hover {
+            background-color: #357ABD; /* Darker primary */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+        }
+
+        /* Hero Section */
+        .hero-section {
+            background-color: var(--bg-light);
+            padding-top: 4rem;
+            padding-bottom: 3rem;
+            overflow: hidden;
+        }
+
+        .hero-section h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+        }
+
+        .hero-section .lead {
+            font-size: 1.15rem;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+        }
+
+        .btn-hero {
+             background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+             color: var(--bg-white);
+             border: none;
+             border-radius: var(--border-radius-lg);
+             padding: 0.8rem 2rem;
+             font-size: 1.1rem;
+             font-weight: 600;
+             transition: all var(--transition-speed);
+             box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .btn-hero:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+            filter: brightness(1.1);
+             color: var(--bg-white);
+        }
+
+
+        /* Image Slider (A4) */
+         .a4-container {
+             width: 100%;
+             margin-bottom: 1rem;
+         }
+         .a4-paper {
+             width: 100%;
+             padding-bottom: 141.4%; /* A4 Ratio */
+             position: relative;
+             border-radius: var(--border-radius-md);
+             overflow: hidden;
+             box-shadow: var(--card-shadow);
+             background-color: var(--bg-white);
+             border: 1px solid var(--border-color);
+         }
+         .a4-content {
+             position: absolute;
+             top: 0; left: 0; right: 0; bottom: 0;
+             padding: 0;
+             overflow: hidden;
+         }
+         .doc-frame {
+             width: 100%; height: 100%;
+             overflow: hidden;
+         }
+
+         .image-slider {
+             width: 100%; height: 100%;
+             position: relative;
+             cursor: pointer;
+             overflow: hidden;
+             border-radius: var(--border-radius-md); /* Match parent */
+         }
+         .image-slider img {
+             width: 100%; height: 100%;
+             object-fit: contain; /* Use contain to show full A4 */
+             display: block;
+             position: absolute; /* Needed for contain */
+             top: 0; left: 0;
+         }
+         .image-slider .img-after {
+             clip-path: polygon(0% 0%, 50% 0%, 50% 100%, 0% 100%);
+             transition: clip-path 0.1s ease-out;
+             z-index: 5;
+         }
+         .slider-line {
+             position: absolute;
+             top: 0; bottom: 0;
+             left: 50%; /* Initial position */
+             width: 4px;
+             background: rgba(255, 255, 255, 0.8);
+             border-left: 1px solid rgba(0,0,0,0.2);
+             border-right: 1px solid rgba(0,0,0,0.2);
+             transform: translateX(-50%);
+             z-index: 10;
+             cursor: col-resize;
+             transition: left 0.1s ease-out;
+         }
+         .slider-button {
+             position: absolute;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             width: 36px;
+             height: 36px;
+             background: var(--primary-color);
+             border-radius: 50%;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             color: white;
+             box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+             font-size: 1rem;
+             pointer-events: none; /* Prevent button from blocking drag */
+         }
+         .image-slider.active .slider-line,
+         .image-slider.active .img-after {
+             transition: none;
+         }
+
+        /* Features Section */
+        .features-section {
+            background-color: var(--bg-white);
+        }
+        .feature-card {
+            background-color: var(--bg-white);
+            border-radius: var(--border-radius-md);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+            height: 100%;
+            border: 1px solid var(--border-color);
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--card-hover-shadow);
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            width: 70px;
+            height: 70px;
+            line-height: 70px;
+            text-align: center;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            display: inline-block;
+        }
+        .feature-card h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .feature-card p {
+            font-size: 0.95rem;
+            color: var(--text-light);
+        }
+
+        /* How it Works Section */
+        .how-it-works-section {
+            background-color: var(--bg-light);
+        }
+        .step-card {
+             background-color: var(--bg-white);
+             border-radius: var(--border-radius-md);
+             padding: 2rem;
+             box-shadow: var(--card-shadow);
+             display: flex;
+             align-items: flex-start; /* Align items to the top */
+             height: 100%;
+             border: 1px solid var(--border-color);
+         }
+        .step-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            width: 45px;
+            height: 45px;
+            line-height: 45px;
+            text-align: center;
+            border-radius: 50%;
+            background-color: rgba(74, 144, 226, 0.1);
+            margin-right: 1.5rem;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+         .step-card h3 {
+             font-size: 1.2rem;
+             font-weight: 600;
+             margin-bottom: 0.5rem;
+         }
+         .step-card p {
+             font-size: 0.95rem;
+             color: var(--text-light);
+             margin-bottom: 0;
+         }
+
+        /* Testimonials & FAQ Section */
+        .testimonial-card {
+            background-color: var(--bg-white);
+            border-radius: var(--border-radius-md);
+            padding: 1.5rem;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+        .testimonial-avatar {
+             width: 50px;
+             height: 50px;
+             border-radius: 50%;
+             background-color: rgba(74, 144, 226, 0.1);
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             color: var(--primary-color);
+             font-size: 1.5rem;
+             margin-right: 1rem;
+             flex-shrink: 0;
+         }
+        .testimonial-info h5 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.1rem;
+        }
+        .testimonial-info span {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+        .testimonial-card blockquote {
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            margin-top: 1rem;
+            font-style: italic;
+            border-left: 3px solid var(--primary-color);
+            padding-left: 1rem;
+        }
+
+        .faq-section .accordion-item {
+             background-color: var(--bg-white);
+             border: 1px solid var(--border-color);
+             border-radius: var(--border-radius-md);
+             margin-bottom: 1rem;
+             box-shadow: var(--card-shadow);
+             overflow: hidden; /* Ensure border-radius applies */
+         }
+        .faq-section .accordion-header {
+            margin-bottom: 0; /* Override default */
+        }
+        .faq-section .accordion-button {
+             font-weight: 500;
+             font-size: 1rem;
+             color: var(--text-dark);
+             background-color: var(--bg-white);
+             padding: 1rem 1.5rem;
+             border: none;
+             text-align: left;
+             width: 100%;
+         }
+         .faq-section .accordion-button:not(.collapsed) {
+             color: var(--primary-color);
+             background-color: rgba(74, 144, 226, 0.05);
+             box-shadow: none;
+         }
+         .faq-section .accordion-button:focus {
+             box-shadow: none;
+             border-color: transparent;
+         }
+         .faq-section .accordion-button::after {
+            /* Customize accordion icon if desired */
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%234A90E2'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+         }
+         .faq-section .accordion-body {
+             padding: 1rem 1.5rem;
+             font-size: 0.95rem;
+             color: var(--text-light);
+         }
+
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--bg-white);
+            text-align: center;
+        }
+        .cta-section h2 {
+             font-size: 2rem;
+             font-weight: 700;
+             margin-bottom: 1rem;
+             color: var(--bg-white);
+         }
+        .cta-section p {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            color: rgba(255, 255, 255, 0.9);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+         }
+        .btn-cta {
+             background-color: var(--bg-white);
+             color: var(--primary-color);
+             border: none;
+             border-radius: var(--border-radius-lg);
+             padding: 0.8rem 2.5rem;
+             font-size: 1.1rem;
+             font-weight: 600;
+             transition: all var(--transition-speed);
+             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+         }
+        .btn-cta:hover {
+             background-color: #f0f0f0; /* Slightly darker white */
+             color: var(--primary-color);
+             transform: translateY(-3px);
+             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+         }
+
+        /* Footer */
+        .footer-custom {
+            background-color: var(--text-dark);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 3rem 0 2rem;
+            font-size: 0.9rem;
+        }
+        .footer-custom .footer-brand {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--bg-white);
+            margin-bottom: 1rem;
+            display: block;
+        }
+        .footer-custom .footer-brand i {
+             margin-right: 0.5rem;
+             color: var(--primary-color);
+         }
+        .footer-custom p {
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 0.5rem;
+         }
+         .footer-custom h5 {
+             color: var(--bg-white);
+             font-size: 1rem;
+             font-weight: 500;
+             margin-bottom: 1rem;
+         }
+        .footer-custom .list-unstyled li {
+             margin-bottom: 0.5rem;
+         }
+        .footer-custom a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: color var(--transition-speed);
+        }
+        .footer-custom a:hover {
+            color: var(--bg-white);
+            text-decoration: underline;
+        }
+        .footer-custom .social-icons a {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.2rem;
+            margin-right: 1rem;
+            transition: color var(--transition-speed);
+        }
+        .footer-custom .social-icons a:hover {
+            color: var(--primary-color);
+        }
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1.5rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 991.98px) {
+            .hero-section h1 { font-size: 2.4rem; }
+            .section-title { font-size: 2rem; }
+            .feature-card, .step-card, .testimonial-card, .faq-section .accordion-item { padding: 1.5rem; }
+            .navbar-custom { padding: 0.6rem 0; }
+            .hero-section { padding-top: 3rem; padding-bottom: 2rem; }
+        }
+         @media (max-width: 767.98px) {
+             .section-padding { padding: 3rem 0; }
+             .hero-section { text-align: center; }
+             .hero-section .text-lg-start { text-align: center !important; }
+             .hero-section h1 { font-size: 2rem; }
+             .hero-section .lead { font-size: 1.05rem; }
+             .section-title { font-size: 1.8rem; }
+             .section-subtitle { font-size: 1rem; margin-bottom: 2rem; }
+             .footer-custom .text-md-start, .footer-custom .text-md-end { text-align: center !important; }
+             .footer-custom .col-md-4 { margin-bottom: 1.5rem; }
+         }
+
+    </style>
+
     <!-- 结构化数据 -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "文档排版与美化系统",
-      "applicationCategory": "UtilitiesApplication",
+      "applicationCategory": "ProductivityApplication",
+      "operatingSystem": "Web",
       "offers": {
         "@type": "Offer",
-        "price": "0",
+        "price": "0", /* 或者具体价格 */
         "priceCurrency": "CNY"
       },
-      "description": "使用AI技术一键将普通黑白文档转变为精美彩色文档，提升阅读体验。支持智能排版、图片上色、多种精美模板。"
+      "description": "利用先进AI技术，一键将普通黑白文档智能转换为排版精良、色彩生动的专业文档，显著提升阅读体验与内容吸引力。支持智能排版、图片上色、多种精美模板。",
+      "url": "https://your-domain.com/", /* 请替换为您的域名 */
+      "author": {
+          "@type": "Organization",
+          "name": "您的公司或团队名称" /* 请替换 */
+      },
+      "screenshot": "https://your-domain.com/images/screenshot.png" /* 请提供截图URL */
     }
     </script>
 </head>
 <body>
-    <!-- 导航栏 -->
-    <nav class="navbar navbar-expand-lg navbar-custom">
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="fas fa-magic me-2"></i>文档排版与美化系统
+                <i class="fas fa-wand-magic-sparkles"></i> 文档美化大师
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#hero">首页</a>
+                        <a class="nav-link active" aria-current="page" href="#hero">首页</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#features">功能</a>
+                        <a class="nav-link" href="#features">核心功能</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#how-it-works">使用步骤</a>
+                        <a class="nav-link" href="#how-it-works">使用流程</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#testimonials">用户之声</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#faq">常见问题</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-light-outline ms-lg-3" href="/app">立即体验</a>
+                    <li class="nav-item ms-lg-3 mt-3 mt-lg-0">
+                        <a class="btn btn-nav" href="/app">立即体验</a>
                     </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <!-- Hero区域 - 黑白到彩色对比效果 -->
-    <section id="hero" class="hero-section">
+    <main>
+        <!-- Hero Section -->
+        <section id="hero" class="hero-section">
+            <div class="container">
+                <div class="row align-items-center g-5">
+                    <div class="col-lg-6 text-lg-start">
+                        <h1 class="display-4">AI赋能，文档瞬间焕彩</h1>
+                        <p class="lead">告别单调黑白，拥抱生动色彩。智能识别、精准上色、专业排版，让您的文档脱颖而出。</p>
+                        <a href="/app" class="btn btn-hero">
+                            <i class="fas fa-rocket me-2"></i> 免费开始美化
+                        </a>
+                    </div>
+                    <div class="col-lg-6">
+                         <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="a4-container">
+                                    <div class="a4-paper">
+                                        <div class="a4-content">
+                                            <div class="doc-frame">
+                                                <div class="image-slider">
+                                                    <img class="img-before" src="/images/landing/doc-after.png" alt="美化后的彩色文档">
+                                                    <img class="img-after" src="/images/landing/doc-before.png" alt="美化前的黑白文档">
+                                                    <div class="slider-line">
+                                                        <div class="slider-button"><i class="fas fa-arrows-left-right"></i></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                 <p class="text-center small text-muted mt-1">对比效果 1: 黑白 vs 彩色</p>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="a4-container">
+                                    <div class="a4-paper">
+                                        <div class="a4-content">
+                                            <div class="doc-frame">
+                                                <div class="image-slider">
+                                                    <img class="img-before" src="/images/landing/对比图2（美化）600.832.png" alt="美化后的专业排版">
+                                                    <img class="img-after" src="/images/landing/首页对比2（原图）600.832.png" alt="美化前的原始排版">
+                                                    <div class="slider-line">
+                                                        <div class="slider-button"><i class="fas fa-arrows-left-right"></i></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="text-center small text-muted mt-1">对比效果 2: 原始 vs 专业</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section id="features" class="features-section section-padding">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">核心功能亮点</h2>
+                    <p class="section-subtitle">我们利用尖端AI技术，为您提供全方位的文档美化体验。</p>
+                </div>
+                <div class="row g-4 justify-content-center">
+                    <div class="col-md-6 col-lg-4">
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-palette"></i></div>
+                            <h3>智能排版美化</h3>
+                            <p>AI自动分析文档结构，优化布局、字体、间距和颜色，打造专业视觉效果。</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-image"></i></div>
+                            <h3>精准图片上色</h3>
+                            <p>先进算法为文档中的黑白图片智能上色，还原真实色彩，增强图片表现力。</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-swatchbook"></i></div>
+                            <h3>丰富模板库</h3>
+                            <p>提供多种行业和场景的精美模板（学术、商务、教育等），一键应用，快速适配。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works Section -->
+        <section id="how-it-works" class="how-it-works-section section-padding">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">三步轻松搞定</h2>
+                    <p class="section-subtitle">告别繁琐操作，极简流程，快速获取精美文档。</p>
+                </div>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="step-card">
+                            <div class="step-number">1</div>
+                            <div>
+                                <h3>上传文档</h3>
+                                <p>拖拽或选择本地的Word/PDF文件进行上传，支持批量处理。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                         <div class="step-card">
+                            <div class="step-number">2</div>
+                            <div>
+                                <h3>选择偏好</h3>
+                                <p>选择喜欢的模板或自定义颜色、排版风格等美化选项。</p>
+                             </div>
+                         </div>
+                    </div>
+                    <div class="col-md-4">
+                         <div class="step-card">
+                            <div class="step-number">3</div>
+                            <div>
+                                <h3>下载成果</h3>
+                                <p>AI快速处理，预览满意后，一键下载高质量的美化后文档。</p>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonials Section -->
+        <section id="testimonials" class="testimonials-section section-padding">
+             <div class="container">
+                 <div class="text-center">
+                     <h2 class="section-title">用户之声</h2>
+                     <p class="section-subtitle">听听来自真实用户的评价与反馈。</p>
+                 </div>
+                 <div class="row g-4">
+                     <div class="col-md-6 col-lg-4">
+                         <div class="testimonial-card h-100">
+                            <div class="d-flex align-items-center">
+                                <div class="testimonial-avatar"><i class="fas fa-user-graduate"></i></div>
+                                <div class="testimonial-info">
+                                    <h5>张同学</h5>
+                                    <span>研究生</span>
+                                </div>
+                            </div>
+                             <blockquote>"论文排版神器！之前调格式要弄半天，现在几分钟搞定，效果还特别专业，导师都夸了。"</blockquote>
+                         </div>
+                     </div>
+                     <div class="col-md-6 col-lg-4">
+                         <div class="testimonial-card h-100">
+                             <div class="d-flex align-items-center">
+                                 <div class="testimonial-avatar"><i class="fas fa-user-tie"></i></div>
+                                 <div class="testimonial-info">
+                                     <h5>李经理</h5>
+                                     <span>市场总监</span>
+                                 </div>
+                             </div>
+                             <blockquote>"用它处理商业报告，图片上色效果很惊艳，整体颜值提升不少，客户反馈都说更易读了。"</blockquote>
+                         </div>
+                     </div>
+                     <div class="col-md-6 col-lg-4">
+                         <div class="testimonial-card h-100">
+                             <div class="d-flex align-items-center">
+                                 <div class="testimonial-avatar"><i class="fas fa-chalkboard-teacher"></i></div>
+                                 <div class="testimonial-info">
+                                     <h5>王老师</h5>
+                                     <span>高中教师</span>
+                                 </div>
+                             </div>
+                             <blockquote>"备课轻松多了！教学课件用这个工具美化后，图文并茂，色彩丰富，学生的注意力明显更集中了。"</blockquote>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+         </section>
+
+        <!-- FAQ Section -->
+        <section id="faq" class="faq-section section-padding bg-light">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-lg-8">
+                        <div class="text-center">
+                            <h2 class="section-title">常见问题解答</h2>
+                            <p class="section-subtitle">为您解答关于文档美化大师的常见疑问。</p>
+                        </div>
+                        <div class="accordion" id="faqAccordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="faqHeadingOne">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseOne" aria-expanded="false" aria-controls="faqCollapseOne">
+                                        支持哪些文件格式？
+                                    </button>
+                                </h2>
+                                <div id="faqCollapseOne" class="accordion-collapse collapse" aria-labelledby="faqHeadingOne" data-bs-parent="#faqAccordion">
+                                    <div class="accordion-body">
+                                        目前我们主要支持 Microsoft Word (.docx, .doc) 和 Adobe PDF (.pdf) 格式的文档。我们正在努力扩展对更多格式的支持，敬请期待！
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="faqHeadingTwo">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseTwo" aria-expanded="false" aria-controls="faqCollapseTwo">
+                                        美化过程会修改我的原文内容吗？
+                                    </button>
+                                </h2>
+                                <div id="faqCollapseTwo" class="accordion-collapse collapse" aria-labelledby="faqHeadingTwo" data-bs-parent="#faqAccordion">
+                                    <div class="accordion-body">
+                                        请放心，我们的AI系统专注于视觉优化，如排版、配色、图片处理等，绝不会修改、增删您的任何文字内容。您的原始内容将保持完整。
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="faqHeadingThree">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseThree" aria-expanded="false" aria-controls="faqCollapseThree">
+                                        处理一份文档大概需要多长时间？
+                                    </button>
+                                </h2>
+                                <div id="faqCollapseThree" class="accordion-collapse collapse" aria-labelledby="faqHeadingThree" data-bs-parent="#faqAccordion">
+                                    <div class="accordion-body">
+                                        处理速度取决于文档的大小、页数和复杂度。通常情况下，简单文档在几十秒内即可完成，较复杂的文档可能需要1-3分钟。
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="faqHeadingFour">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseFour" aria-expanded="false" aria-controls="faqCollapseFour">
+                                        上传的文档数据安全吗？隐私如何保障？
+                                    </button>
+                                </h2>
+                                <div id="faqCollapseFour" class="accordion-collapse collapse" aria-labelledby="faqHeadingFour" data-bs-parent="#faqAccordion">
+                                    <div class="accordion-body">
+                                        我们高度重视用户数据安全与隐私。您上传的文档仅在处理期间临时存储于加密服务器，完成美化任务后会立即彻底删除，我们绝不会存储或查阅您的文档内容。详情请参阅我们的隐私政策。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Call to Action Section -->
+        <section id="cta" class="cta-section section-padding">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-md-10 col-lg-8 text-center">
+                        <h2>即刻体验文档的华丽变身</h2>
+                        <p>无需复杂操作，无需设计基础。现在就开始，让您的文档焕发新生！</p>
+                        <a href="/app" class="btn btn-cta">
+                            <i class="fas fa-paper-plane me-2"></i> 立即免费试用
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer-custom">
         <div class="container">
-            <div class="row align-items-center">
-                <div class="col-lg-6">
-                    <h1 class="display-4 fw-bold">一键美化文档<br>让阅读更生动</h1>
-                    <p class="lead my-4">使用AI技术智能将黑白文档转换为彩色精美文档，提升阅读体验，让内容更具吸引力。</p>
-                    <a href="/app" class="btn btn-primary-custom btn-lg mt-3">立即体验</a>
-                </div>
-                <div class="col-lg-6 mt-5 mt-lg-0">
-                    <div class="image-compare-container">
-                        <div class="image-slider">
-                            <img class="img-before" src="/images/landing/doc-before.jpg" alt="黑白文档效果">
-                            <img class="img-after" src="/images/landing/doc-after.jpg" alt="彩色文档效果">
-                            <div class="slider-line">
-                                <div class="slider-button">
-                                    <i class="fas fa-arrows-left-right"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 功能介绍区域 -->
-    <section id="features" class="features-section">
-        <div class="container py-5">
-            <div class="text-center mb-5">
-                <h2 class="section-title">强大的功能</h2>
-                <p class="section-subtitle">满足您各种文档美化需求</p>
-            </div>
-            
             <div class="row g-4">
                 <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-palette"></i>
-                        </div>
-                        <h3>智能排版美化</h3>
-                        <p>使用AI技术自动分析文档结构，优化排版，调整字体与颜色，让文档更加专业美观。</p>
+                    <a class="footer-brand" href="/">
+                         <i class="fas fa-wand-magic-sparkles"></i> 文档美化大师
+                    </a>
+                    <p>AI驱动的智能文档美化平台，致力于提升文档的视觉效果与阅读体验。</p>
+                    <div class="social-icons mt-3">
+                        <a href="#" aria-label="WeChat"><i class="fab fa-weixin"></i></a>
+                        <a href="#" aria-label="Email"><i class="fas fa-envelope"></i></a>
+                        <!-- 添加其他社交媒体链接 -->
                     </div>
                 </div>
-                
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-image"></i>
-                        </div>
-                        <h3>图片智能上色</h3>
-                        <p>黑白图片一键转彩色，增强图片表现力，提升整体文档视觉效果。</p>
-                    </div>
-                </div>
-                
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-magic"></i>
-                        </div>
-                        <h3>多种模板选择</h3>
-                        <p>提供学术、商务、教育等多种精美模板，一键应用，满足不同场景需求。</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="text-center mt-5">
-                <a href="/app" class="btn btn-primary-custom">开始体验</a>
-            </div>
-        </div>
-    </section>
-
-    <!-- 使用步骤 -->
-    <section id="how-it-works" class="how-it-works-section">
-        <div class="container py-5">
-            <div class="text-center mb-5">
-                <h2 class="section-title">简单三步，美化文档</h2>
-                <p class="section-subtitle">轻松操作，快速得到精美文档</p>
-            </div>
-            
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="step-card">
-                        <div class="step-number">1</div>
-                        <div class="step-icon">
-                            <i class="fas fa-upload"></i>
-                        </div>
-                        <h3>上传文档</h3>
-                        <p>上传您需要美化的Word或PDF文档，支持多种格式。</p>
-                    </div>
-                </div>
-                
-                <div class="col-md-4">
-                    <div class="step-card">
-                        <div class="step-number">2</div>
-                        <div class="step-icon">
-                            <i class="fas fa-wand-magic-sparkles"></i>
-                        </div>
-                        <h3>选择美化方式</h3>
-                        <p>选择预设模板或自定义美化要求，一键开始美化。</p>
-                    </div>
-                </div>
-                
-                <div class="col-md-4">
-                    <div class="step-card">
-                        <div class="step-number">3</div>
-                        <div class="step-icon">
-                            <i class="fas fa-download"></i>
-                        </div>
-                        <h3>获取美化文档</h3>
-                        <p>预览美化效果，满意后下载精美文档成品。</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 用户评价 -->
-    <section id="testimonials" class="testimonials-section">
-        <div class="container py-5">
-            <div class="text-center mb-5">
-                <h2 class="section-title">用户评价</h2>
-                <p class="section-subtitle">看看其他人如何评价我们的服务</p>
-            </div>
-            
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="testimonial-card">
-                        <div class="testimonial-content">
-                            <p>"使用这个系统美化了我的学术论文，效果非常专业，节省了大量排版时间，导师非常满意！"</p>
-                        </div>
-                        <div class="testimonial-author">
-                            <div class="testimonial-avatar">
-                                <i class="fas fa-user-graduate"></i>
-                            </div>
-                            <div class="testimonial-info">
-                                <h5>张同学</h5>
-                                <p>研究生</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-4">
-                    <div class="testimonial-card">
-                        <div class="testimonial-content">
-                            <p>"我们公司的商业报告使用了这个系统美化，客户反馈非常好，内容更加生动易懂。"</p>
-                        </div>
-                        <div class="testimonial-author">
-                            <div class="testimonial-avatar">
-                                <i class="fas fa-user-tie"></i>
-                            </div>
-                            <div class="testimonial-info">
-                                <h5>李经理</h5>
-                                <p>市场总监</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-4">
-                    <div class="testimonial-card">
-                        <div class="testimonial-content">
-                            <p>"作为一名教师，这个工具帮我将教学资料变得更加生动有趣，学生的学习兴趣明显提高！"</p>
-                        </div>
-                        <div class="testimonial-author">
-                            <div class="testimonial-avatar">
-                                <i class="fas fa-chalkboard-teacher"></i>
-                            </div>
-                            <div class="testimonial-info">
-                                <h5>王老师</h5>
-                                <p>高中教师</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 常见问题 -->
-    <section id="faq" class="faq-section">
-        <div class="container py-5">
-            <div class="text-center mb-5">
-                <h2 class="section-title">常见问题</h2>
-                <p class="section-subtitle">解答您可能遇到的问题</p>
-            </div>
-            
-            <div class="row justify-content-center">
-                <div class="col-lg-8">
-                    <div class="accordion" id="faqAccordion">
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingOne">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                                    支持哪些文档格式？
-                                </button>
-                            </h2>
-                            <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#faqAccordion">
-                                <div class="accordion-body">
-                                    目前支持Word文档(.doc, .docx)和PDF文件(.pdf)格式。我们计划在未来版本中支持更多格式。
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingTwo">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                                    美化后的文档会保留原始内容吗？
-                                </button>
-                            </h2>
-                            <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#faqAccordion">
-                                <div class="accordion-body">
-                                    是的，美化过程只会改变文档的排版、样式和图片效果，不会修改或删除原始内容。您的所有文字内容和图片都将完整保留。
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingThree">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
-                                    文档处理需要多长时间？
-                                </button>
-                            </h2>
-                            <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#faqAccordion">
-                                <div class="accordion-body">
-                                    处理时间取决于文档大小和复杂度。一般简单文档只需几秒钟，较大或复杂的文档可能需要1-2分钟。图片上色功能可能需要额外的处理时间。
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingFour">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
-                                    我的文档数据安全吗？
-                                </button>
-                            </h2>
-                            <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#faqAccordion">
-                                <div class="accordion-body">
-                                    我们非常重视数据安全。您上传的文档仅用于提供美化服务，处理完成后会自动删除。我们不会存储或查看您的文档内容。
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 立即体验 -->
-    <section id="cta" class="cta-section">
-        <div class="container py-5">
-            <div class="row justify-content-center">
-                <div class="col-lg-8 text-center">
-                    <h2 class="mb-4">准备好美化您的文档了吗？</h2>
-                    <p class="mb-5">开始使用我们的文档排版与美化系统，让您的文档焕然一新！</p>
-                    <a href="/app" class="btn btn-primary-custom btn-lg">立即开始</a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 页脚 -->
-    <footer class="py-4 footer-custom">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6 text-center text-md-start">
-                    <h5><i class="fas fa-magic me-2"></i>文档排版与美化系统</h5>
-                    <p class="small">让每一份文档都能焕发光彩</p>
-                </div>
-                <div class="col-md-6 text-center text-md-end">
-                    <ul class="list-inline mb-0">
-                        <li class="list-inline-item"><a href="#" class="text-decoration-none text-white"><i class="fab fa-weixin me-1"></i> 微信</a></li>
-                        <li class="list-inline-item"><a href="#" class="text-decoration-none text-white"><i class="fas fa-envelope me-1"></i> 联系我们</a></li>
-                        <li class="list-inline-item"><a href="#" class="text-decoration-none text-white"><i class="fas fa-shield-alt me-1"></i> 隐私政策</a></li>
+                <div class="col-md-2 offset-md-1">
+                    <h5>快速链接</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#features">核心功能</a></li>
+                        <li><a href="#how-it-works">使用流程</a></li>
+                        <li><a href="#testimonials">用户之声</a></li>
+                        <li><a href="#faq">常见问题</a></li>
+                        <li><a href="/app">立即体验</a></li>
                     </ul>
-                    <p class="mt-2 mb-0 small">© 2025 文档排版与美化系统. 保留所有权利.</p>
                 </div>
+                <div class="col-md-2">
+                     <h5>资源</h5>
+                     <ul class="list-unstyled">
+                         <li><a href="#">帮助中心</a></li>
+                         <li><a href="#">博客</a></li>
+                         <li><a href="#">模板库</a></li>
+                     </ul>
+                </div>
+                 <div class="col-md-3">
+                    <h5>法律</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#">隐私政策</a></li>
+                        <li><a href="#">服务条款</a></li>
+                        <li><a href="#">联系我们</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p class="mb-0">&copy; <script>document.write(new Date().getFullYear());</script> 文档美化大师. 保留所有权利.</p>
             </div>
         </div>
     </footer>
 
-    <!-- jQuery -->
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery (if needed by landing.js or future scripts) -->
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js"></script>
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- 首页特定JS -->
+    <!-- 首页特定JS (for image slider) -->
     <script src="/js/landing.js"></script>
+
 </body>
 </html> 
