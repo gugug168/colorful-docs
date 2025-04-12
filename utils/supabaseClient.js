@@ -10,9 +10,15 @@ const path = require('path');
 // 从环境变量获取 Supabase 配置
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseKey;
 
-// 创建 Supabase 客户端
-const supabase = createClient(supabaseUrl, supabaseKey);
+// 创建 Supabase 客户端 - 使用服务角色密钥以获取更高权限
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+    },
+});
 
 /**
  * 清理文件路径，确保它是有效的 Supabase 存储键
@@ -50,15 +56,23 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
         console.log('原始文件路径:', filePath);
         console.log('清理后的文件路径:', sanitizedFilePath);
         
+        const options = {
+            contentType: 'application/octet-stream',
+            upsert: true,
+            cacheControl: '3600'
+        };
+        
+        console.log(`尝试上传文件到 ${bucket}/${sanitizedFilePath}`);
+        
         const { data, error } = await supabase.storage
             .from(bucket)
-            .upload(sanitizedFilePath, fileBuffer, {
-                contentType: 'application/octet-stream',
-                upsert: true
-            });
+            .upload(sanitizedFilePath, fileBuffer, options);
 
         if (error) {
             console.error('Supabase Storage 上传错误:', error);
+            if (error.message && error.message.includes('row-level security policy')) {
+                console.error('权限错误: 这可能是由于Supabase的行级安全策略设置导致的。请检查存储桶权限或使用服务角色密钥。');
+            }
             throw error;
         }
 
@@ -78,7 +92,8 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
         console.error('上传文件到 Supabase 失败:', error);
         return {
             success: false,
-            error: error.message
+            error: error.message,
+            details: JSON.stringify(error)
         };
     }
 }
