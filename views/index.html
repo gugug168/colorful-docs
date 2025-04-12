@@ -374,5 +374,78 @@
             </div>
         </div>
     </div>
+
+    <!-- 添加图片处理脚本 -->
+    <script>
+    // 图片处理函数 - 处理预览iframe中的图片
+    function fixPreviewImages() {
+        // 获取所有预览iframe
+        const previewIframes = document.querySelectorAll('.preview-iframe');
+        
+        previewIframes.forEach(iframe => {
+            try {
+                if (iframe.contentDocument) {
+                    // 延迟执行，确保iframe内容已加载
+                    setTimeout(() => {
+                        const iframeImages = iframe.contentDocument.querySelectorAll('img');
+                        
+                        iframeImages.forEach(img => {
+                            // 添加crossorigin属性
+                            img.setAttribute('crossorigin', 'anonymous');
+                            
+                            // 处理加载错误
+                            img.onerror = function() {
+                                console.log('iframe中图片加载失败:', this.src);
+                                
+                                // 使用代理URL
+                                if (!this.src.includes('/api/proxy-image')) {
+                                    const proxyUrl = '/api/proxy-image?url=' + encodeURIComponent(this.src);
+                                    console.log('使用代理URL:', proxyUrl);
+                                    this.src = proxyUrl;
+                                }
+                            };
+                            
+                            // 强制重新加载以触发新的加载流程
+                            const originalSrc = img.src;
+                            if (originalSrc && !originalSrc.includes('?t=')) {
+                                img.src = originalSrc + '?t=' + new Date().getTime();
+                            }
+                        });
+                    }, 1000);
+                }
+            } catch (e) {
+                console.error('处理iframe图片时出错:', e);
+            }
+        });
+    }
+
+    // 监听iframe加载完成事件
+    document.addEventListener('DOMContentLoaded', function() {
+        // 处理预览iframe加载事件
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                if (mutation.addedNodes) {
+                    mutation.addedNodes.forEach(node => {
+                        if (node.classList && node.classList.contains('preview-iframe')) {
+                            node.addEventListener('load', function() {
+                                console.log('iframe加载完成，开始处理图片');
+                                fixPreviewImages();
+                            });
+                        }
+                    });
+                }
+            });
+        });
+        
+        // 监听DOM变化
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // 初始检查
+        fixPreviewImages();
+    });
+    </script>
 </body>
 </html>

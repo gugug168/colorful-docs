@@ -207,7 +207,53 @@ exports.convertDocxToHtml = async function(docxFilePath) {
             }
             
             // 添加最精简的样式和结构
-            const minimalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial;margin:10px}h1,h2,h3{color:#333}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:4px}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
+            const minimalHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        body{font-family:Arial;margin:10px}
+        h1,h2,h3{color:#333}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #ddd;padding:4px}
+        img{max-width:100%;height:auto;display:block;margin:10px 0;border:1px solid #eee;padding:5px}
+        .img-error{border:1px solid red;background:#ffeeee}
+    </style>
+    <script>
+        // 添加图片加载错误处理
+        window.addEventListener('DOMContentLoaded', function() {
+            const images = document.querySelectorAll('img');
+            images.forEach(function(img) {
+                // 添加图片加载错误处理
+                img.onerror = function() {
+                    console.error('图片加载失败:', this.src);
+                    this.classList.add('img-error');
+                    // 尝试使用data-original属性作为后备
+                    if (this.getAttribute('data-original')) {
+                        const originalSrc = this.getAttribute('data-original');
+                        console.log('尝试加载原始图片:', originalSrc);
+                        this.setAttribute('src', '/api/proxy-image?url=' + encodeURIComponent(this.src));
+                    } else {
+                        this.setAttribute('alt', '图片加载失败 - ' + this.src);
+                    }
+                };
+                
+                // 强制CORS属性
+                img.setAttribute('crossorigin', 'anonymous');
+                
+                // 添加时间戳参数避免缓存
+                if (img.src.indexOf('?') === -1) {
+                    img.src = img.src + '?t=' + new Date().getTime();
+                }
+            });
+        });
+    </script>
+</head>
+<body>${html}</body>
+</html>`;
             
             // 保存HTML文件
             fs.writeFileSync(outputHtmlPath, minimalHtml, 'utf8');
@@ -441,7 +487,7 @@ async function convertBase64ImagesToFiles(html) {
             const imgTagContent = replacement.fullImgTag.match(/src="[^"]+"/)[0];
             const newImgTag = replacement.fullImgTag.replace(
                 imgTagContent, 
-                `src="${result.url}" data-original="${replacement.filePath}" crossorigin="anonymous"`
+                `src="${result.url}?t=${Date.now()}" data-original="${replacement.filePath}" crossorigin="anonymous" loading="lazy"`
             );
             updatedHtml = updatedHtml.replace(replacement.fullImgTag, newImgTag);
             console.log(`成功替换图片 #${i+1}, URL: ${result.url}`);

@@ -420,11 +420,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         // 增强API密钥验证
         if (!apiKey) {
-            throw new Error('未提供API密钥');
+            console.warn('未提供API密钥，将使用本地备份处理');
+            return await fallbackProcessing(htmlContent, prompt, 'word');
         }
         
         if (apiKey.length < 20) {
-            throw new Error('无效的API密钥，长度不足');
+            console.warn('无效的API密钥，长度不足，将使用本地备份处理');
+            return await fallbackProcessing(htmlContent, prompt, 'word');
         }
         
         // 预处理HTML内容，替换图片为占位符
@@ -432,6 +434,8 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         // 确定格式类型
         const isPdfFormat = prompt.includes('PDF格式') || prompt.includes('优化排版为PDF');
+        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
+        const targetFormat = isPdfFormat ? 'pdf' : (isWordFormat ? 'word' : 'html');
         
         // 根据不同格式调整提示词和内容
         let enhancedPrompt;
@@ -470,15 +474,12 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            timeout: isLongContent ? 300000 : 180000, // 增加超时时间：长内容5分钟，短内容3分钟
+            timeout: isLongContent ? 45000 : 30000, // 降低超时时间以快速失败并转入后备方案：长内容45秒，短内容30秒
         };
         
         // 检查并输出关键参数
         console.log(`使用的温度参数: ${temperature}, 最大token: ${max_tokens}`);
         console.log(`提示词长度: ${enhancedPrompt.length}, 内容长度: ${userContent.length}`);
-        
-        // 构建系统提示
-        const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
         
         // 构建系统提示
         let systemPrompt;
@@ -512,7 +513,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         console.log('开始请求DeepSeek API...');
         let response;
         let retryCount = 0;
-        const maxRetries = 3; // 增加最大重试次数
+        const maxRetries = 1; // 减少最大重试次数，避免等待太久
 
         async function tryDeepSeekRequest() {
             try {
@@ -560,52 +561,84 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                     
                     // 特别处理401错误（未授权）
                     if (apiError.response.status === 401) {
-                        throw new Error('API密钥无效或未授权，请检查DeepSeek API密钥');
+                        console.warn('API密钥无效或未授权，将使用本地备份处理');
+                        return null; // 返回null表示应该使用备份处理
+                    }
+                    
+                    // 特别处理402错误（余额不足）
+                    if (apiError.response.status === 402) {
+                        console.warn('API余额不足，将使用本地备份处理');
+                        return null;
                     }
                     
                     // 特别处理429错误（请求过多）
                     if (apiError.response.status === 429) {
-                        console.log('API请求次数超限，等待3秒后重试');
-                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        console.log('API请求次数超限，等待2秒后重试');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                         return false; // 允许重试
                     }
                     
+                    // 特别处理5xx错误（服务器错误）
+                    if (apiError.response.status >= 500) {
+                        console.warn(`DeepSeek服务器错误(${apiError.response.status})，将使用本地备份处理`);
+                        return null;
+                    }
+                    
                     // 处理其他错误
-                    throw new Error(`DeepSeek API错误: ${apiError.response.status} - ${JSON.stringify(apiError.response.data)}`);
+                    console.error(`DeepSeek API错误: ${apiError.response.status} - ${JSON.stringify(apiError.response.data)}`);
+                    return null;
                 } else if (apiError.request) {
-                    // 请求已发送但没有收到响应
-                    console.error('DeepSeek API请求超时或无响应，尝试重试');
-                    return false; // 允许重试
+                    // 请求已发送但没有收到响应 - 超时或网络问题
+                    console.error('DeepSeek API请求超时或无响应');
+                    // 直接返回null，使用备份处理
+                    return null;
                 } else {
                     // 请求配置中发生错误
-                    throw new Error(`DeepSeek API请求配置错误: ${apiError.message}`);
+                    console.error(`DeepSeek API请求配置错误: ${apiError.message}`);
+                    return null;
                 }
             }
         }
 
         // 尝试请求，最多重试maxRetries次
-        while (retryCount <= maxRetries) {
-            const success = await tryDeepSeekRequest();
-            if (success) break;
-            
+        const success = await tryDeepSeekRequest();
+        // 检查tryDeepSeekRequest的三种返回值:
+        // true - 成功，继续处理
+        // false - 失败，但可以重试
+        // null - 需要使用备份处理
+        
+        if (success === null) {
+            // 使用备份处理方案
+            console.log('切换到本地备份处理...');
+            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+        }
+        
+        if (success === false && retryCount < maxRetries) {
+            // 允许一次重试
             retryCount++;
-            if (retryCount <= maxRetries) {
-                console.log(`DeepSeek API请求失败，进行第${retryCount}次重试...`);
-                // 增加延迟，避免频繁请求
-                const delayTime = 2000 * Math.pow(2, retryCount - 1); // 指数退避策略
-                console.log(`等待${delayTime/1000}秒后重试...`);
-                await new Promise(resolve => setTimeout(resolve, delayTime));
+            console.log(`DeepSeek API请求失败，进行第${retryCount}次重试...`);
+            const delayTime = 2000;
+            console.log(`等待${delayTime/1000}秒后重试...`);
+            await new Promise(resolve => setTimeout(resolve, delayTime));
+            
+            const retrySuccess = await tryDeepSeekRequest();
+            if (retrySuccess !== true) {
+                // 如果重试也失败，使用备份处理
+                console.log('重试失败，切换到本地备份处理...');
+                return await fallbackProcessing(htmlContent, prompt, targetFormat); 
             }
         }
 
-        if (!response) {
-            throw new Error('DeepSeek API请求失败，已达到最大重试次数。请检查网络连接和API密钥。');
+        if (!response || !response.data) {
+            console.warn('未收到有效的API响应，使用本地备份处理');
+            return await fallbackProcessing(htmlContent, prompt, targetFormat);
         }
         
         // 提取响应中的HTML内容
-        if (!response.data || !response.data.choices || !response.data.choices[0]) {
+        if (!response.data.choices || !response.data.choices[0]) {
             console.error('DeepSeek API响应格式异常:', JSON.stringify(response.data));
-            throw new Error('API响应格式异常，请检查DeepSeek API是否更新');
+            console.log('使用本地备份处理...');
+            return await fallbackProcessing(htmlContent, prompt, targetFormat);
         }
         
         const assistantResponse = response.data.choices[0].message.content;
@@ -618,9 +651,110 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         return extractedHTML;
     } catch (error) {
         console.error('DeepSeek API处理错误:', error);
-        // 返回一个友好的错误信息
-        throw new Error(`AI美化失败: ${error.message}`);
+        // 任何未捕获的错误，使用备份处理
+        const targetFormat = prompt.includes('PDF格式') ? 'pdf' : 'word';
+        console.log('发生错误，切换到本地备份处理...');
+        return await fallbackProcessing(htmlContent, prompt, targetFormat);
     }
+}
+
+/**
+ * 本地备份处理HTML内容
+ * 当API请求失败时使用此函数进行本地美化
+ * @param {string} htmlContent 原始HTML内容
+ * @param {string} prompt 优化提示
+ * @param {string} targetFormat 目标格式（word/pdf/html）
+ * @returns {string} 处理后的HTML内容
+ */
+async function fallbackProcessing(htmlContent, prompt, targetFormat = 'word') {
+    console.log(`使用本地备份处理HTML内容，目标格式:${targetFormat}`);
+    
+    try {
+        // 使用beautifyWithRules函数进行本地处理
+        const enhancedHtml = beautifyWithRules(htmlContent, targetFormat, prompt);
+        
+        // 如果beautifyWithRules失败，使用简单增强
+        if (!enhancedHtml) {
+            console.log('使用极简备份处理...');
+            return basicEnhanceHtml(htmlContent, targetFormat);
+        }
+        
+        return enhancedHtml;
+    } catch (error) {
+        console.error('本地备份处理失败:', error);
+        // 最简单的增强，确保至少返回有效的HTML
+        return basicEnhanceHtml(htmlContent, targetFormat);
+    }
+}
+
+/**
+ * 极简HTML增强
+ * 这是最后的备份，确保至少返回一个工作的文档
+ * @param {string} htmlContent 原始HTML内容
+ * @param {string} targetFormat 目标格式
+ * @returns {string} 简单增强的HTML
+ */
+function basicEnhanceHtml(htmlContent, targetFormat = 'word') {
+    console.log('执行极简HTML增强...');
+    
+    // 提取正文内容
+    let bodyContent = htmlContent;
+    const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(htmlContent);
+    if (bodyMatch && bodyMatch[1]) {
+        bodyContent = bodyMatch[1];
+    }
+    
+    // 根据不同格式添加基本样式
+    let cssStyles = '';
+    if (targetFormat === 'word') {
+        cssStyles = `
+        body { font-family: Arial, sans-serif; margin: 25mm; line-height: 1.5; }
+        h1, h2, h3, h4, h5, h6 { color: #333366; margin-top: 1.2em; margin-bottom: 0.6em; }
+        h1 { font-size: 18pt; }
+        h2 { font-size: 16pt; }
+        h3 { font-size: 14pt; }
+        p { margin: 10px 0; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; }
+        th { background-color: #f2f2f2; }
+        img { max-width: 100%; height: auto; }
+        `;
+    } else if (targetFormat === 'pdf') {
+        cssStyles = `
+        body { font-family: 'Times New Roman', serif; margin: 20mm; line-height: 1.4; }
+        h1, h2, h3, h4, h5, h6 { color: #000066; margin-top: 1em; margin-bottom: 0.5em; }
+        h1 { font-size: 16pt; text-align: center; }
+        h2 { font-size: 14pt; }
+        h3 { font-size: 12pt; }
+        p { margin: 8px 0; text-align: justify; }
+        table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+        th, td { border: 1px solid #000; padding: 6px; }
+        th { background-color: #eee; }
+        img { max-width: 95%; height: auto; display: block; margin: 10px auto; }
+        `;
+    } else {
+        cssStyles = `
+        body { font-family: system-ui, sans-serif; margin: 15px; line-height: 1.5; }
+        h1, h2, h3, h4, h5, h6 { color: #0066cc; }
+        p { margin: 10px 0; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 6px; }
+        th { background-color: #f0f0f0; }
+        img { max-width: 100%; height: auto; }
+        `;
+    }
+    
+    // 组装最终HTML
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>${cssStyles}</style>
+</head>
+<body>
+    ${bodyContent}
+</body>
+</html>`;
 }
 
 /**
@@ -1117,152 +1251,311 @@ async function beautifyWithBaidu(htmlContent, prompt, apiKey, secretKey, params 
 }
 
 /**
- * 本地备用美化函数，用于在API连接失败时提供基本的HTML美化
- * 这是一个简单的实现，无需网络连接，可以在API服务不可用时使用
+ * 根据规则美化HTML内容
+ * 在API调用失败时作为备份处理方案
  * @param {string} htmlContent 原始HTML内容
- * @param {string} targetFormat 目标格式 (pdf/word)
- * @param {string} customRequirements 自定义要求
- * @returns {string} 美化后的HTML内容
+ * @param {string} targetFormat 目标格式 (word/pdf/html)
+ * @param {string} prompt 原始提示词，用于理解优化意图
+ * @returns {string} 美化后的HTML
  */
-function beautifyWithRules(htmlContent, targetFormat = 'word', customRequirements = '') {
+function beautifyWithRules(htmlContent, targetFormat = 'word', prompt = '') {
+    console.log(`执行规则美化，目标格式: ${targetFormat}`);
+    
     try {
-        console.log('使用本地备用规则进行文档美化');
-        
-        if (!htmlContent) {
+        // 解析HTML文档
+        const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+        if (!doc || !doc.body) {
+            console.warn('HTML解析失败，返回原始内容');
             return htmlContent;
         }
         
-        // 确保HTML结构完整
-        let enhancedHtml = htmlContent;
+        // 根据不同格式应用不同规则
+        let cssRules = '';
         
-        // 添加基本样式
-        let styles = `
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-            }
-            h1, h2, h3, h4, h5, h6 {
-                color: #2c3e50;
-                margin-top: 24px;
-                margin-bottom: 16px;
-                font-weight: 600;
-                line-height: 1.25;
-            }
-            h1 { font-size: 2em; color: #1a365d; }
-            h2 { font-size: 1.5em; color: #2a4365; }
-            h3 { font-size: 1.25em; color: #2c5282; }
-            p { margin-bottom: 16px; }
-            img { max-width: 100%; height: auto; }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-bottom: 16px;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: left;
-            }
-            th {
-                background-color: #f2f2f2;
-                font-weight: bold;
-            }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-        `;
-        
-        // 根据目标格式添加特定样式
-        if (targetFormat.toLowerCase() === 'pdf') {
-            styles += `
-                body { 
-                    font-size: 12pt;
-                    line-height: 1.5;
-                }
-                @page {
-                    margin: 2cm;
-                }
-                li { margin-bottom: 8px; }
-                blockquote {
-                    border-left: 3px solid #ccc;
-                    margin-left: 0;
-                    padding-left: 16px;
-                    color: #555;
-                }
+        if (targetFormat === 'word') {
+            // Word格式规则
+            cssRules = `
+                body { font-family: Arial, sans-serif; margin: 2.5cm; line-height: 1.5; }
+                h1 { font-size: 18pt; color: #333366; margin-top: 24pt; margin-bottom: 6pt; }
+                h2 { font-size: 16pt; color: #333366; margin-top: 18pt; margin-bottom: 6pt; }
+                h3 { font-size: 14pt; color: #333366; margin-top: 14pt; margin-bottom: 6pt; }
+                h4 { font-size: 12pt; color: #333366; margin-top: 12pt; margin-bottom: 6pt; }
+                p { margin: 6pt 0; }
+                table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
+                th, td { border: 1px solid #cccccc; padding: 8pt; }
+                th { background-color: #f2f2f2; }
+                img { max-width: 100%; height: auto; margin: 12pt 0; }
+                .highlight { background-color: yellow; }
+                .important { color: #FF0000; }
+                ul, ol { margin-top: 6pt; margin-bottom: 6pt; }
+                li { margin-bottom: 3pt; }
             `;
-        } else { // word格式
-            styles += `
-                body { 
-                    font-size: 11pt; 
-                    line-height: 1.4;
-                }
-                ul, ol { margin-bottom: 16px; }
+            
+            // 应用Word特定的处理规则
+            applyWordFormatting(doc);
+        } else if (targetFormat === 'pdf') {
+            // PDF格式规则
+            cssRules = `
+                body { font-family: 'Times New Roman', serif; margin: 2cm; line-height: 1.3; }
+                h1 { font-size: 16pt; color: #000066; margin-top: 18pt; margin-bottom: 6pt; text-align: center; }
+                h2 { font-size: 14pt; color: #000066; margin-top: 16pt; margin-bottom: 6pt; }
+                h3 { font-size: 12pt; color: #000066; margin-top: 14pt; margin-bottom: 6pt; }
+                h4 { font-size: 11pt; color: #000066; margin-top: 12pt; margin-bottom: 6pt; }
+                p { margin: 6pt 0; text-align: justify; }
+                table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
+                th, td { border: 1px solid #000000; padding: 6pt; }
+                th { background-color: #eeeeee; }
+                img { max-width: 90%; height: auto; display: block; margin: 12pt auto; }
+                ul, ol { margin-top: 6pt; margin-bottom: 6pt; }
+                li { margin-bottom: 3pt; }
+                .page-break { page-break-after: always; }
             `;
-        }
-        
-        // 根据自定义要求调整样式
-        if (customRequirements) {
-            if (customRequirements.includes('学术') || customRequirements.includes('论文')) {
-                styles += `
-                    body { font-family: "Times New Roman", Times, serif; }
-                    h1, h2, h3 { font-weight: bold; }
-                    p { text-align: justify; }
-                `;
-            } else if (customRequirements.includes('商务') || customRequirements.includes('报告')) {
-                styles += `
-                    body { font-family: Arial, sans-serif; }
-                    h1, h2, h3 { color: #003366; }
-                    strong { color: #003366; }
-                `;
-            } else if (customRequirements.includes('创意') || customRequirements.includes('设计')) {
-                styles += `
-                    h1 { color: #6200ea; }
-                    h2 { color: #7c4dff; }
-                    h3 { color: #651fff; }
-                `;
-            } else if (customRequirements.includes('教育') || customRequirements.includes('教材')) {
-                styles += `
-                    h1 { color: #2e7d32; }
-                    h2 { color: #388e3c; }
-                    h3 { color: #43a047; }
-                    strong { background-color: #e8f5e9; padding: 0 3px; }
-                `;
-            }
-        }
-        
-        styles += `</style>`;
-        
-        // 检查是否有<head>标签
-        if (enhancedHtml.includes('<head>')) {
-            // 在head标签内添加样式
-            enhancedHtml = enhancedHtml.replace('</head>', `${styles}</head>`);
-        } else if (enhancedHtml.includes('<html>')) {
-            // 添加head标签和样式
-            enhancedHtml = enhancedHtml.replace('<html>', `<html><head>${styles}</head>`);
+            
+            // 应用PDF特定的处理规则
+            applyPdfFormatting(doc);
         } else {
-            // 创建完整的HTML结构
-            enhancedHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>美化文档</title>
-  ${styles}
-</head>
-<body>
-  ${enhancedHtml}
-</body>
-</html>`;
+            // 通用HTML格式规则
+            cssRules = `
+                body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; line-height: 1.6; }
+                h1 { font-size: 2em; color: #0066cc; margin-top: 0.8em; margin-bottom: 0.4em; }
+                h2 { font-size: 1.5em; color: #0066cc; margin-top: 0.8em; margin-bottom: 0.4em; }
+                h3 { font-size: 1.2em; color: #0066cc; margin-top: 0.8em; margin-bottom: 0.4em; }
+                p { margin: 0.8em 0; }
+                table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+                th, td { border: 1px solid #dddddd; padding: 8px; }
+                th { background-color: #f8f8f8; }
+                img { max-width: 100%; height: auto; }
+                ul, ol { margin-top: 0.8em; margin-bottom: 0.8em; }
+                li { margin-bottom: 0.4em; }
+            `;
         }
         
-        console.log('本地备用美化完成，内容长度:', enhancedHtml.length);
-        return enhancedHtml;
+        // 根据提示词进行特定调整
+        if (prompt.includes('紧凑')) {
+            cssRules = cssRules.replace(/margin: \d+(\.\d+)?(pt|px|cm);/g, 'margin: 0.5em;');
+            cssRules = cssRules.replace(/line-height: \d+(\.\d+)?;/g, 'line-height: 1.2;');
+        }
+        
+        if (prompt.includes('宽松') || prompt.includes('间距大')) {
+            cssRules = cssRules.replace(/margin: \d+(\.\d+)?(pt|px|cm);/g, 'margin: 3em;');
+            cssRules = cssRules.replace(/line-height: \d+(\.\d+)?;/g, 'line-height: 2;');
+        }
+        
+        // 添加样式到文档头部
+        const styleTag = doc.createElement('style');
+        styleTag.textContent = cssRules;
+        
+        // 确保有head标签
+        if (!doc.head) {
+            const head = doc.createElement('head');
+            doc.documentElement.insertBefore(head, doc.body);
+        }
+        
+        doc.head.appendChild(styleTag);
+        
+        // 清理和优化文档
+        cleanupDocument(doc);
+        
+        // 返回处理后的HTML
+        return new XMLSerializer().serializeToString(doc);
     } catch (error) {
-        console.error('本地备用美化失败:', error);
-        // 出错时返回原始内容
+        console.error('规则美化失败:', error);
+        // 美化失败则返回原始内容
         return htmlContent;
+    }
+}
+
+/**
+ * 应用Word格式特定的处理
+ * @param {Document} doc DOM文档
+ */
+function applyWordFormatting(doc) {
+    try {
+        // 查找标题并调整样式
+        const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        headings.forEach(heading => {
+            // 为Word格式设置标题前的空白
+            const level = parseInt(heading.tagName.substring(1));
+            heading.style.pageBreakBefore = level === 1 ? 'always' : 'auto';
+        });
+        
+        // 美化表格
+        const tables = doc.querySelectorAll('table');
+        tables.forEach(table => {
+            table.setAttribute('border', '1');
+            table.style.borderCollapse = 'collapse';
+            table.style.width = '100%';
+            
+            // 设置表头样式
+            const headerCells = table.querySelectorAll('th');
+            headerCells.forEach(cell => {
+                cell.style.backgroundColor = '#f2f2f2';
+                cell.style.fontWeight = 'bold';
+                cell.style.textAlign = 'center';
+            });
+            
+            // 设置表格单元格样式
+            const dataCells = table.querySelectorAll('td');
+            dataCells.forEach(cell => {
+                cell.style.border = '1px solid #cccccc';
+                cell.style.padding = '6pt';
+            });
+        });
+        
+        // 调整图片居中
+        const images = doc.querySelectorAll('img');
+        images.forEach(img => {
+            // 创建包装div
+            const wrapper = doc.createElement('div');
+            wrapper.style.textAlign = 'center';
+            wrapper.style.margin = '12pt 0';
+            
+            // 将图片放入包装div
+            img.parentNode.insertBefore(wrapper, img);
+            wrapper.appendChild(img);
+            
+            // 确保图片不超过页面宽度
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+        });
+    } catch (error) {
+        console.error('应用Word格式化失败:', error);
+    }
+}
+
+/**
+ * 应用PDF格式特定的处理
+ * @param {Document} doc DOM文档
+ */
+function applyPdfFormatting(doc) {
+    try {
+        // 查找大型标题并确保分页
+        const h1Elements = doc.querySelectorAll('h1');
+        h1Elements.forEach((h1, index) => {
+            if (index > 0) {
+                // 在每个大标题前添加分页符
+                const pageBreak = doc.createElement('div');
+                pageBreak.className = 'page-break';
+                h1.parentNode.insertBefore(pageBreak, h1);
+            }
+            
+            // 主标题居中
+            h1.style.textAlign = 'center';
+        });
+        
+        // 表格优化
+        const tables = doc.querySelectorAll('table');
+        tables.forEach(table => {
+            table.setAttribute('border', '1');
+            table.style.borderCollapse = 'collapse';
+            table.style.width = '100%';
+            table.style.pageBreakInside = 'avoid';
+            
+            // 表头加粗并设置背景色
+            const headerCells = table.querySelectorAll('th');
+            headerCells.forEach(cell => {
+                cell.style.backgroundColor = '#eeeeee';
+                cell.style.fontWeight = 'bold';
+                cell.style.border = '1px solid #000000';
+                cell.style.padding = '6pt';
+            });
+            
+            // 表格单元格
+            const dataCells = table.querySelectorAll('td');
+            dataCells.forEach(cell => {
+                cell.style.border = '1px solid #000000';
+                cell.style.padding = '6pt';
+            });
+        });
+        
+        // PDF格式的图片处理
+        const images = doc.querySelectorAll('img');
+        images.forEach(img => {
+            // 创建包装div
+            const wrapper = doc.createElement('div');
+            wrapper.style.textAlign = 'center';
+            wrapper.style.margin = '12pt auto';
+            
+            // 将图片放入包装div
+            img.parentNode.insertBefore(wrapper, img);
+            wrapper.appendChild(img);
+            
+            // 确保图片大小合适
+            img.style.maxWidth = '90%';
+            img.style.height = 'auto';
+            
+            // 添加图片描述（如果有alt属性）
+            if (img.alt && img.alt.trim() !== '') {
+                const caption = doc.createElement('div');
+                caption.style.fontStyle = 'italic';
+                caption.style.fontSize = '9pt';
+                caption.style.textAlign = 'center';
+                caption.style.marginTop = '4pt';
+                caption.textContent = img.alt;
+                wrapper.appendChild(caption);
+            }
+        });
+    } catch (error) {
+        console.error('应用PDF格式化失败:', error);
+    }
+}
+
+/**
+ * 清理和优化文档
+ * @param {Document} doc DOM文档
+ */
+function cleanupDocument(doc) {
+    try {
+        // 移除空段落
+        const paragraphs = doc.querySelectorAll('p');
+        paragraphs.forEach(p => {
+            if (!p.textContent.trim() && !p.querySelector('img')) {
+                p.parentNode.removeChild(p);
+            }
+        });
+        
+        // 移除连续换行
+        const lineBreaks = doc.querySelectorAll('br');
+        lineBreaks.forEach(br => {
+            // 检查前一个元素是否也是br
+            if (br.previousElementSibling && br.previousElementSibling.tagName === 'BR') {
+                br.parentNode.removeChild(br);
+            }
+        });
+        
+        // 清理不必要的空白和注释
+        const iterator = doc.createNodeIterator(
+            doc.documentElement,
+            NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT,
+            { acceptNode: node => {
+                // 过滤空白文本节点
+                if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim() === '') {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                // 过滤注释节点
+                if (node.nodeType === Node.COMMENT_NODE) {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_REJECT;
+            }}
+        );
+        
+        let node;
+        const nodesToRemove = [];
+        while (node = iterator.nextNode()) {
+            nodesToRemove.push(node);
+        }
+        
+        // 移除收集的节点
+        nodesToRemove.forEach(node => {
+            try {
+                node.parentNode.removeChild(node);
+            } catch (e) {
+                // 忽略已删除节点的错误
+            }
+        });
+    } catch (error) {
+        console.error('文档清理失败:', error);
     }
 }
 

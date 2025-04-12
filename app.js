@@ -215,7 +215,8 @@ const upload = multer({
 app.use(cors({
   origin: '*', // 允许所有域名访问，也可以设置为特定域名
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition', 'Content-Type']  // 允许前端访问这些响应头
 }));
 
 // 添加特定请求头，确保图片可以跨域访问
@@ -223,6 +224,13 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+  res.header('Timing-Allow-Origin', '*');  // 允许计时API
+  
+  // 如果是请求图片，添加额外的缓存控制
+  if (req.path.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i)) {
+    res.header('Cache-Control', 'public, max-age=3600');  // 1小时缓存
+  }
+  
   next();
 });
 
@@ -1615,6 +1623,72 @@ app.post('/api/document/apply-colorized-images', (req, res) => {
         logger.error('应用上色图片错误:', error);
         res.status(500).json({ success: false, message: '应用上色图片失败: ' + error.message });
     }
+});
+
+// 图片代理API路由 - 用于绕过CORS限制
+app.get('/api/proxy-image', async (req, res) => {
+  try {
+    const imageUrl = req.query.url;
+    
+    if (!imageUrl) {
+      return res.status(400).send('缺少图片URL参数');
+    }
+    
+    console.log(`代理图片请求: ${imageUrl}`);
+    
+    // 判断是否为Supabase URL
+    if (imageUrl.includes('supabase.co/storage')) {
+      // 提取存储路径和文件名
+      const pathMatch = imageUrl.match(/\/public\/([^?]+)/);
+      
+      if (pathMatch && pathMatch[1]) {
+        const storagePath = pathMatch[1];
+        console.log(`从Supabase下载图片: ${storagePath}`);
+        
+        // 从存储中获取图片
+        const { data, error } = await supabaseClient.supabase.storage
+          .from('uploads')
+          .download(storagePath);
+          
+        if (error) {
+          console.error('从Supabase获取图片失败:', error);
+          return res.status(404).send('图片不存在或无法访问');
+        }
+        
+        // 获取Content-Type
+        const contentType = data.type || 'image/png';
+        
+        // 返回图片数据
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // 24小时缓存
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        
+        const buffer = Buffer.from(await data.arrayBuffer());
+        return res.send(buffer);
+      }
+    }
+    
+    // 如果不是Supabase URL，使用axios代理请求
+    const axios = require('axios');
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    // 设置响应头
+    res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24小时缓存
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    return res.send(Buffer.from(response.data));
+    
+  } catch (error) {
+    console.error('代理图片请求失败:', error);
+    return res.status(500).send('代理图片请求失败');
+  }
 });
 
 /**
