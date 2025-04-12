@@ -202,11 +202,165 @@ async function deleteFile(filePath, bucket = 'uploads') {
     }
 }
 
+/**
+ * 创建异步处理任务
+ * @param {Object} taskData - 任务数据
+ * @returns {Promise<Object>} - 创建结果
+ */
+async function createTask(taskData) {
+    try {
+        // 生成任务ID
+        const taskId = crypto.randomUUID();
+        
+        // 设置任务数据
+        const task = {
+            id: taskId,
+            status: 'pending', // pending, processing, completed, failed
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            data: taskData,
+            result: null,
+            error: null,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24小时后过期
+        };
+        
+        // 插入任务到Supabase
+        const { data, error } = await supabase
+            .from('tasks')
+            .insert([task])
+            .select();
+            
+        if (error) {
+            console.error('创建任务失败:', error);
+            throw error;
+        }
+        
+        console.log(`创建任务成功, ID: ${taskId}`);
+        return {
+            success: true,
+            taskId: taskId,
+            task: data[0]
+        };
+    } catch (error) {
+        console.error('创建任务失败:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * 更新任务状态
+ * @param {string} taskId - 任务ID
+ * @param {string} status - 新状态
+ * @param {Object} data - 更新数据
+ * @returns {Promise<Object>} - 更新结果
+ */
+async function updateTaskStatus(taskId, status, data = {}) {
+    try {
+        const updateData = {
+            status,
+            updated_at: new Date().toISOString(),
+            ...data
+        };
+        
+        const { error } = await supabase
+            .from('tasks')
+            .update(updateData)
+            .eq('id', taskId);
+            
+        if (error) {
+            console.error(`更新任务状态失败 (${taskId}):`, error);
+            throw error;
+        }
+        
+        console.log(`任务 ${taskId} 状态更新为 ${status}`);
+        return {
+            success: true
+        };
+    } catch (error) {
+        console.error(`更新任务状态失败 (${taskId}):`, error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * 获取任务信息
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 任务信息
+ */
+async function getTask(taskId) {
+    try {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('id', taskId)
+            .single();
+            
+        if (error) {
+            console.error(`获取任务失败 (${taskId}):`, error);
+            throw error;
+        }
+        
+        return {
+            success: true,
+            task: data
+        };
+    } catch (error) {
+        console.error(`获取任务失败 (${taskId}):`, error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * 清理过期任务
+ * @returns {Promise<Object>} - 清理结果
+ */
+async function cleanupExpiredTasks() {
+    try {
+        const now = new Date().toISOString();
+        
+        const { data, error } = await supabase
+            .from('tasks')
+            .delete()
+            .lt('expires_at', now)
+            .select();
+            
+        if (error) {
+            console.error('清理过期任务失败:', error);
+            throw error;
+        }
+        
+        console.log(`已清理 ${data?.length || 0} 个过期任务`);
+        return {
+            success: true,
+            deletedCount: data?.length || 0
+        };
+    } catch (error) {
+        console.error('清理过期任务失败:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
 module.exports = {
     supabase,
     uploadFile,
     getFile,
     getPublicUrl,
     listFiles,
-    deleteFile
+    deleteFile,
+    createTask,
+    updateTaskStatus,
+    getTask,
+    cleanupExpiredTasks
 }; 

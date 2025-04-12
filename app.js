@@ -27,6 +27,9 @@ const exportUtils = require('./utils/exportUtils');
 const aiOptimizer = require('./utils/aiOptimizer');
 const imageColorizer = require('./utils/imageColorizer');
 
+// 导入任务处理器
+const taskProcessor = require('./utils/taskProcessor');
+
 // 输出导入的模块信息，检查是否正确
 console.log('工具模块加载状态:');
 console.log('- docxConverter 模块:', typeof docxConverter.convertDocxToHtml === 'function' ? '正常' : '异常');
@@ -463,7 +466,7 @@ app.post('/upload', upload.single('document'), async (req, res) => {
   }
 });
 
-// 美化文档处理路由
+// 美化文档处理路由 - 采用异步队列处理
 app.post('/beautify', async (req, res) => {
     try {
         console.log('收到美化请求:', req.body.filename);
@@ -474,130 +477,94 @@ app.post('/beautify', async (req, res) => {
             return res.status(400).json({ error: '缺少必要参数' });
         }
         
-        // 生成优化提示
-        const optimizationPrompt = aiOptimizer.generateOptimizationPrompt(targetFormat, customRequirements);
+        // 创建异步任务
+        const taskData = {
+            filename,
+            targetFormat,
+            htmlContent,
+            customRequirements,
+            colorizedImages,
+            taskType: 'beautify',
+            requestedAt: new Date().toISOString()
+        };
         
-        // 根据当前配置选择AI服务
-        const aiProvider = globalApiConfig.apiType.toLowerCase();
-        console.log(`使用AI提供商: ${aiProvider}`);
+        // 将任务添加到队列
+        const taskResult = await supabaseClient.createTask(taskData);
         
-        let optimizedHTML;
-        let usedBackupMode = false;
-        
-        try {
-            if (aiProvider === 'openai') {
-                // 不再使用OpenAI，转而使用DeepSeek处理
-                console.log('不使用OpenAI，改用DeepSeek处理');
-                optimizedHTML = await aiOptimizer.processWithDeepseek(
-                    htmlContent,
-                    optimizationPrompt,
-                    globalApiConfig.apiKey,
-                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
-                );
-            } else if (aiProvider === 'baidu') {
-                // 使用百度文心处理HTML
-                optimizedHTML = await aiOptimizer.beautifyWithBaidu(
-                    htmlContent,
-                    optimizationPrompt,
-                    globalApiConfig.apiKey,
-                    globalApiConfig.apiSecret,
-                    globalApiConfig.apiParams.baidu || { temperature: 0.7, max_tokens: 4000 }  // 使用全局配置参数或默认值
-                );
-            } else if (aiProvider === 'deepseek') {
-                // 使用DeepSeek处理HTML
-                optimizedHTML = await aiOptimizer.processWithDeepseek(
-                    htmlContent,
-                    optimizationPrompt,
-                    globalApiConfig.apiKey,
-                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
-                );
-            } else {
-                // 默认使用DeepSeek
-                console.log(`不支持的AI提供商: ${aiProvider}，改用DeepSeek`);
-                optimizedHTML = await aiOptimizer.processWithDeepseek(
-                    htmlContent,
-                    optimizationPrompt,
-                    globalApiConfig.apiKey,
-                    globalApiConfig.apiParams.deepseek  // 使用全局配置参数
-                );
-            }
-            
-            if (!optimizedHTML) {
-                throw new Error('AI处理返回了空内容');
-            }
-            
-        } catch (aiError) {
-            console.error('AI处理失败:', aiError);
-            console.log('使用本地备用模式处理HTML...');
-            
-            // 使用本地备用美化功能
-            optimizedHTML = aiOptimizer.beautifyWithRules(htmlContent, targetFormat, customRequirements);
-            usedBackupMode = true;
-            
-            // 如果本地处理也失败，则向客户端返回错误
-            if (!optimizedHTML) {
-                return res.status(500).json({ error: `AI处理失败，备用模式也失败: ${aiError.message}` });
-            }
-            
-            console.log('本地备用模式成功处理了HTML内容');
+        if (!taskResult.success) {
+            return res.status(500).json({ error: `创建任务失败: ${taskResult.error}` });
         }
         
-        // 处理上色图片 - 替换HTML中的图片路径
-        if (colorizedImages && Array.isArray(colorizedImages) && colorizedImages.length > 0) {
-            console.log(`应用 ${colorizedImages.length} 张上色图片到美化结果`);
-            const replaceResult = imageColorizer.replaceImagesInHtml(optimizedHTML, colorizedImages);
-            optimizedHTML = replaceResult.content;
-            console.log(`成功替换了 ${replaceResult.replacedCount} 张上色图片`);
-        }
+        // 返回任务ID和状态
+        res.json({
+            success: true,
+            taskId: taskResult.taskId,
+            status: 'pending',
+            message: '美化任务已提交，请稍后检查结果'
+        });
         
-        // 保存和处理优化后的HTML
-        try {
-            // 保存处理后的HTML到temp目录
-            const timestamp = Date.now();
-            const outputDir = path.join('/tmp', 'temp');
-            const outputFileName = `beautified-${timestamp}.html`;
-            const outputPath = path.join(outputDir, outputFileName);
-            
-            // 确保输出目录存在
-            if (!fs.existsSync(outputDir)) {
-                fs.mkdirSync(outputDir, { recursive: true });
-            }
-            
-            // 保存HTML到文件
-            fs.writeFileSync(outputPath, optimizedHTML);
-            console.log(`美化后的HTML已保存到: ${outputPath}`);
-            
-            // 复制到downloads目录供下载
-            const downloadsDir = path.join('/tmp', 'downloads');
-            const downloadPath = path.join(downloadsDir, outputFileName);
-            
-            if (!fs.existsSync(downloadsDir)) {
-                fs.mkdirSync(downloadsDir, { recursive: true });
-            }
-            
-            fs.copyFileSync(outputPath, downloadPath);
-            console.log(`已复制到下载目录: ${downloadPath}`);
-            
-            // 返回成功响应
-            res.json({
-                success: true,
-                processedFile: {
-                    path: outputPath,
-                    html: optimizedHTML,
-                    type: targetFormat,
-                    originalname: filename,
-                    wasBackupMode: usedBackupMode
-                }
-            });
-        } catch (saveError) {
-            console.error('保存处理后的HTML失败:', saveError);
-            return res.status(500).json({ error: `保存处理后的HTML失败: ${saveError.message}` });
-        }
     } catch (error) {
-        console.error('美化处理出错:', error);
+        console.error('创建美化任务出错:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
+// 查询任务状态
+app.get('/check-task/:taskId', async (req, res) => {
+    try {
+        const taskId = req.params.taskId;
+        
+        // 获取任务信息
+        const taskResult = await supabaseClient.getTask(taskId);
+        
+        if (!taskResult.success) {
+            return res.status(404).json({ 
+                success: false, 
+                error: `任务不存在或已过期: ${taskResult.error}` 
+            });
+        }
+        
+        const task = taskResult.task;
+        
+        // 返回任务状态和结果
+        res.json({
+            success: true,
+            taskId: task.id,
+            status: task.status,
+            result: task.result,
+            error: task.error,
+            progress: getTaskProgress(task),
+            createdAt: task.created_at,
+            updatedAt: task.updated_at
+        });
+        
+    } catch (error) {
+        console.error('获取任务状态出错:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 计算任务进度
+function getTaskProgress(task) {
+    switch (task.status) {
+        case 'pending':
+            return 0;
+        case 'processing':
+            // 计算处理时间占比
+            const processingStartTime = new Date(task.updated_at).getTime();
+            const now = Date.now();
+            const elapsed = now - processingStartTime;
+            // 假设平均处理时间为60秒
+            const progress = Math.min(Math.floor((elapsed / 60000) * 100), 95);
+            return progress;
+        case 'completed':
+            return 100;
+        case 'failed':
+            return 0;
+        default:
+            return 0;
+    }
+}
 
 // 预览处理后的HTML
 app.get('/preview/:fileName', (req, res) => {
@@ -1724,25 +1691,27 @@ function ensureDirectories() {
     });
 }
 
-// 应用启动时确保目录
-ensureDirectories();
+// 应用启动时初始化任务处理器
+function initializeTaskProcessor() {
+    taskProcessor.setApiConfig(globalApiConfig);
+    // 启动任务处理器
+    taskProcessor.startTaskProcessor();
+    console.log('任务处理器已初始化');
+}
 
-// 启动服务器
+// 服务器启动后调用初始化
 app.listen(port, () => {
-  // 打印所有已注册的路由
-  console.log('\n已注册的路由:');
-  app._router.stack.forEach(function(r) {
-    if (r.route && r.route.path) {
-      console.log(`${Object.keys(r.route.methods).join(',')} ${r.route.path}`);
-    }
-  });
-  
-  console.log(`服务器运行在 http://localhost:${port}`);
-  
-  // 验证API密钥
-  validateApiKey().catch(err => {
-    console.warn('API密钥验证警告:', err.message);
-  });
+    console.log(`服务器已启动，端口: ${port}`);
+    console.log(`环境: ${process.env.NODE_ENV}`);
+    
+    // 验证API密钥
+    validateApiKey();
+    
+    // 确保目录存在
+    ensureDirectories();
+    
+    // 初始化任务处理器
+    initializeTaskProcessor();
 });
 
 /**
