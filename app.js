@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+const os = require('os');
 
 // 支持 .env 环境变量
 require('dotenv').config();
@@ -261,14 +262,38 @@ app.post('/upload', upload.single('document'), async (req, res) => {
     
     console.log('文件已上传到Supabase:', uploadResult.url);
     
-    // 保存到本地临时文件用于处理 - Vercel函数间不能共享文件，需要处理后再上传
-    const tempDir = path.join('/tmp', 'uploads');
-    if (!fs.existsSync(tempDir)) {
+    // 保存到本地临时文件用于处理 - 在AWS Lambda环境中，只有/tmp目录可写
+    const tempDir = path.join(os.tmpdir(), 'uploads');
+    console.log(`使用系统临时目录: ${tempDir}`);
+    
+    try {
       fs.mkdirSync(tempDir, { recursive: true });
+      console.log(`临时目录创建/验证成功: ${tempDir}`);
+    } catch (mkdirError) {
+      console.error(`创建临时目录失败: ${mkdirError}`);
+      // 如果创建特定子目录失败，尝试使用系统临时根目录
+      console.log(`退回使用系统根临时目录: ${os.tmpdir()}`);
     }
     
-    const tempFilePath = path.join(tempDir, filename);
-    fs.writeFileSync(tempFilePath, buffer);
+    // 确保使用可用的目录
+    const finalTempDir = fs.existsSync(tempDir) ? tempDir : os.tmpdir();
+    const tempFilePath = path.join(finalTempDir, filename);
+    
+    try {
+      fs.writeFileSync(tempFilePath, buffer);
+      console.log(`文件已保存到临时路径: ${tempFilePath}`);
+      
+      // 验证文件写入成功
+      if (fs.existsSync(tempFilePath)) {
+        const stats = fs.statSync(tempFilePath);
+        console.log(`临时文件大小: ${stats.size} 字节`);
+      } else {
+        console.error(`临时文件写入失败，文件不存在: ${tempFilePath}`);
+      }
+    } catch (writeError) {
+      console.error(`写入临时文件失败: ${writeError}`);
+      throw new Error(`无法写入临时文件: ${writeError.message}`);
+    }
     
     // 处理上传的文件
     let fileType = '';
@@ -1579,12 +1604,16 @@ app.post('/api/document/apply-colorized-images', (req, res) => {
  * 确保必要的目录存在
  */
 function ensureDirectories() {
+    // 使用os.tmpdir()获取系统临时目录
+    const tmpDir = os.tmpdir();
+    console.log(`系统临时目录: ${tmpDir}`);
+    
     const directories = [
-        path.join('/tmp', 'public', 'images', 'temp'), // 修改为使用/tmp目录
-        path.join('/tmp', 'temp'),
-        path.join('/tmp', 'temp', 'images'),
-        path.join('/tmp', 'uploads'),
-        path.join('/tmp', 'downloads'),
+        path.join(tmpDir, 'public', 'images', 'temp'),
+        path.join(tmpDir, 'temp'),
+        path.join(tmpDir, 'temp', 'images'),
+        path.join(tmpDir, 'uploads'),
+        path.join(tmpDir, 'downloads'),
         path.join(__dirname, 'data'),  // 保留在项目目录中
         path.join(__dirname, 'public', 'images', 'templates')  // 保留在项目目录中
     ];
@@ -1599,6 +1628,7 @@ function ensureDirectories() {
             }
         } catch (error) {
             console.error(`创建目录失败: ${dir}`, error);
+            // 对于临时目录创建失败，不要中断程序，只记录错误
         }
     });
 }

@@ -1,6 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 const HTMLtoDOCX = require('html-to-docx');
+const os = require('os');
+const crypto = require('crypto');
+const supabaseClient = require('./supabaseClient');
 
 // 安全地加载mammoth模块
 let mammoth;
@@ -37,15 +40,27 @@ exports.convertDocxToHtml = async function(docxFilePath) {
             throw new Error(`Word文件不存在: ${docxFilePath}`);
         }
         
-        // 确保输出目录存在
-        const outputDir = path.join(__dirname, '..', 'temp');
-        if (!fs.existsSync(outputDir)) {
+        // 使用系统临时目录代替固定路径
+        // 在AWS Lambda中，/tmp目录是唯一可写的目录
+        const tempDir = os.tmpdir();
+        const outputDir = path.join(tempDir, 'doc-convert');
+        
+        console.log('使用临时目录:', outputDir);
+        
+        // 创建目录，使用recursive选项确保父目录也被创建
+        try {
             fs.mkdirSync(outputDir, { recursive: true });
+            console.log('成功创建临时目录:', outputDir);
+        } catch (mkdirError) {
+            console.error('创建临时目录失败，尝试使用根临时目录:', tempDir, '错误:', mkdirError);
+            // 如果创建失败，直接使用系统临时目录
         }
         
         // 生成一个唯一的输出文件名
         const timestamp = Date.now();
-        const outputHtmlPath = path.join(outputDir, `doc-${timestamp}.html`);
+        // 确保使用可用的目录
+        const finalOutputDir = fs.existsSync(outputDir) ? outputDir : tempDir;
+        const outputHtmlPath = path.join(finalOutputDir, `doc-${timestamp}.html`);
         
         // 转换文档
         try {
@@ -67,46 +82,27 @@ exports.convertDocxToHtml = async function(docxFilePath) {
                     }
                     return element;
                 }),
-                // 改进图片处理：保存为文件而不是base64编码
-                convertImage: mammoth.images.imgElement(function(image) {
+                // 改进图片处理：将图片上传到Supabase并返回URL
+                convertImage: mammoth.images.imgElement(async function(image) {
                     try {
                         console.log('==========图片处理开始==========');
                         console.log('发现文档中的图片，准备提取...');
                         console.log('图片类型:', image.contentType);
                         
-                        // 创建图片目录 - 使用绝对路径确保目录正确创建
-                        const imgDir = path.resolve(__dirname, '..', 'public', 'images', 'temp');
-                        console.log('图片保存目录(绝对路径):', imgDir);
+                        // 创建图片目录 - 使用系统临时目录而不是固定路径
+                        const imgTempDir = path.join(tempDir, 'doc-images');
+                        console.log('图片临时保存目录:', imgTempDir);
                         
-                        if (!fs.existsSync(imgDir)) {
+                        if (!fs.existsSync(imgTempDir)) {
                             console.log('图片目录不存在，正在创建...');
                             try {
-                                fs.mkdirSync(imgDir, { recursive: true });
-                                console.log('图片目录创建成功:', imgDir);
+                                fs.mkdirSync(imgTempDir, { recursive: true });
+                                console.log('图片目录创建成功:', imgTempDir);
                             } catch (mkdirError) {
                                 console.error('创建图片目录失败:', mkdirError.message);
                                 throw new Error(`无法创建图片目录: ${mkdirError.message}`);
                             }
-                        } else {
-                            console.log('图片目录已存在:', imgDir);
-                            // 验证目录是否可写
-                            try {
-                                const testFile = path.join(imgDir, '.test');
-                                fs.writeFileSync(testFile, 'test');
-                                fs.unlinkSync(testFile);
-                                console.log('图片目录权限验证通过');
-                            } catch (permError) {
-                                console.error('图片目录权限验证失败:', permError.message);
-                                throw new Error(`图片目录权限错误: ${permError.message}`);
-                            }
                         }
-                        
-                        // 生成唯一的图片文件名 - 使用正确的扩展名
-                        const extension = image.contentType ? 
-                                         (image.contentType.split('/')[1] || 'png') : 'png';
-                        const imgName = `img-${Date.now()}-${Math.floor(Math.random() * 10000)}.${extension}`;
-                        const imgPath = path.join(imgDir, imgName);
-                        console.log('生成的图片文件路径:', imgPath);
                         
                         // 获取图片buffer
                         const buffer = image.read();
@@ -118,31 +114,53 @@ exports.convertDocxToHtml = async function(docxFilePath) {
                         console.log('图片buffer类型:', typeof buffer);
                         console.log('图片buffer大小:', buffer.length, '字节');
                         
-                        // 确保同步写入图片
-                        fs.writeFileSync(imgPath, buffer);
-                        console.log('图片文件写入成功:', imgPath);
+                        // 生成唯一的图片文件名 - 使用正确的扩展名
+                        const extension = image.contentType ? 
+                                         (image.contentType.split('/')[1] || 'png') : 'png';
+                        const randomId = Math.floor(Math.random() * 10000);
+                        const imgName = `doc-img-${timestamp}-${randomId}.${extension}`;
                         
-                        // 验证文件是否成功写入
-                        if (fs.existsSync(imgPath)) {
-                            const stats = fs.statSync(imgPath);
-                            console.log('保存后的图片文件大小:', stats.size, '字节');
-                            
-                            // 返回相对URL以在HTML中使用
-                            const imgUrl = `/images/temp/${imgName}`;
-                            console.log('生成的图片URL:', imgUrl);
-                            console.log('==========图片处理完成==========');
-                            
-                            return {
-                                src: imgUrl,
-                                alt: "文档图片"
-                            };
-                        } else {
-                            console.error('图片文件写入失败 - 文件不存在');
-                            throw new Error('图片保存失败');
+                        // 上传图片到Supabase
+                        const filePath = `images/doc-images/${imgName}`;
+                        console.log('准备上传图片到Supabase:', filePath);
+                        
+                        const uploadResult = await supabaseClient.uploadFile(buffer, filePath);
+                        
+                        if (!uploadResult.success) {
+                            console.error('图片上传到Supabase失败:', uploadResult.error);
+                            throw new Error(`上传图片失败: ${uploadResult.error}`);
                         }
+                        
+                        console.log('图片上传成功，URL:', uploadResult.url);
+                        
+                        // 返回Supabase公共URL
+                        return {
+                            src: uploadResult.url,
+                            alt: "文档图片",
+                            'data-original': filePath // 保存原始路径供后续处理
+                        };
                     } catch (error) {
                         console.error('==========图片处理失败==========');
                         console.error('错误详情:', error.message);
+                        
+                        // 出错时尝试使用base64作为后备方案
+                        try {
+                            const buffer = image.read();
+                            if (buffer && buffer.length > 0) {
+                                const base64Image = buffer.toString('base64');
+                                const dataUrl = `data:${image.contentType || 'image/png'};base64,${base64Image}`;
+                                console.log('使用base64作为后备方案，数据URL长度:', dataUrl.length);
+                                
+                                return {
+                                    src: dataUrl,
+                                    alt: "文档图片(base64)",
+                                    title: "上传失败，使用base64替代"
+                                };
+                            }
+                        } catch (fallbackError) {
+                            console.error('base64后备方案也失败:', fallbackError);
+                        }
+                        
                         // 返回错误占位图片
                         return {
                             src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFdwI3QlMYkQAAAABJRU5ErkJggg==",
@@ -182,7 +200,7 @@ exports.convertDocxToHtml = async function(docxFilePath) {
             // 如果检测到有Base64图片，进行额外处理
             if (imageResults.some(img => img.startsWith('data:'))) {
                 console.log('检测到Base64图片，进行后处理转换为文件...');
-                html = convertBase64ImagesToFiles(html);
+                html = await convertBase64ImagesToFiles(html);
                 console.log('Base64图片处理完成，重新检查HTML...');
                 checkHtmlImages(html);
             }
@@ -362,23 +380,18 @@ function checkHtmlImages(html) {
  * @param {string} html - 原始HTML内容
  * @returns {string} - 更新后的HTML内容
  */
-function convertBase64ImagesToFiles(html) {
+async function convertBase64ImagesToFiles(html) {
     console.log('开始将Base64图片转换为文件...');
-    
-    // 创建图片目录
-    const imgDir = path.resolve(__dirname, '..', 'public', 'images', 'temp');
-    if (!fs.existsSync(imgDir)) {
-        fs.mkdirSync(imgDir, { recursive: true });
-        console.log('创建图片目录:', imgDir);
-    }
     
     // 查找所有Base64图片
     const base64Pattern = /<img[^>]*src="data:([^;]+);base64,([^"]+)"[^>]*>/g;
     let updatedHtml = html;
     let count = 0;
     let match;
+    const promises = [];
+    const replacements = [];
     
-    // 逐个替换Base64图片
+    // 第一阶段：收集所有需要替换的图片和准备上传任务
     while ((match = base64Pattern.exec(html)) !== null) {
         try {
             const mimeType = match[1];
@@ -389,29 +402,55 @@ function convertBase64ImagesToFiles(html) {
             const extension = mimeType.split('/')[1] || 'png';
             
             // 生成唯一的文件名
-            const imgName = `extracted-${Date.now()}-${Math.floor(Math.random() * 10000)}.${extension}`;
-            const imgPath = path.join(imgDir, imgName);
+            const timestamp = Date.now() + count; // 确保每个图片名称唯一
+            const randomId = Math.floor(Math.random() * 10000);
+            const imgName = `extracted-${timestamp}-${randomId}.${extension}`;
             
-            // 解码Base64并保存为文件
+            // 解码Base64
             const buffer = Buffer.from(base64Data, 'base64');
-            fs.writeFileSync(imgPath, buffer);
-            console.log(`保存Base64图片为文件: ${imgPath} (${buffer.length}字节)`);
             
-            // 创建新的图片URL
-            const imgUrl = `/images/temp/${imgName}`;
+            // 准备上传到Supabase
+            const filePath = `images/extracted/${imgName}`;
+            console.log(`准备上传Base64图片 #${count+1}: ${filePath} (${buffer.length}字节)`);
             
-            // 替换HTML中的Base64为URL
-            const imgTagContent = fullImgTag.match(/src="[^"]+"/)[0];
-            const newImgTag = fullImgTag.replace(imgTagContent, `src="${imgUrl}"`);
-            updatedHtml = updatedHtml.replace(fullImgTag, newImgTag);
+            // 保存上传任务和替换信息
+            promises.push(supabaseClient.uploadFile(buffer, filePath));
+            replacements.push({
+                fullImgTag,
+                filePath
+            });
             
             count++;
         } catch (error) {
-            console.error('转换Base64图片失败:', error.message);
+            console.error('处理Base64图片失败:', error.message);
         }
     }
     
-    console.log(`完成转换: ${count}个Base64图片已转换为文件`);
+    // 第二阶段：并行上传所有图片
+    console.log(`开始上传 ${promises.length} 个Base64图片到Supabase...`);
+    const results = await Promise.all(promises);
+    
+    // 第三阶段：替换HTML中的所有Base64为URL
+    for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const replacement = replacements[i];
+        
+        if (result.success) {
+            // 替换HTML中的Base64为Supabase URL
+            const imgTagContent = replacement.fullImgTag.match(/src="[^"]+"/)[0];
+            const newImgTag = replacement.fullImgTag.replace(
+                imgTagContent, 
+                `src="${result.url}" data-original="${replacement.filePath}"`
+            );
+            updatedHtml = updatedHtml.replace(replacement.fullImgTag, newImgTag);
+            console.log(`成功替换图片 #${i+1}, URL: ${result.url}`);
+        } else {
+            console.error(`图片 #${i+1} 上传失败:`, result.error);
+            // 保留原始Base64，不做替换
+        }
+    }
+    
+    console.log(`完成转换: ${count}个Base64图片已处理，${results.filter(r => r.success).length}个成功上传`);
     return updatedHtml;
 }
 
@@ -555,7 +594,30 @@ function preprocessHtmlForDocx(htmlContent) {
     }
 }
 
+/**
+ * 清理文件路径，确保它是有效的 Supabase 存储键
+ * @param {string} filePath - 原始文件路径
+ * @returns {string} - 清理后的文件路径
+ */
+function sanitizeFilePath(filePath) {
+    // 分离文件路径和扩展名
+    const extname = path.extname(filePath);
+    const basename = path.basename(filePath, extname);
+    const dirname = path.dirname(filePath);
+    
+    // 生成 MD5 哈希作为文件名
+    const hash = crypto.createHash('md5').update(basename).digest('hex');
+    
+    // 重建文件路径，只使用哈希作为文件名
+    const sanitizedBasename = hash.substring(0, 20); // 使用部分哈希值
+    const sanitizedFilePath = path.join(dirname, sanitizedBasename + extname);
+    
+    // 确保路径分隔符是正斜杠（/），因为Supabase要求这样
+    return sanitizedFilePath.replace(/\\/g, '/');
+}
+
 module.exports = {
     convertDocxToHtml: exports.convertDocxToHtml,
-    convertHtmlToDocx
+    convertHtmlToDocx,
+    sanitizeFilePath
 };
