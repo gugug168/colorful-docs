@@ -41,6 +41,12 @@ exports.convertPdfToHtml = async function(pdfFilePath) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
         
+        // 确保临时图片目录存在
+        const imgDir = '/tmp/public/images/temp';
+        if (!fs.existsSync(imgDir)) {
+            fs.mkdirSync(imgDir, { recursive: true });
+        }
+        
         // 生成一个唯一的输出文件名
         const timestamp = Date.now();
         const outputHtmlPath = path.join(outputDir, `pdf-${timestamp}.html`);

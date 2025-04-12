@@ -77,11 +77,11 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // 确保目录存在
-['uploads', 'downloads', 'temp', 'public/images/temp', 'public/images/templates', 'data'].forEach(dir => {
+['uploads', 'downloads', 'temp', 'temp/images', 'public/images/templates', 'data'].forEach(dir => {
   // 修改为使用/tmp目录
-  const dirPath = dir === 'data' || dir.startsWith('public/') 
-    ? path.join(__dirname, dir)  // 保留公共资源和数据目录在项目中
-    : path.join('/tmp', dir);    // 其他目录移到/tmp下
+  const dirPath = dir === 'data' || dir === 'public/images/templates' 
+    ? path.join(__dirname, dir)  // 保留数据目录和模板目录在项目中
+    : path.join('/tmp', dir);    // 其他所有目录都移到/tmp下
   
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -1575,23 +1575,25 @@ app.post('/api/document/apply-colorized-images', (req, res) => {
     }
 });
 
-// 确保所有必要的目录都存在
+/**
+ * 确保必要的目录存在
+ */
 function ensureDirectories() {
-    // 要检查和创建的目录列表
     const directories = [
-        path.join(__dirname, 'public', 'images', 'temp'), // 保留公共资源
-        path.join('/tmp', 'temp'),  // 使用/tmp目录
-        path.join('/tmp', 'temp', 'images'),  // 使用/tmp目录
-        path.join('/tmp', 'uploads'),  // 使用/tmp目录
-        path.join('/tmp', 'downloads')  // 使用/tmp目录
+        path.join('/tmp', 'public', 'images', 'temp'), // 修改为使用/tmp目录
+        path.join('/tmp', 'temp'),
+        path.join('/tmp', 'temp', 'images'),
+        path.join('/tmp', 'uploads'),
+        path.join('/tmp', 'downloads'),
+        path.join(__dirname, 'data'),  // 保留在项目目录中
+        path.join(__dirname, 'public', 'images', 'templates')  // 保留在项目目录中
     ];
 
-    // 遍历目录列表
     directories.forEach(dir => {
         try {
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
-                console.log(`已创建目录: ${dir}`);
+                console.log(`创建目录: ${dir}`);
             } else {
                 console.log(`目录已存在: ${dir}`);
             }
