@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 const htmlPdf = require('html-pdf-node');
-const chrome = require('chrome-launcher');
 
 // 安全地加载pdf-parse模块
 let pdfParse;
@@ -627,7 +626,11 @@ function preprocessHtmlForPdf(htmlContent) {
  */
 async function launchChrome() {
     console.log('启动Chrome浏览器...');
-    const chromeInstance = await chrome.launch({
+    
+    // 动态导入chrome-launcher
+    const chromeLauncher = await import('chrome-launcher');
+    
+    const chromeInstance = await chromeLauncher.launch({
         chromeFlags: [
             '--headless',
             '--disable-gpu',
