@@ -474,7 +474,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            timeout: isLongContent ? 45000 : 30000, // 降低超时时间以快速失败并转入后备方案：长内容45秒，短内容30秒
+            timeout: isLongContent ? 90000 : 60000, // 增加超时时间：长内容90秒，短内容60秒
         };
         
         // 检查并输出关键参数
@@ -513,7 +513,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         console.log('开始请求DeepSeek API...');
         let response;
         let retryCount = 0;
-        const maxRetries = 1; // 减少最大重试次数，避免等待太久
+        const maxRetries = 3; // 增加最大重试次数，从1次增加到3次
 
         async function tryDeepSeekRequest() {
             try {
