@@ -411,7 +411,7 @@ function preprocessHtmlForAI(htmlContent) {
 async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
     try {
         // 使用配置的参数或默认值
-        const temperature = params.temperature || 1; // 默认降低到0.5
+        const temperature = params.temperature || 0.7; // 降低默认温度，提高确定性
         const max_tokens = params.max_tokens || 8000;
         
         console.log(`DeepSeek API参数: temperature=${temperature}, max_tokens=${max_tokens}`);
@@ -457,10 +457,11 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         const userInput = `${enhancedPrompt}\n${isPdfFormat ? '内容:' : '这是要优化的HTML内容(已优化大小):'}\n\n${userContent}`;
         console.log(`发送给API的内容长度: ${userInput.length}`);
         
-        // 检查内容长度是否超过10000字符，如果超过则拆分请求
+        // 对较长内容进行特殊处理
         const isLongContent = userInput.length > 10000;
         if (isLongContent) {
-            console.log('内容较长，可能需要更长的处理时间');
+            console.log('内容较长，采用分段处理方式');
+            // 这里可以实现分段处理的逻辑
         }
         
         // 添加超时和重试设置
@@ -469,14 +470,14 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            timeout: isLongContent ? 180000 : 120000, // 根据内容长度调整超时时间
+            timeout: isLongContent ? 300000 : 180000, // 增加超时时间：长内容5分钟，短内容3分钟
         };
         
         // 检查并输出关键参数
         console.log(`使用的温度参数: ${temperature}, 最大token: ${max_tokens}`);
         console.log(`提示词长度: ${enhancedPrompt.length}, 内容长度: ${userContent.length}`);
         
-        // 确定是否为Word格式，以添加相应的系统提示
+        // 构建系统提示
         const isWordFormat = prompt.includes('Word格式') || prompt.includes('<span style="color:#FF0000">');
         
         // 构建系统提示
@@ -511,11 +512,22 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         console.log('开始请求DeepSeek API...');
         let response;
         let retryCount = 0;
-        const maxRetries = 2;
+        const maxRetries = 3; // 增加最大重试次数
 
         async function tryDeepSeekRequest() {
             try {
+                console.log(`开始第${retryCount+1}次API请求...`);
                 const requestStartTime = Date.now();
+                
+                // 添加请求内容的日志记录
+                console.log('API请求体结构:', JSON.stringify({
+                    model: requestBody.model,
+                    temperature: requestBody.temperature,
+                    max_tokens: requestBody.max_tokens,
+                    stream: requestBody.stream,
+                    message_count: requestBody.messages.length
+                }));
+                
                 response = await axios.post(
                     'https://api.deepseek.com/v1/chat/completions',
                     requestBody,
@@ -524,22 +536,38 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 const requestEndTime = Date.now();
                 console.log(`DeepSeek API请求时间: ${(requestEndTime - requestStartTime) / 1000}秒`);
                 console.log('DeepSeek API返回状态码:', response.status);
+                
+                // 记录响应的基本结构
+                if (response.data) {
+                    console.log('API响应结构:', JSON.stringify({
+                        id: response.data.id,
+                        object: response.data.object,
+                        model: response.data.model,
+                        usage: response.data.usage,
+                        choices_count: response.data.choices ? response.data.choices.length : 0
+                    }));
+                }
+                
                 return true;
             } catch (apiError) {
                 // 捕获并处理API请求错误
+                console.error('DeepSeek API请求失败:', apiError.message);
+                
                 if (apiError.response) {
                     // 服务器响应了错误状态码
                     console.error('DeepSeek API错误状态码:', apiError.response.status);
-                    console.error('DeepSeek API错误详情:', apiError.response.data);
+                    console.error('DeepSeek API错误详情:', JSON.stringify(apiError.response.data));
                     
                     // 特别处理401错误（未授权）
                     if (apiError.response.status === 401) {
-                        throw new Error('API密钥无效或未授权，请检查API密钥');
+                        throw new Error('API密钥无效或未授权，请检查DeepSeek API密钥');
                     }
                     
                     // 特别处理429错误（请求过多）
                     if (apiError.response.status === 429) {
-                        throw new Error('API请求次数超限，请稍后再试');
+                        console.log('API请求次数超限，等待3秒后重试');
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        return false; // 允许重试
                     }
                     
                     // 处理其他错误
@@ -555,7 +583,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             }
         }
 
-        // 尝试请求，最多重试2次
+        // 尝试请求，最多重试maxRetries次
         while (retryCount <= maxRetries) {
             const success = await tryDeepSeekRequest();
             if (success) break;
@@ -564,18 +592,20 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             if (retryCount <= maxRetries) {
                 console.log(`DeepSeek API请求失败，进行第${retryCount}次重试...`);
                 // 增加延迟，避免频繁请求
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                const delayTime = 2000 * Math.pow(2, retryCount - 1); // 指数退避策略
+                console.log(`等待${delayTime/1000}秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, delayTime));
             }
         }
 
         if (!response) {
-            throw new Error('DeepSeek API请求失败，已达到最大重试次数');
+            throw new Error('DeepSeek API请求失败，已达到最大重试次数。请检查网络连接和API密钥。');
         }
         
         // 提取响应中的HTML内容
         if (!response.data || !response.data.choices || !response.data.choices[0]) {
-            console.error('DeepSeek API响应格式异常:', response.data);
-            throw new Error('API响应格式异常，请检查API是否更新');
+            console.error('DeepSeek API响应格式异常:', JSON.stringify(response.data));
+            throw new Error('API响应格式异常，请检查DeepSeek API是否更新');
         }
         
         const assistantResponse = response.data.choices[0].message.content;
@@ -583,11 +613,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         // 提取HTML内容并还原图片
         let extractedHTML = extractHtmlFromResponse(assistantResponse, imageReferences);
+        console.log('处理后的HTML内容长度:', extractedHTML.length);
         
         return extractedHTML;
     } catch (error) {
         console.error('DeepSeek API处理错误:', error);
-        throw error;
+        // 返回一个友好的错误信息
+        throw new Error(`AI美化失败: ${error.message}`);
     }
 }
 

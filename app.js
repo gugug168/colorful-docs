@@ -3,6 +3,7 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const os = require('os');
+const cors = require('cors');
 
 // 支持 .env 环境变量
 require('dotenv').config();
@@ -207,6 +208,22 @@ const upload = multer({
       cb(new Error('只支持Word文档(.doc/.docx)、PDF文件和图片!'), false);
     }
   }
+});
+
+// 在应用程序初始化后设置CORS
+// 添加中间件
+app.use(cors({
+  origin: '*', // 允许所有域名访问，也可以设置为特定域名
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 添加特定请求头，确保图片可以跨域访问
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+  next();
 });
 
 // 主页路由

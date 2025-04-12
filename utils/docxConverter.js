@@ -137,7 +137,8 @@ exports.convertDocxToHtml = async function(docxFilePath) {
                         return {
                             src: uploadResult.url,
                             alt: "文档图片",
-                            'data-original': filePath // 保存原始路径供后续处理
+                            'data-original': filePath, // 保存原始路径供后续处理
+                            crossorigin: "anonymous" // 添加跨域属性
                         };
                     } catch (error) {
                         console.error('==========图片处理失败==========');
@@ -440,7 +441,7 @@ async function convertBase64ImagesToFiles(html) {
             const imgTagContent = replacement.fullImgTag.match(/src="[^"]+"/)[0];
             const newImgTag = replacement.fullImgTag.replace(
                 imgTagContent, 
-                `src="${result.url}" data-original="${replacement.filePath}"`
+                `src="${result.url}" data-original="${replacement.filePath}" crossorigin="anonymous"`
             );
             updatedHtml = updatedHtml.replace(replacement.fullImgTag, newImgTag);
             console.log(`成功替换图片 #${i+1}, URL: ${result.url}`);
