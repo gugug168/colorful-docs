@@ -4,6 +4,8 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
+const path = require('path');
 
 // 从环境变量获取 Supabase 配置
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -11,6 +13,28 @@ const supabaseKey = process.env.SUPABASE_KEY;
 
 // 创建 Supabase 客户端
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+/**
+ * 清理文件路径，确保它是有效的 Supabase 存储键
+ * @param {string} filePath - 原始文件路径
+ * @returns {string} - 清理后的文件路径
+ */
+function sanitizeFilePath(filePath) {
+    // 分离文件路径和扩展名
+    const extname = path.extname(filePath);
+    const basename = path.basename(filePath, extname);
+    const dirname = path.dirname(filePath);
+    
+    // 生成 MD5 哈希作为文件名
+    const hash = crypto.createHash('md5').update(basename).digest('hex');
+    
+    // 重建文件路径，只使用哈希作为文件名
+    const sanitizedBasename = hash.substring(0, 20); // 使用部分哈希值
+    const sanitizedFilePath = path.join(dirname, sanitizedBasename + extname);
+    
+    // 确保路径分隔符是正斜杠（/），因为Supabase要求这样
+    return sanitizedFilePath.replace(/\\/g, '/');
+}
 
 /**
  * 上传文件到 Supabase Storage
@@ -21,9 +45,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  */
 async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
     try {
+        // 对文件路径进行清理
+        const sanitizedFilePath = sanitizeFilePath(filePath);
+        console.log('原始文件路径:', filePath);
+        console.log('清理后的文件路径:', sanitizedFilePath);
+        
         const { data, error } = await supabase.storage
             .from(bucket)
-            .upload(filePath, fileBuffer, {
+            .upload(sanitizedFilePath, fileBuffer, {
                 contentType: 'application/octet-stream',
                 upsert: true
             });
@@ -36,11 +65,12 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
         // 获取文件公共URL
         const { data: urlData } = supabase.storage
             .from(bucket)
-            .getPublicUrl(filePath);
+            .getPublicUrl(sanitizedFilePath);
 
         return {
             success: true,
-            path: filePath,
+            path: sanitizedFilePath,
+            originalPath: filePath,
             url: urlData.publicUrl,
             data: data
         };
