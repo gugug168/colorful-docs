@@ -986,7 +986,7 @@ $(document).ready(function() {
             apiKey: FIXED_API_KEY ? `${FIXED_API_KEY.substring(0, 5)}...` : '未设置' // 日志中只显示部分密钥，保护隐私
         });
         
-        showLoading('正在使用AI美化您的文档，这可能需要一些时间...');
+        showLoading('正在提交美化任务，请稍候...');
         
         // 准备美化请求
         fetch('/beautify', {
@@ -1009,7 +1009,7 @@ $(document).ready(function() {
             if (!response.ok) {
                 return response.json().then(errorData => {
                     // 尝试从响应中获取更详细的错误信息
-                    throw new Error(errorData.message || `服务器返回错误状态码: ${response.status}`);
+                    throw new Error(errorData.message || errorData.error || `服务器返回错误状态码: ${response.status}`);
                 }).catch(jsonError => {
                     // 如果解析JSON失败，则使用原始错误
                     throw new Error(`服务器返回错误状态码: ${response.status}`);
@@ -1021,7 +1021,22 @@ $(document).ready(function() {
             hideLoading();
             console.log('美化响应数据:', data);
             
-            if (data.success) {
+            // 判断是否是异步任务响应
+            if (data.success && data.taskId) {
+                console.log('收到异步任务ID:', data.taskId);
+                showMessage('文档美化任务已提交，正在处理中...', 'info');
+                
+                // 显示任务进度弹窗
+                showTaskProgressModal();
+                
+                // 开始轮询任务状态
+                startTaskStatusPolling(data.taskId);
+                
+                return; // 提前返回，后续处理由轮询函数完成
+            }
+            
+            // 兼容旧版直接返回结果的模式
+            if (data.success && data.processedFile) {
                 showMessage('文档美化完成！', 'success');
                 
                 // 更新结果文件路径
@@ -1080,17 +1095,14 @@ $(document).ready(function() {
                         resultSectionElement.scrollIntoView({ behavior: 'smooth', block: 'start' }); // 改为滚动到区域顶部
                     }, 400);
                 }
-
-                // 重新启用美化按钮，允许再次美化
-                $('#beautify-btn').prop('disabled', false);
-                $('#colorize-images-btn').prop('disabled', false);
             } else {
-                console.error('美化失败原因:', data.message);
-                showMessage('美化文档失败: ' + data.message, 'danger');
-                 // 美化失败时也要重新启用按钮
-                $('#beautify-btn').prop('disabled', false);
-                $('#colorize-images-btn').prop('disabled', false);
+                console.error('美化失败原因:', data.message || data.error);
+                showMessage('美化文档失败: ' + (data.message || data.error || '未知错误'), 'danger');
             }
+            
+            // 重新启用美化按钮，允许再次美化
+            $('#beautify-btn').prop('disabled', false);
+            $('#colorize-images-btn').prop('disabled', false);
         })
         .catch(error => {
             hideLoading();
@@ -2722,5 +2734,262 @@ $(document).ready(function() {
         $('#colorize-images-btn').prop('disabled', false);
         
         // ... 保留现有代码 ...
+    }
+
+    /**
+     * 显示任务进度弹窗
+     */
+    function showTaskProgressModal() {
+        // 创建弹窗HTML
+        if (!document.getElementById('taskProgressModal')) {
+            const modalHtml = `
+            <div class="modal fade" id="taskProgressModal" tabindex="-1" aria-labelledby="taskProgressModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="taskProgressModalLabel">文档美化处理中</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="task-info">
+                                <p id="taskStatusText">正在处理您的文档，请稍候...</p>
+                                <div class="progress">
+                                    <div id="taskProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <p id="taskTimeInfo" class="text-muted mt-2">预计剩余时间: 计算中...</p>
+                            </div>
+                            <div id="taskCompleteInfo" class="d-none">
+                                <div class="text-center mb-3">
+                                    <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                                    <h4 class="mt-2">处理完成!</h4>
+                                </div>
+                                <p>您的文档已美化完成，可以下载或查看预览。</p>
+                            </div>
+                            <div id="taskErrorInfo" class="d-none">
+                                <div class="text-center mb-3">
+                                    <i class="bi bi-x-circle-fill text-danger" style="font-size: 3rem;"></i>
+                                    <h4 class="mt-2">处理失败</h4>
+                                </div>
+                                <p id="taskErrorText">处理文档时发生错误，请重试。</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                            <button type="button" id="viewPreviewBtn" class="btn btn-primary d-none">查看预览</button>
+                            <button type="button" id="downloadResultBtn" class="btn btn-success d-none">下载文档</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            
+            // 添加到body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        
+        // 重置弹窗状态
+        $('#taskStatusText').text('正在处理您的文档，请稍候...');
+        $('#taskProgressBar').css('width', '0%');
+        $('#taskTimeInfo').text('预计剩余时间: 计算中...');
+        $('#taskCompleteInfo').addClass('d-none');
+        $('#taskErrorInfo').addClass('d-none');
+        $('#viewPreviewBtn').addClass('d-none');
+        $('#downloadResultBtn').addClass('d-none');
+        
+        // 显示弹窗
+        const modal = new bootstrap.Modal(document.getElementById('taskProgressModal'));
+        modal.show();
+    }
+
+    // 当前任务ID
+    let currentTaskId = null;
+    // 任务状态定时器
+    let taskCheckTimer = null;
+
+    /**
+     * 开始轮询任务状态
+     * @param {string} taskId - 任务ID
+     */
+    function startTaskStatusPolling(taskId) {
+        currentTaskId = taskId;
+        
+        // 清除已有定时器
+        if (taskCheckTimer) {
+            clearInterval(taskCheckTimer);
+        }
+        
+        // 设置轮询间隔
+        const pollingInterval = 3000; // 3秒
+        let pollingCount = 0;
+        
+        // 开始轮询
+        taskCheckTimer = setInterval(() => {
+            pollingCount++;
+            checkTaskStatus(taskId, pollingCount);
+        }, pollingInterval);
+        
+        // 立即检查一次
+        checkTaskStatus(taskId, 0);
+    }
+
+    /**
+     * 检查任务状态
+     * @param {string} taskId - 任务ID
+     * @param {number} count - 轮询次数
+     */
+    function checkTaskStatus(taskId, count) {
+        fetch(`/check-task/${taskId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`服务器返回错误状态码: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(response => {
+            if (response.success) {
+                updateTaskProgress(response, count);
+                
+                // 如果任务完成或失败，停止轮询
+                if (response.status === 'completed' || response.status === 'failed') {
+                    if (taskCheckTimer) {
+                        clearInterval(taskCheckTimer);
+                        taskCheckTimer = null;
+                    }
+                }
+            } else {
+                // 显示错误
+                showTaskError(response.error || '获取任务状态失败');
+                
+                // 停止轮询
+                if (taskCheckTimer) {
+                    clearInterval(taskCheckTimer);
+                    taskCheckTimer = null;
+                }
+            }
+        })
+        .catch(error => {
+            // 请求错误
+            console.error('检查任务状态出错:', error);
+            
+            // 如果连续多次失败，停止轮询
+            if (count > 5) {
+                showTaskError('无法连接到服务器，请检查网络连接');
+                if (taskCheckTimer) {
+                    clearInterval(taskCheckTimer);
+                    taskCheckTimer = null;
+                }
+            }
+        });
+    }
+
+    /**
+     * 更新任务进度
+     * @param {Object} taskData - 任务数据
+     * @param {number} count - 轮询次数
+     */
+    function updateTaskProgress(taskData, count) {
+        const status = taskData.status;
+        const progress = taskData.progress || 0;
+        
+        // 更新进度条
+        $('#taskProgressBar').css('width', `${progress}%`);
+        
+        // 更新状态文本
+        switch (status) {
+            case 'pending':
+                $('#taskStatusText').text('任务等待中，即将开始处理...');
+                $('#taskTimeInfo').text('排队等待中...');
+                break;
+                
+            case 'processing':
+                $('#taskStatusText').text('正在处理您的文档...');
+                
+                // 计算剩余时间
+                const remainingTime = Math.max(5, Math.round((100 - progress) / 5)); // 粗略估计，每5%进度约1秒
+                $('#taskTimeInfo').text(`预计剩余时间: 约${remainingTime}秒`);
+                break;
+                
+            case 'completed':
+                // 显示完成状态
+                $('#taskCompleteInfo').removeClass('d-none');
+                $('.task-info').addClass('d-none');
+                
+                // 显示预览和下载按钮
+                $('#viewPreviewBtn').removeClass('d-none');
+                $('#downloadResultBtn').removeClass('d-none');
+                
+                // 保存处理结果
+                if (taskData.result) {
+                    // 更新当前处理后的文件
+                    currentProcessedFile = {
+                        path: taskData.result.path,
+                        html: taskData.result.html,
+                        filename: taskData.result.outputFileName,
+                        type: taskData.result.type,
+                        originalname: taskData.result.originalname,
+                        prompt: taskData.result.prompt || ''
+                    };
+                    
+                    // 将新结果添加到数组
+                    beautificationResults.push({
+                        html: taskData.result.html,
+                        path: taskData.result.path,
+                        prompt: taskData.result.prompt || '',
+                        targetFormat: taskData.result.type || 'word'
+                    });
+                    
+                    // 设置下载按钮点击事件
+                    $('#downloadResultBtn').off('click').on('click', function() {
+                        // 关闭弹窗
+                        $('#taskProgressModal').modal('hide');
+                        
+                        // 显示主下载按钮
+                        $('#download-btn').removeClass('d-none');
+                        
+                        // 请求下载
+                        requestDownload(taskData.result.outputFileName, taskData.result.type);
+                    });
+                    
+                    // 设置预览按钮点击事件
+                    $('#viewPreviewBtn').off('click').on('click', function() {
+                        // 关闭弹窗
+                        $('#taskProgressModal').modal('hide');
+                        
+                        // 显示预览
+                        displayBeautificationResults();
+                    });
+                }
+                
+                // 重新启用美化按钮，允许再次美化
+                $('#beautify-btn').prop('disabled', false);
+                $('#colorize-images-btn').prop('disabled', false);
+                break;
+                
+            case 'failed':
+                // 显示错误状态
+                showTaskError(taskData.error || '处理失败，请重试');
+                
+                // 重新启用美化按钮，允许再次美化
+                $('#beautify-btn').prop('disabled', false);
+                $('#colorize-images-btn').prop('disabled', false);
+                break;
+                
+            default:
+                // 未知状态
+                $('#taskStatusText').text(`任务状态: ${status}`);
+                break;
+        }
+    }
+
+    /**
+     * 显示任务错误
+     * @param {string} errorMessage - 错误信息
+     */
+    function showTaskError(errorMessage) {
+        $('#taskErrorInfo').removeClass('d-none');
+        $('#taskErrorText').text(errorMessage);
+        $('.task-info').addClass('d-none');
+        
+        // 重新启用美化按钮
+        $('#beautify-btn').prop('disabled', false);
     }
 });
