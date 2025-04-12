@@ -67,9 +67,9 @@ const port = process.env.PORT || 3000;
 
 // 设置静态文件目录
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/temp', express.static(path.join(__dirname, 'temp')));
-app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
+app.use('/uploads', express.static(path.join('/tmp', 'uploads')));
+app.use('/temp', express.static(path.join('/tmp', 'temp')));
+app.use('/downloads', express.static(path.join('/tmp', 'downloads')));
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 
 // 配置中间件
@@ -78,7 +78,11 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // 确保目录存在
 ['uploads', 'downloads', 'temp', 'public/images/temp', 'public/images/templates', 'data'].forEach(dir => {
-  const dirPath = path.join(__dirname, dir);
+  // 修改为使用/tmp目录
+  const dirPath = dir === 'data' || dir.startsWith('public/') 
+    ? path.join(__dirname, dir)  // 保留公共资源和数据目录在项目中
+    : path.join('/tmp', dir);    // 其他目录移到/tmp下
+  
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
