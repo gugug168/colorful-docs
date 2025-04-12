@@ -3,6 +3,12 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 
+// 支持 .env 环境变量
+require('dotenv').config();
+
+// 导入 Supabase 客户端
+const supabaseClient = require('./utils/supabaseClient');
+
 // 简单的日志记录器对象
 const logger = {
   info: (message, ...args) => console.log(`[INFO] ${message}`, ...args),
@@ -27,11 +33,12 @@ console.log('- aiProcessor 模块:', typeof aiProcessor === 'object' ? '正常' 
 console.log('- exportUtils 模块:', typeof exportUtils === 'object' ? '正常' : '异常');
 console.log('- aiOptimizer 模块:', typeof aiOptimizer === 'object' && typeof aiOptimizer.processAndSaveHtml === 'function' ? '正常' : '异常');
 console.log('- imageColorizer 模块:', typeof imageColorizer === 'object' && typeof imageColorizer.colorizeImages === 'function' ? '正常' : '异常');
+console.log('- supabaseClient 模块:', typeof supabaseClient === 'object' ? '正常' : '异常');
 
 // 配置默认API配置对象
 let globalApiConfig = {
-  // 使用更新的API密钥 - 请替换为您的有效API密钥
-  apiKey: 'sk-8540a084e1774f9980019e37a9086781', // deepseek的API密钥
+  // 使用环境变量中的API密钥
+  apiKey: process.env.DEEPSEEK_API_KEY || '', 
   apiType: 'deepseek', // 当前使用的API类型
   apiModel: 'deepseek-chat', // 使用的模型名称
   apiParams: {
@@ -56,7 +63,7 @@ let globalApiConfig = {
 
 // 初始化应用
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // 设置静态文件目录
 app.use(express.static(path.join(__dirname, 'public')));
@@ -66,8 +73,8 @@ app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 
 // 配置中间件
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // 确保目录存在
 ['uploads', 'downloads', 'temp', 'public/images/temp', 'public/images/templates', 'data'].forEach(dir => {
@@ -176,19 +183,14 @@ try {
   console.error('读取配置文件失败:', err);
 }
 
-// 配置文件上传存储
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// 修改 multer 配置，使用内存存储
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 限制为10MB
+  },
   fileFilter: function (req, file, cb) {
     // 接受doc、docx、pdf和图片文件
     if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
@@ -230,7 +232,6 @@ app.post('/upload', upload.single('document'), async (req, res) => {
     }
     
     console.log('处理上传文件:', req.file.originalname, '大小:', req.file.size, '字节');
-    console.log('上传文件路径:', req.file.path);
     console.log('MIME类型:', req.file.mimetype);
 
     // 获取目标格式
@@ -239,10 +240,32 @@ app.post('/upload', upload.single('document'), async (req, res) => {
     
     // 获取上传的文件信息
     const originalname = req.file.originalname;
-    const filename = req.file.filename;
-    const filepath = req.file.path;
+    const buffer = req.file.buffer;
     const mimetype = req.file.mimetype;
-
+    
+    // 上传到 Supabase Storage
+    const timestamp = Date.now();
+    const filename = `document-${timestamp}-${originalname}`;
+    const filePath = `uploads/${filename}`;
+    
+    // 上传原始文件到 Supabase
+    const uploadResult = await supabaseClient.uploadFile(buffer, filePath);
+    
+    if (!uploadResult.success) {
+      throw new Error(`上传文件到Supabase失败: ${uploadResult.error}`);
+    }
+    
+    console.log('文件已上传到Supabase:', uploadResult.url);
+    
+    // 保存到本地临时文件用于处理 - Vercel函数间不能共享文件，需要处理后再上传
+    const tempDir = path.join('/tmp', 'uploads');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    const tempFilePath = path.join(tempDir, filename);
+    fs.writeFileSync(tempFilePath, buffer);
+    
     // 处理上传的文件
     let fileType = '';
     let htmlContent = '';
@@ -250,219 +273,118 @@ app.post('/upload', upload.single('document'), async (req, res) => {
     let errorMessage = '';
 
     try {
-    // 判断文件类型并处理
-    if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
-        mimetype === 'application/msword' ||
-        originalname.endsWith('.docx') ||
-        originalname.endsWith('.doc')) {
-      // 处理DOCX/DOC文件
-      fileType = originalname.endsWith('.doc') ? 'doc' : 'docx';
-      console.log('检测到Word文档，开始处理...');
-      
-      // 检查转换函数是否存在
-      if (typeof docxConverter.convertDocxToHtml !== 'function') {
-        throw new Error('docxConverter.convertDocxToHtml 不是有效函数，模块加载失败');
-      }
-      
-      try {
-        console.log('调用 docxConverter.convertDocxToHtml...');
-        const result = await docxConverter.convertDocxToHtml(filepath);
-        console.log('Word转换结果:', Object.keys(result).join(', '));
+      // 判断文件类型并处理
+      if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+          mimetype === 'application/msword' ||
+          originalname.endsWith('.docx') ||
+          originalname.endsWith('.doc')) {
+        // 处理DOCX/DOC文件
+        fileType = originalname.endsWith('.doc') ? 'doc' : 'docx';
+        console.log('检测到Word文档，开始处理...');
         
+        // 检查转换函数是否存在
+        if (typeof docxConverter.convertDocxToHtml !== 'function') {
+          throw new Error('docxConverter.convertDocxToHtml 不是有效函数，模块加载失败');
+        }
+        
+        // 使用临时文件路径处理
+        const result = await docxConverter.convertDocxToHtml(tempFilePath);
         htmlContent = result.html;
         htmlPath = result.htmlPath;
         
-        if (!htmlContent) {
-          console.warn('警告: HTML内容为空');
+        // 将HTML上传到Supabase
+        if (htmlContent) {
+          const htmlFilename = `html-${timestamp}.html`;
+          const htmlFilePath = `temp/${htmlFilename}`;
+          
+          const htmlUploadResult = await supabaseClient.uploadFile(
+            Buffer.from(htmlContent), 
+            htmlFilePath
+          );
+          
+          if (htmlUploadResult.success) {
+            htmlPath = htmlUploadResult.url;
+          } else {
+            console.warn('HTML上传到Supabase警告:', htmlUploadResult.error);
+          }
         }
         
-        if (!htmlPath) {
-          console.warn('警告: HTML路径为空');
-        } else {
-          console.log('生成的HTML路径:', htmlPath);
-        }
-        
-        if (result.error) {
-          errorMessage = result.error;
-          console.warn('Word转换警告:', result.error);
-        }
-      } catch (docxError) {
-        console.error('Word转换错误:', docxError);
-        console.error('错误堆栈:', docxError.stack);
-        // 不抛出错误，而是继续处理
-        errorMessage = docxError.message;
-        
-        // 创建一个备用的HTML路径和内容
-        const outputDir = path.join(__dirname, 'temp');
-        const tempHtmlPath = path.join(outputDir, `error-${Date.now()}.html`);
-        if (!fs.existsSync(outputDir)) {
-          fs.mkdirSync(outputDir, { recursive: true });
-        }
-        
-        // 简单的错误HTML
-        htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head><title>转换错误</title></head>
-          <body><p>转换文档时出错: ${docxError.message}</p></body>
-          </html>
-        `;
-        
-        fs.writeFileSync(tempHtmlPath, htmlContent);
-        htmlPath = tempHtmlPath;
-        console.log('创建了Word错误备用页面:', tempHtmlPath);
-      }
-    } else if (mimetype === 'application/pdf' || originalname.endsWith('.pdf')) {
-      // 处理PDF文件
-      fileType = 'pdf';
+      } else if (mimetype === 'application/pdf' || originalname.endsWith('.pdf')) {
+        // 处理PDF文件
+        fileType = 'pdf';
         console.log('检测到PDF文档，开始处理...');
         
-        // 检查转换函数是否存在
         if (typeof pdfConverter.convertPdfToHtml !== 'function') {
           throw new Error('pdfConverter.convertPdfToHtml 不是有效函数，模块加载失败');
         }
         
-        try {
-          console.log('调用 pdfConverter.convertPdfToHtml...');
-      const result = await pdfConverter.convertPdfToHtml(filepath);
-          console.log('PDF转换结果:', Object.keys(result).join(', '));
+        // 使用临时文件路径处理
+        const result = await pdfConverter.convertPdfToHtml(tempFilePath);
+        htmlContent = result.html;
+        htmlPath = result.htmlPath;
+        
+        // 将HTML上传到Supabase
+        if (htmlContent) {
+          const htmlFilename = `html-${timestamp}.html`;
+          const htmlFilePath = `temp/${htmlFilename}`;
           
-      htmlContent = result.html;
-      htmlPath = result.htmlPath;
+          const htmlUploadResult = await supabaseClient.uploadFile(
+            Buffer.from(htmlContent), 
+            htmlFilePath
+          );
           
-          if (!htmlContent) {
-            console.warn('警告: HTML内容为空');
-          }
-          
-          if (!htmlPath) {
-            console.warn('警告: HTML路径为空');
+          if (htmlUploadResult.success) {
+            htmlPath = htmlUploadResult.url;
           } else {
-            console.log('生成的HTML路径:', htmlPath);
+            console.warn('HTML上传到Supabase警告:', htmlUploadResult.error);
           }
-          
-          if (result.error) {
-            errorMessage = result.error;
-            console.warn('PDF转换警告:', result.error);
-          }
-        } catch (pdfError) {
-          console.error('PDF转换错误:', pdfError);
-          console.error('错误堆栈:', pdfError.stack);
-          // 不抛出错误，而是继续处理
-          errorMessage = pdfError.message;
-          
-          // 创建一个备用的HTML路径和内容
-          const outputDir = path.join(__dirname, 'temp');
-          const tempHtmlPath = path.join(outputDir, `error-${Date.now()}.html`);
-          if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-          }
-          
-          // 简单的错误HTML
-          htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head><title>转换错误</title></head>
-            <body><p>转换文档时出错: ${pdfError.message}</p></body>
-            </html>
-          `;
-          
-          fs.writeFileSync(tempHtmlPath, htmlContent);
-          htmlPath = tempHtmlPath;
-          console.log('创建了PDF错误备用页面:', tempHtmlPath);
         }
-    } else {
-      // 不支持的文件类型
+      } else {
+        // 不支持的文件类型
         console.log('错误: 不支持的文件类型:', mimetype);
-      return res.status(400).json({
-        success: false,
-        message: '不支持的文件类型，请上传DOCX或PDF文件'
-      });
-    }
+        return res.status(400).json({
+          success: false,
+          message: '不支持的文件类型，请上传DOCX或PDF文件'
+        });
+      }
     } catch (conversionError) {
       // 处理转换过程中的任何错误
       console.error('文件转换失败:', conversionError);
       console.error('错误堆栈:', conversionError.stack);
       errorMessage = conversionError.message;
       
-      // 创建一个备用的HTML文件
-      try {
-        const outputDir = path.join(__dirname, 'temp');
-        if (!fs.existsSync(outputDir)) {
-          fs.mkdirSync(outputDir, { recursive: true });
-        }
-        
-        const tempHtmlPath = path.join(outputDir, `error-${Date.now()}.html`);
-        htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head><title>处理错误</title></head>
-          <body><p>处理文档时出错: ${conversionError.message}</p></body>
-          </html>
-        `;
-        
-        fs.writeFileSync(tempHtmlPath, htmlContent);
-        htmlPath = tempHtmlPath;
-        console.log('创建了通用错误备用页面:', tempHtmlPath);
-      } catch (fallbackError) {
-        console.error('创建备用HTML失败:', fallbackError);
-      }
-    }
-
-    // 安全检查：确保htmlPath不为undefined
-    if (!htmlPath) {
-      console.error('警告: htmlPath为undefined, 创建默认路径');
-      // 创建一个备用的HTML路径
-      const tempDir = path.join(__dirname, 'temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
+      // 创建一个备用的HTML内容
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>处理错误</title></head>
+        <body><p>处理文档时出错: ${conversionError.message}</p></body>
+        </html>
+      `;
       
-      htmlPath = path.join(tempDir, `processed-${Date.now()}.html`);
-      // 保存HTML内容到文件
-      try {
-        fs.writeFileSync(htmlPath, htmlContent || '<!DOCTYPE html><html><body>无法处理文档内容</body></html>');
-        console.log('已创建备用HTML文件:', htmlPath);
-      } catch (writeError) {
-        console.error('写入备用HTML失败:', writeError);
+      // 上传错误HTML到Supabase
+      const htmlFilename = `error-${timestamp}.html`;
+      const htmlFilePath = `temp/${htmlFilename}`;
+      
+      const htmlUploadResult = await supabaseClient.uploadFile(
+        Buffer.from(htmlContent), 
+        htmlFilePath
+      );
+      
+      if (htmlUploadResult.success) {
+        htmlPath = htmlUploadResult.url;
       }
     }
 
-    // 安全获取文件名
-    let safeBasename = '';
+    // 确保临时文件被删除
     try {
-      if (typeof htmlPath === 'string') {
-        safeBasename = path.basename(htmlPath);
-        console.log('安全的basename:', safeBasename);
-      } else {
-        console.error('htmlPath不是字符串:', htmlPath);
-        safeBasename = `file-${Date.now()}.html`;
-        console.log('使用生成的文件名:', safeBasename);
-      }
-    } catch (basenameError) {
-      console.error('获取文件名失败:', basenameError);
-      safeBasename = `file-${Date.now()}.html`;
-      console.log('使用备用文件名:', safeBasename);
-    }
-
-    // 确保下载目录存在并复制HTML文件
-    try {
-      const downloadsDir = path.join(__dirname, 'downloads');
-      if (!fs.existsSync(downloadsDir)) {
-        fs.mkdirSync(downloadsDir, { recursive: true });
-      }
-      
-      // 将HTML复制到downloads目录
-      const downloadPath = path.join(downloadsDir, safeBasename);
-      fs.copyFileSync(htmlPath, downloadPath);
-      console.log('HTML文件已复制到downloads目录:', downloadPath);
-      
-      // 使用downloads目录中的文件路径
-      safeBasename = path.basename(downloadPath);
-    } catch (copyError) {
-      console.error('复制HTML到downloads目录失败:', copyError);
+      fs.unlinkSync(tempFilePath);
+    } catch (err) {
+      console.warn('删除临时文件失败:', err);
     }
 
     console.log('文件处理完成，准备返回结果');
+    
     // 返回成功响应
     return res.json({
       success: true,
@@ -470,10 +392,10 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         originalname,
         filename,
         path: htmlPath,
+        url: htmlPath, // 使用Supabase URL
         type: fileType,
         html: htmlContent,
-        // 确保添加一个明确的下载文件路由，并确保路径存在
-        downloadUrl: `/view-document/${safeBasename}`,
+        downloadUrl: htmlPath,
         message: errorMessage ? `警告：${errorMessage}` : undefined
       }
     });
