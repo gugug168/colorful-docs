@@ -35,8 +35,8 @@ exports.convertPdfToHtml = async function(pdfFilePath) {
             throw new Error(`PDF文件不存在: ${pdfFilePath}`);
         }
         
-        // 确保输出目录存在
-        const outputDir = path.join(__dirname, '..', 'temp');
+        // 确保输出目录存在 - 使用/tmp目录
+        const outputDir = '/tmp/temp';
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
@@ -152,7 +152,7 @@ exports.convertPdfToHtml = async function(pdfFilePath) {
         console.error('PDF文档转换失败:', error);
         
         // 构建一个备用HTML路径和内容，确保函数始终返回有效结果
-        const outputDir = path.join(__dirname, '..', 'temp');
+        const outputDir = '/tmp/temp';
         const fallbackHtmlPath = path.join(outputDir, `pdf-error-${Date.now()}.html`);
         
         // 创建一个简单的错误页面
@@ -431,8 +431,8 @@ async function convertHtmlToPdf(htmlFilePath) {
         const tempHtmlPath = htmlFilePath.replace('.html', '-for-pdf.html');
         fs.writeFileSync(tempHtmlPath, processedHtml);
         
-        // 生成输出文件路径
-        const outputDir = path.join(path.dirname(htmlFilePath), '..', 'downloads');
+        // 生成输出文件路径 - 使用/tmp目录
+        const outputDir = '/tmp/downloads';
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
@@ -574,8 +574,19 @@ function preprocessHtmlForPdf(htmlContent) {
             // 把src中的双斜杠替换为单斜杠
             src = src.replace(/\/\//g, '/');
             
-            // 返回替换后的图片标签
-            const newSrc = path.join(__dirname, '..', 'public' + src).replace(/\\/g, '/');
+            // 使用公共目录（如果存在的话）或临时复制图片到/tmp目录
+            let newSrc;
+            try {
+                const publicPath = path.join('/tmp', 'public' + src);
+                if (!fs.existsSync(path.dirname(publicPath))) {
+                    fs.mkdirSync(path.dirname(publicPath), { recursive: true });
+                }
+                newSrc = publicPath.replace(/\\/g, '/');
+            } catch (e) {
+                console.error(`无法处理图片路径: ${e.message}`);
+                newSrc = src; // 回退到原路径
+            }
+            
             return match.replace(/src=["'][^"']+["']/, `src="file://${newSrc}"`);
         });
         
