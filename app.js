@@ -504,7 +504,7 @@ app.post('/beautify', async (req, res) => {
         try {
             // 保存处理后的HTML到temp目录
             const timestamp = Date.now();
-            const outputDir = path.join(__dirname, 'temp');
+            const outputDir = path.join('/tmp', 'temp');
             const outputFileName = `beautified-${timestamp}.html`;
             const outputPath = path.join(outputDir, outputFileName);
             
@@ -518,7 +518,7 @@ app.post('/beautify', async (req, res) => {
             console.log(`美化后的HTML已保存到: ${outputPath}`);
             
             // 复制到downloads目录供下载
-            const downloadsDir = path.join(__dirname, 'downloads');
+            const downloadsDir = path.join('/tmp', 'downloads');
             const downloadPath = path.join(downloadsDir, outputFileName);
             
             if (!fs.existsSync(downloadsDir)) {
@@ -551,28 +551,42 @@ app.post('/beautify', async (req, res) => {
 
 // 预览处理后的HTML
 app.get('/preview/:fileName', (req, res) => {
-  const fileName = req.params.fileName;
-  // 确保文件名不包含路径分隔符，防止路径遍历
-  const sanitizedFilename = path.basename(fileName);
-  
-  // 尝试在temp目录和downloads目录中查找文件
-  let filePath = path.join(__dirname, 'temp', sanitizedFilename);
-  
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(__dirname, 'downloads', sanitizedFilename);
-  }
-  
-  if (!fs.existsSync(filePath)) {
-    console.error('预览文件不存在:', filePath);
-    return res.status(404).send('文件不存在或已被删除');
-  }
-  
   try {
-    const htmlContent = fs.readFileSync(filePath, 'utf8');
-    res.send(htmlContent);
-  } catch (err) {
-    console.error('读取预览文件出错:', err);
-    res.status(500).send('加载预览失败: ' + err.message);
+    const fileName = req.params.fileName;
+    // 安全检查：确保文件名不包含路径分隔符，防止路径遍历
+    const sanitizedFilename = path.basename(fileName);
+    
+    // 尝试在temp目录和downloads目录中查找文件 - 使用/tmp路径
+    let filePath = path.join('/tmp', 'temp', sanitizedFilename);
+    
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join('/tmp', 'downloads', sanitizedFilename);
+    }
+    
+    // 如果仍找不到，尝试在原始项目目录中查找（向后兼容）
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(__dirname, 'temp', sanitizedFilename);
+    }
+    
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(__dirname, 'downloads', sanitizedFilename);
+    }
+    
+    if (!fs.existsSync(filePath)) {
+      console.error('预览文件不存在:', filePath);
+      return res.status(404).send('文件不存在或已被删除');
+    }
+    
+    try {
+      const htmlContent = fs.readFileSync(filePath, 'utf8');
+      res.send(htmlContent);
+    } catch (err) {
+      console.error('读取预览文件出错:', err);
+      res.status(500).send('加载预览失败: ' + err.message);
+    }
+  } catch (error) {
+    console.error('预览处理出错:', error);
+    res.status(500).send('加载预览失败: ' + error.message);
   }
 });
 
@@ -606,17 +620,31 @@ app.get('/export', async (req, res) => {
       });
     }
 
-    // 构建HTML文件路径
-    const htmlFilePath = path.join(__dirname, 'downloads', htmlFile);
+    // 构建HTML文件路径 - 优先使用/tmp目录
+    let htmlFilePath = path.join('/tmp', 'downloads', htmlFile);
 
     // 检查文件是否存在
     if (!fs.existsSync(htmlFilePath)) {
-      return res.status(404).json({
-        success: false,
-        message: '找不到指定的HTML文件'
-      });
+      // 尝试在temp目录查找
+      htmlFilePath = path.join('/tmp', 'temp', htmlFile);
+      
+      // 向后兼容 - 检查原始路径
+      if (!fs.existsSync(htmlFilePath)) {
+        htmlFilePath = path.join(__dirname, 'downloads', htmlFile);
+        
+        if (!fs.existsSync(htmlFilePath)) {
+          htmlFilePath = path.join(__dirname, 'temp', htmlFile);
+          
+          if (!fs.existsSync(htmlFilePath)) {
+            return res.status(404).json({
+              success: false,
+              message: '找不到指定的HTML文件'
+            });
+          }
+        }
+      }
     }
-
+    
     // 处理文件名 - 去除时间戳和扩展名
     let outputFilename = htmlFile.replace(/processed-\d+\.html$/, '');
     // 如果文件名为空，使用默认文件名
@@ -627,12 +655,13 @@ app.get('/export', async (req, res) => {
     outputFilename = `${outputFilename}-${Date.now()}.${normalizedFormat}`;
 
     // 创建输出目录（如果不存在）
-    if (!fs.existsSync(path.join(__dirname, 'downloads'))) {
-      fs.mkdirSync(path.join(__dirname, 'downloads'), { recursive: true });
+    const outputDir = path.join('/tmp', 'downloads');
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
 
     // 输出文件路径
-    const outputPath = path.join(__dirname, 'downloads', outputFilename);
+    const outputPath = path.join(outputDir, outputFilename);
 
     // 读取HTML内容
     const htmlContent = fs.readFileSync(htmlFilePath, 'utf8');
@@ -698,6 +727,12 @@ app.get('/download', (req, res) => {
       // 如果是相对路径，尝试多种组合
       const possiblePaths = [
         filePath, // 原始路径
+        path.join('/tmp', filePath), // 相对于/tmp目录
+        path.join('/tmp', 'downloads', filePath), // 在/tmp/downloads目录中查找文件名
+        path.join('/tmp', 'temp', filePath), // 在/tmp/temp目录中查找文件名
+        path.join('/tmp', 'downloads', path.basename(filePath)), // 在/tmp/downloads目录中查找文件名
+        path.join('/tmp', 'temp', path.basename(filePath)), // 在/tmp/temp目录中查找文件名
+        // 向后兼容原始路径
         path.join(__dirname, filePath), // 相对于应用根目录
         path.join(__dirname, 'downloads', filePath), // 在downloads目录中查找文件名
         path.join(__dirname, 'temp', filePath), // 在temp目录中查找文件名
@@ -1012,8 +1047,12 @@ app.get('/view-document/:filename', (req, res) => {
     
     console.log('请求查看文档:', filename);
     
-    // 尝试多个可能的路径
+    // 尝试多个可能的路径，优先使用/tmp目录
     const possiblePaths = [
+      path.join('/tmp', 'downloads', filename),
+      path.join('/tmp', 'temp', filename),
+      path.join('/tmp', 'uploads', filename),
+      // 向后兼容，旧的路径
       path.join(__dirname, 'downloads', filename),
       path.join(__dirname, 'temp', filename),
       path.join(__dirname, 'uploads', filename)
@@ -1145,17 +1184,21 @@ app.get('/api/document/images', (req, res) => {
         
         // 尝试多种可能的文件路径组合
         const possiblePaths = [
-            // 原始路径
+            // 首先尝试/tmp目录
+            path.join('/tmp', filePath),
+            path.join('/tmp', 'temp', filePath),
+            path.join('/tmp', 'temp', path.basename(filePath)),
+            path.join('/tmp', 'uploads', filePath),
+            path.join('/tmp', 'uploads', path.basename(filePath)),
+            path.join('/tmp', 'downloads', filePath),
+            path.join('/tmp', 'downloads', path.basename(filePath)),
+            // 然后尝试原始路径（向后兼容）
             filePath,
-            // 以服务器根目录为基础
             path.join(__dirname, filePath),
-            // 在temp目录中查找
             path.join(__dirname, 'temp', filePath),
             path.join(__dirname, 'temp', path.basename(filePath)),
-            // 在uploads目录中查找
             path.join(__dirname, 'uploads', filePath),
             path.join(__dirname, 'uploads', path.basename(filePath)),
-            // 在downloads目录中查找
             path.join(__dirname, 'downloads', filePath),
             path.join(__dirname, 'downloads', path.basename(filePath))
         ];
@@ -1536,11 +1579,11 @@ app.post('/api/document/apply-colorized-images', (req, res) => {
 function ensureDirectories() {
     // 要检查和创建的目录列表
     const directories = [
-        path.join(__dirname, 'public', 'images', 'temp'),
-        path.join(__dirname, 'temp'),
-        path.join(__dirname, 'temp', 'images'),
-        path.join(__dirname, 'uploads'),
-        path.join(__dirname, 'downloads')
+        path.join(__dirname, 'public', 'images', 'temp'), // 保留公共资源
+        path.join('/tmp', 'temp'),  // 使用/tmp目录
+        path.join('/tmp', 'temp', 'images'),  // 使用/tmp目录
+        path.join('/tmp', 'uploads'),  // 使用/tmp目录
+        path.join('/tmp', 'downloads')  // 使用/tmp目录
     ];
 
     // 遍历目录列表
