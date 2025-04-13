@@ -499,10 +499,65 @@
         // 获取自定义美化要求
         const customRequirements = $('#custom-requirements').val();
         
-        // 检查是否已上传文档
-        if (!currentUploadedFile) {
-            alert('请先上传文档！');
-            return;
+        // 获取文件路径和文件名（从按钮属性或会话存储中）
+        const filePath = $(this).attr('data-filepath');
+        const filename = $(this).attr('data-filename');
+        
+        // 优先尝试获取currentUploadedFile全局变量
+        let fileInfo = null;
+        if (typeof currentUploadedFile !== 'undefined' && currentUploadedFile) {
+            fileInfo = currentUploadedFile;
+        } else {
+            // 尝试从sessionStorage恢复上传文件信息
+            try {
+                const storedFile = sessionStorage.getItem('uploadedFile');
+                if (storedFile) {
+                    fileInfo = JSON.parse(storedFile);
+                    console.log('从会话存储恢复上传文件信息:', fileInfo);
+                }
+            } catch (e) {
+                console.error('解析会话存储中的文件信息失败:', e);
+            }
+            
+            // 如果仍然没有文件信息但有文件路径和文件名
+            if (!fileInfo && filePath && filename) {
+                // 尝试从currentFile获取
+                try {
+                    const storedCurrentFile = sessionStorage.getItem('currentFile');
+                    if (storedCurrentFile) {
+                        const currentFile = JSON.parse(storedCurrentFile);
+                        fileInfo = {
+                            path: currentFile.path || filePath,
+                            filename: currentFile.filename || filename,
+                            type: currentFile.type || 'word',
+                            html: currentFile.html || ''
+                        };
+                        console.log('从currentFile创建文件信息:', fileInfo);
+                    }
+                } catch (e) {
+                    console.error('解析currentFile失败:', e);
+                }
+                
+                // 如果仍然失败，创建基本对象
+                if (!fileInfo) {
+                    fileInfo = {
+                        path: filePath,
+                        filename: filename,
+                        type: $('input[name="targetFormat"]:checked').val() || 'word',
+                        html: ''
+                    };
+                    console.log('创建基本文件信息:', fileInfo);
+                }
+            }
+            
+            // 如果所有尝试都失败
+            if (!fileInfo) {
+                alert('请先上传文档！');
+                return;
+            }
+            
+            // 将恢复的信息赋值给全局变量，避免后续再次出现此问题
+            window.currentUploadedFile = fileInfo;
         }
         
         // 显示加载状态
@@ -510,11 +565,11 @@
         
         // 准备请求数据
         const requestData = {
-            filename: currentUploadedFile.filename,
-            targetFormat: currentUploadedFile.type,
-            htmlContent: currentUploadedFile.html,
+            filename: fileInfo.filename,
+            targetFormat: fileInfo.type,
+            htmlContent: fileInfo.html,
             customRequirements: customRequirements,
-            colorizedImages: currentUploadedFile.colorizedImages || []
+            colorizedImages: fileInfo.colorizedImages || []
         };
         
         // 发送美化请求
@@ -539,7 +594,7 @@
                     startTaskStatusPolling(currentTaskId);
                 } else {
                     // 显示错误
-                    showMessage('错误', response.error || '美化请求失败', 'error');
+                    showMessage(response.error || '美化请求失败', 'danger');
                 }
             },
             error: function(xhr) {
@@ -548,7 +603,7 @@
                 
                 // 显示错误信息
                 const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : '请求失败，请重试';
-                showMessage('错误', errorMsg, 'error');
+                showMessage(errorMsg, 'danger');
             }
         });
     });

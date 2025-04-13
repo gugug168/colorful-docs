@@ -20,6 +20,12 @@ $(document).ready(function() {
     let beautificationResults = []; // 新增：用于存储所有美化结果
     let documentImages = []; // 存储文档中的图片
     
+    // 将这些变量也附加到window对象上，确保inline脚本可以访问
+    window.currentProcessedFile = currentProcessedFile;
+    window.currentUploadedFile = currentUploadedFile;
+    window.beautificationResults = beautificationResults;
+    window.documentImages = documentImages;
+    
     // 初始化 - 从会话存储中恢复状态
     function initializeFromSessionStorage() {
         // 尝试恢复上传文件信息
@@ -27,6 +33,8 @@ $(document).ready(function() {
             const storedUploadedFile = sessionStorage.getItem('uploadedFile');
             if (storedUploadedFile) {
                 currentUploadedFile = JSON.parse(storedUploadedFile);
+                // 同时更新window对象上的变量
+                window.currentUploadedFile = currentUploadedFile;
                 console.log('从会话存储恢复上传文件信息:', currentUploadedFile);
                 
                 // 如果有文件路径，设置到美化按钮上
