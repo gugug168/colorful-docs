@@ -1,0 +1,10 @@
+{
+  "name": "colorful-docs-api",
+  "version": "1.0.0",
+  "description": "文档美化系统API",
+  "main": "index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "uuid": "^9.0.1"
+  }
+} 

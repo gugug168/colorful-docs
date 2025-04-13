@@ -855,9 +855,15 @@ $(document).ready(function() {
         
         // 创建美化任务
         $.ajax({
-            url: '/beautify-task',
+            url: '/api/beautify-task',
             type: 'POST',
             contentType: 'application/json',
+            timeout: 15000, // 增加超时时间
+            cache: false, // 禁用缓存
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            },
             data: JSON.stringify({
                 filePath: filePath,
                 filename: filename,
@@ -903,7 +909,36 @@ $(document).ready(function() {
             error: function(xhr, status, error) {
                 hideLoading();
                 console.error('创建美化任务请求失败:', error);
-                showMessage('提交美化任务失败: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : error), 'danger');
+                
+                // 尝试备用请求方法
+                if (status === 'timeout' || status === 'error') {
+                    console.log('尝试使用备用美化任务接口...');
+                    // 尝试旧版API端点
+                    $.ajax({
+                        url: '/beautify',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            filename: filename,
+                            targetFormat: targetFormat,
+                            customRequirements: customRequirements
+                        }),
+                        success: function(fallbackResponse) {
+                            console.log('备用美化任务创建成功:', fallbackResponse);
+                            if (fallbackResponse.success && fallbackResponse.taskId) {
+                                sessionStorage.setItem('currentTaskId', fallbackResponse.taskId);
+                                checkTaskStatus(fallbackResponse.taskId);
+                            } else {
+                                showMessage('美化任务创建失败，请重试', 'danger');
+                            }
+                        },
+                        error: function() {
+                            showMessage('提交美化任务失败，请刷新页面重试', 'danger');
+                        }
+                    });
+                } else {
+                    showMessage('提交美化任务失败: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : error), 'danger');
+                }
             }
         });
     });
@@ -2701,6 +2736,11 @@ $(document).ready(function() {
           url: `/api/check-task?taskId=${taskId}`, // Vercel API路径
           type: 'GET',
           timeout: 10000, // 添加超时设置
+          cache: false, // 禁用缓存
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
           success: function(response) {
             console.log('收到任务状态响应:', response);
             
@@ -2720,7 +2760,10 @@ $(document).ready(function() {
                 setTimeout(doCheck, delay);
               }
             } else {
-              showMessage(response.error || '检查任务状态失败', 'danger');
+              showMessage(response.error || '检查任务状态失败', 'warning');
+              // 即使出错也继续尝试检查
+              attempts++;
+              setTimeout(doCheck, 5000);
             }
           },
           error: function(xhr, status, error) {
