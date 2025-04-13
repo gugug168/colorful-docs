@@ -1,18 +1,17 @@
 {
   "version": 2,
-  "public": true,
   "functions": {
     "api/**/*.js": {
       "runtime": "@vercel/node@2.5.0",
       "memory": 1024,
-      "maxDuration": 10
+      "maxDuration": 10,
+      "includeFiles": ["utils/**", "data/**"]
     },
     "app.js": {
       "runtime": "@vercel/node@2.5.0",
-      "includeFiles": ["views/**", "data/**"],
+      "includeFiles": ["views/**", "data/**", "utils/**"],
       "memory": 1024,
-      "maxDuration": 10,
-      "maxLambdaSize": "50mb"
+      "maxDuration": 10
     }
   },
   "routes": [
@@ -20,10 +19,6 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/$1.js"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp))",
-      "dest": "/public/$1"
     },
     {
       "src": "/(.*)",
