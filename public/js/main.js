@@ -20,6 +20,44 @@ $(document).ready(function() {
     let beautificationResults = []; // 新增：用于存储所有美化结果
     let documentImages = []; // 存储文档中的图片
     
+    // 初始化 - 从会话存储中恢复状态
+    function initializeFromSessionStorage() {
+        // 尝试恢复上传文件信息
+        try {
+            const storedUploadedFile = sessionStorage.getItem('uploadedFile');
+            if (storedUploadedFile) {
+                currentUploadedFile = JSON.parse(storedUploadedFile);
+                console.log('从会话存储恢复上传文件信息:', currentUploadedFile);
+                
+                // 如果有文件路径，设置到美化按钮上
+                if (currentUploadedFile.path) {
+                    $('#beautify-btn').attr('data-filepath', currentUploadedFile.path);
+                    $('#beautify-btn').attr('data-filename', currentUploadedFile.path.split(/[\/\\]/).pop());
+                    $('#beautify-btn').prop('disabled', false);
+                    $('#colorize-images-btn').prop('disabled', false);
+                }
+            }
+            
+            // 尝试恢复当前文件信息
+            const storedCurrentFile = sessionStorage.getItem('currentFile');
+            if (storedCurrentFile) {
+                const currentFile = JSON.parse(storedCurrentFile);
+                console.log('从会话存储恢复当前文件信息:', currentFile);
+                
+                // 如果有HTML内容，显示预览
+                if (currentFile.html) {
+                    $('#document-preview').removeClass('d-none');
+                    $('#preview-content').html(currentFile.html);
+                }
+            }
+        } catch (e) {
+            console.error('从会话存储恢复状态失败:', e);
+        }
+    }
+    
+    // 初始化时调用
+    initializeFromSessionStorage();
+    
     // 全局变量
     let BEAUTIFY_TEMPLATES = {}; // 存储美化模板
     const FIXED_API_KEY = 'sk-8540a084e1774f9980019e37a9086781'; // 使用正确的API密钥
@@ -775,27 +813,71 @@ $(document).ready(function() {
         // 获取自定义美化要求
         const customRequirements = $('#custom-requirements').val().trim();
         
+        // 获取文件路径和文件名（从按钮属性或会话存储中）
+        const filePath = $(this).attr('data-filepath');
+        const filename = $(this).attr('data-filename');
+        
         // 检查是否已上传文件
         if (!currentUploadedFile) {
-            showMessage('请先上传文档', 'danger');
-            return;
+            // 尝试从sessionStorage恢复上传文件信息
+            const storedFile = sessionStorage.getItem('uploadedFile');
+            if (storedFile) {
+                try {
+                    currentUploadedFile = JSON.parse(storedFile);
+                    console.log('从会话存储恢复上传文件信息:', currentUploadedFile);
+                } catch (e) {
+                    console.error('解析会话存储中的文件信息失败:', e);
+                }
+            }
+            
+            // 如果仍然没有文件信息但有文件路径和文件名
+            if (!currentUploadedFile && filePath && filename) {
+                currentUploadedFile = {
+                    path: filePath,
+                    filename: filename,
+                    originalname: filename
+                };
+                console.log('从按钮属性创建文件信息:', currentUploadedFile);
+            }
+            
+            // 如果所有尝试都失败
+            if (!currentUploadedFile) {
+                showMessage('请先上传文档', 'danger');
+                return;
+            }
         }
         
         // 禁用按钮，防止重复点击
-        $(this).prop('disabled', true); // 取消注释此行
+        $(this).prop('disabled', true);
         
         // 显示加载状态
         showLoading('正在使用AI美化文档...');
         
-        // 启动美化处理
-        processBeautification(currentUploadedFile.path, currentUploadedFile.originalname);
+        // 启动美化处理 - 确保使用正确的文件路径和名称
+        const filePathToUse = currentUploadedFile.path || filePath;
+        const filenameToUse = currentUploadedFile.originalname || filename;
+        
+        processBeautification(filePathToUse, filenameToUse);
     });
     
     // 下载按钮点击事件
     $('#download-btn').on('click', function() {
         if (!currentProcessedFile) {
-            showMessage('还没有可下载的文件', 'warning');
-            return;
+            // 尝试从会话存储中恢复处理文件信息
+            const lastResult = beautificationResults.length > 0 ? beautificationResults[beautificationResults.length - 1] : null;
+            
+            if (lastResult && lastResult.path) {
+                currentProcessedFile = {
+                    path: lastResult.path,
+                    html: lastResult.html,
+                    filename: lastResult.path.split('/').pop(),
+                    type: lastResult.targetFormat || 'word'
+                };
+                console.log('从最后一个结果恢复处理文件信息:', currentProcessedFile);
+            } else {
+                showMessage('还没有可下载的文件', 'warning');
+                return;
+            }
         }
         
         // 安全处理路径，提取文件名
@@ -815,42 +897,13 @@ $(document).ready(function() {
         }
 
         // 获取用户选择的目标格式
-        const targetFormat = $('input[name="targetFormat"]:checked').val();
+        const targetFormat = currentProcessedFile.type || $('input[name="targetFormat"]:checked').val();
         
         // 显示加载状态
         showLoading('准备下载文档...');
         
-        // 请求导出文件
-        $.ajax({
-            url: `/export?htmlFile=${encodeURIComponent(filename)}&format=${targetFormat}`,
-            type: 'GET',
-            success: function(response) {
-                hideLoading();
-                
-                if (response.success && response.downloadUrl) {
-                    showMessage('文档准备完成，即将开始下载', 'success');
-                    
-                    // 使用临时链接元素来下载文件
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = response.downloadUrl;
-                    downloadLink.download = response.filename || `document.${targetFormat}`;
-                    downloadLink.style.display = 'none';
-                    document.body.appendChild(downloadLink);
-                    
-                    // 延迟一点点再触发下载，确保UI更新
-                    setTimeout(function() {
-                        downloadLink.click();
-                        document.body.removeChild(downloadLink);
-                    }, 500);
-                } else {
-                    showMessage('导出文档失败：' + (response.message || '未知错误'), 'danger');
-                }
-            },
-            error: function(xhr) {
-                hideLoading();
-                showMessage('导出文档请求失败：' + (xhr.responseText || '服务器错误'), 'danger');
-            }
-        });
+        // 请求下载
+        requestDownload(filename, targetFormat);
     });
     
     // 查看完整页面按钮点击事件
@@ -2306,9 +2359,35 @@ $(document).ready(function() {
         
         // 图片上色按钮点击事件
         colorizeImagesBtn.on('click', function() {
-            if (!currentProcessedFile) {
+            // 获取处理文件信息 - 优先使用currentProcessedFile，如果不存在则尝试使用currentUploadedFile
+            let fileToProcess = null;
+            
+            if (currentProcessedFile) {
+                fileToProcess = currentProcessedFile;
+            } else if (currentUploadedFile) {
+                fileToProcess = currentUploadedFile;
+            } else {
+                // 尝试从sessionStorage恢复
+                try {
+                    const storedFile = sessionStorage.getItem('uploadedFile');
+                    if (storedFile) {
+                        currentUploadedFile = JSON.parse(storedFile);
+                        fileToProcess = currentUploadedFile;
+                        console.log('从会话存储恢复上传文件信息用于图片上色:', currentUploadedFile);
+                    }
+                } catch (e) {
+                    console.error('从会话存储恢复文件信息失败:', e);
+                }
+            }
+            
+            if (!fileToProcess) {
                 showMessage('请先上传并处理文档', 'warning');
                 return;
+            }
+            
+            // 设置当前处理文件（如果尚未设置）
+            if (!currentProcessedFile) {
+                currentProcessedFile = fileToProcess;
             }
             
             // 加载文档中的图片
@@ -2378,7 +2457,32 @@ $(document).ready(function() {
         colorizeModal.show();
         
         // 获取文档中的图片
-        const filePath = typeof currentProcessedFile === 'object' ? currentProcessedFile.path : currentProcessedFile;
+        let filePath = '';
+        
+        // 尝试从不同来源获取文件路径
+        if (currentProcessedFile && typeof currentProcessedFile === 'object' && currentProcessedFile.path) {
+            filePath = currentProcessedFile.path;
+        } else if (typeof currentProcessedFile === 'string') {
+            filePath = currentProcessedFile;
+        } else if (currentUploadedFile && currentUploadedFile.path) {
+            filePath = currentUploadedFile.path;
+        } else {
+            // 如果尚未从主要变量中找到，尝试从DOM中获取
+            filePath = $('#beautify-btn').attr('data-filepath');
+        }
+        
+        if (!filePath) {
+            // 如果仍然没有文件路径，尝试从会话存储中恢复
+            try {
+                const storedFile = JSON.parse(sessionStorage.getItem('uploadedFile') || '{}');
+                if (storedFile && storedFile.path) {
+                    filePath = storedFile.path;
+                    console.log('从会话存储恢复文件路径:', filePath);
+                }
+            } catch (e) {
+                console.error('从会话存储恢复文件路径失败:', e);
+            }
+        }
         
         if (!filePath) {
             imagesContainer.html(`
@@ -2398,70 +2502,50 @@ $(document).ready(function() {
         // 构建相对路径 - 假设文件在temp目录下
         const requestPath = `temp/${fileName}`;
         
-        console.log('请求路径:', requestPath);
-        
+        // 发送获取图片请求
         $.ajax({
-            url: `/api/document/images?filePath=${encodeURIComponent(requestPath)}`,
+            url: `/api/document/images?path=${encodeURIComponent(requestPath)}`,
             type: 'GET',
             success: function(response) {
                 if (response.success && response.images && response.images.length > 0) {
+                    // 保存图片数据
                     documentImages = response.images;
+                    console.log('文档中的图片:', documentImages);
+                    
+                    // 显示图片列表
                     displayDocumentImages(documentImages);
-                    console.log('成功加载图片:', documentImages.length);
-                } else if (response.success && response.images && response.images.length === 0) {
-                    imagesContainer.html(`
-                        <div class="col-12 text-center py-3">
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>文档中没有找到可上色的图片
-                            </div>
-                            <div class="p-3 mt-3 border rounded bg-light">
-                                <h6>可能的原因：</h6>
-                                <ul class="text-start">
-                                    <li>文档中不包含任何图片</li>
-                                    <li>图片格式不受支持（仅支持JPG、PNG、GIF和BMP）</li>
-                                    <li>图片路径无法解析（如使用了相对路径或外部链接）</li>
-                                </ul>
-                                <p>如需测试，请确保文档中包含本地图片</p>
-                            </div>
-                        </div>
-                    `);
+                    
+                    // 启用开始上色按钮
+                    $('#start-colorize-btn').prop('disabled', false);
+                    
+                    // 隐藏重试按钮，确保状态正确
+                    $('#colorize-retry-btn').addClass('d-none');
                 } else {
                     imagesContainer.html(`
                         <div class="col-12 text-center py-3">
-                            <div class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i>${response.message || '无法加载文档中的图片'}
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>${response.message || '未找到可上色的图片'}
                             </div>
-                            <div class="small text-muted mt-2">
-                                <code>返回数据: ${JSON.stringify(response)}</code>
-                            </div>
+                            <button id="colorize-retry-btn" class="btn btn-outline-primary mt-3">
+                                <i class="fas fa-redo me-2"></i>重试
+                            </button>
                         </div>
                     `);
                 }
             },
             error: function(xhr) {
-                const errorMsg = xhr.responseJSON?.message || '服务器错误';
-                console.error('加载图片请求失败:', errorMsg);
-                console.error('状态码:', xhr.status);
-                console.error('请求路径:', requestPath);
-                console.error('响应文本:', xhr.responseText);
-                
+                console.error('获取图片错误:', xhr.responseText);
                 imagesContainer.html(`
                     <div class="col-12 text-center py-3">
                         <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i>加载图片时出错: ${errorMsg}
+                            <i class="fas fa-exclamation-circle me-2"></i>获取图片失败: ${xhr.status} ${xhr.statusText}
                         </div>
-                        <div class="small text-muted mt-2">
-                            <h6>错误详情:</h6>
-                            <p>状态码: ${xhr.status}</p>
-                            <p>路径: ${requestPath}</p>
-                            <p>响应: ${xhr.responseText}</p>
-                            <p>原路径: ${filePath}</p>
-                        </div>
+                        <p class="mt-2">${xhr.responseText || '服务器连接失败'}</p>
+                        <button id="colorize-retry-btn" class="btn btn-outline-primary mt-3">
+                            <i class="fas fa-redo me-2"></i>重试
+                        </button>
                     </div>
                 `);
-                
-                // 显示重试按钮
-                $('#colorize-retry-btn').removeClass('d-none');
             }
         });
     }
