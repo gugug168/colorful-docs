@@ -1,9 +1,14 @@
 {
   "version": 2,
+  "public": true,
   "builds": [
     {
       "src": "app.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["views/**", "data/**"],
+        "maxLambdaSize": "50mb"
+      }
     },
     {
       "src": "api/*.js",
@@ -17,15 +22,15 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "api/$1.js"
+      "dest": "/api/$1.js"
     },
     {
       "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp))",
-      "dest": "public/$1"
+      "dest": "/public/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "api/index.js"
+      "dest": "/app.js"
     }
   ],
   "env": {
@@ -34,5 +39,15 @@
     "SUPABASE_SERVICE_KEY": "@supabase_service_key",
     "DEEPSEEK_API_KEY": "@deepseek_api_key",
     "NODE_ENV": "production"
+  },
+  "functions": {
+    "app.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/*.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
   }
 } 

@@ -13,6 +13,23 @@ const staticDirs = {
   '/favicon.ico': path.join(process.cwd(), 'public', 'favicon.ico')
 };
 
+// 静态文件MIME类型映射
+const mimeTypes = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain'
+};
+
 /**
  * 检查URL是否为静态资源路径
  * @param {string} url - 请求URL
@@ -50,61 +67,52 @@ function getFilePath(url) {
  * 处理静态资源请求
  * @param {Object} req - 请求对象
  * @param {Object} res - 响应对象
- * @returns {boolean} - 是否处理了请求
+ * @returns {Boolean} - 是否处理了请求
  */
-async function handleStaticRequest(req, res) {
-  const { url, method } = req;
+module.exports = async (req, res) => {
+  // 提取请求路径
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  let filePath = url.pathname;
 
-  // 仅处理GET请求
-  if (method !== 'GET') {
+  // 仅处理静态资源请求
+  if (!filePath.match(/\.(html|css|js|json|png|jpg|jpeg|gif|svg|ico|webp|pdf|txt)$/i)) {
     return false;
   }
-  
-  // 检查URL是否为静态资源
-  if (!isStaticPath(url)) {
-    return false;
+
+  // 规范化文件路径
+  if (filePath.startsWith('/public/')) {
+    filePath = filePath.substring(7); // 移除'/public/'前缀
   }
+
+  // 构建完整的文件路径
+  const resolvedPath = path.join(process.cwd(), 'public', filePath);
 
   try {
-    const filePath = getFilePath(url);
-    
     // 检查文件是否存在
-    if (!fs.existsSync(filePath)) {
-      console.log(`Static file not found: ${filePath}`);
-      res.statusCode = 404;
-      res.end('Not Found');
-      return true;
+    if (!fs.existsSync(resolvedPath)) {
+      console.log(`文件不存在: ${resolvedPath}`);
+      return false;
     }
 
-    // 获取文件状态
-    const stat = fs.statSync(filePath);
-    
-    // 如果是目录，则拒绝访问
-    if (stat.isDirectory()) {
-      res.statusCode = 403;
-      res.end('Forbidden');
-      return true;
-    }
+    // 获取文件扩展名和MIME类型
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
 
-    // 设置内容类型和长度
-    const contentType = mime.lookup(filePath) || 'application/octet-stream';
+    // 设置响应头
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1小时缓存
     
-    // 流式传输文件内容
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
-    
-    return true;
-  } catch (err) {
-    console.error(`Error serving static file: ${err.message}`);
-    res.statusCode = 500;
-    res.end('Internal Server Error');
-    return true;
-  }
-}
+    // 图片可以缓存更久
+    if (contentType.startsWith('image/')) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 24小时缓存
+    }
 
-module.exports = {
-  isStaticPath,
-  handleStaticRequest
+    // 读取并发送文件
+    const fileContent = fs.readFileSync(resolvedPath);
+    res.status(200).send(fileContent);
+    return true;
+  } catch (error) {
+    console.error('静态文件处理错误:', error);
+    return false;
+  }
 }; 

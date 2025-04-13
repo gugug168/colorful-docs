@@ -1,10 +1,28 @@
 // Vercel Serverless Function for checking task status
 const { createClient } = require('@supabase/supabase-js');
 
+// 调试日志
+const debug = (...args) => console.log(new Date().toISOString(), ...args);
+
 // 创建Supabase客户端
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+
+let supabase;
+try {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('缺少Supabase配置');
+  }
+  supabase = createClient(supabaseUrl, supabaseKey);
+} catch (err) {
+  console.error('Supabase客户端创建失败:', err);
+  // 创建虚拟客户端，避免空引用错误
+  supabase = {
+    from: () => ({
+      select: () => ({ data: null, error: { message: 'Supabase未配置' } })
+    })
+  };
+}
 
 // 保存最近的任务状态供降级使用
 const taskStatusCache = new Map();
@@ -20,87 +38,67 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
   
+  // 只处理GET请求
+  if (req.method !== 'GET') {
+    return res.status(405).json({ 
+      success: false,
+      error: '方法不允许'
+    });
+  }
+  
   try {
     // 获取任务ID
     const taskId = req.query.taskId;
     
     if (!taskId) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         success: false,
-        error: '缺少任务ID'
+        error: '缺少任务ID参数'
       });
     }
     
-    console.log(`检查任务状态: ${taskId}`);
+    debug(`检查任务: ${taskId}`);
     
-    let data, error;
-    
+    // 尝试从Supabase获取任务状态
+    let data;
+    let error;
     try {
-      // 尝试从Supabase获取任务状态
-      const response = await supabase
+      const result = await supabase
         .from('tasks')
         .select('*')
         .eq('id', taskId)
         .single();
       
-      data = response.data;
-      error = response.error;
+      data = result.data;
+      error = result.error;
     } catch (supabaseError) {
-      console.error(`Supabase连接失败 (${taskId}):`, supabaseError);
-      error = supabaseError;
+      console.error('Supabase查询失败:', supabaseError);
+      error = { message: supabaseError.message };
     }
     
-    // 如果从Supabase获取数据失败，尝试使用缓存的数据
+    // 如果发生错误或任务不存在
     if (error || !data) {
-      // 检查是否有缓存的任务状态
+      console.warn(`获取任务 ${taskId} 失败:`, error?.message || '任务不存在');
+      
+      // 检查缓存
       if (taskStatusCache.has(taskId)) {
-        const cachedTask = taskStatusCache.get(taskId);
-        console.log(`使用缓存任务数据: ${taskId}`);
-        
-        // 更新处理状态 - 模拟进度
-        if (cachedTask.status === 'pending') {
-          cachedTask.status = 'processing';
-          cachedTask.updated_at = new Date().toISOString();
-        } else if (cachedTask.status === 'processing') {
-          // 模拟任务完成
-          const processingTime = new Date(cachedTask.updated_at).getTime();
-          const now = Date.now();
-          // 如果处理时间超过30秒，将任务标记为完成
-          if (now - processingTime > 30000) {
-            cachedTask.status = 'completed';
-            cachedTask.result = {
-              path: 'https://example.com/sample-result.html',
-              outputFileName: 'sample-result.html',
-              html: '<html><body><h1>示例美化结果</h1><p>由于Supabase连接问题，这是一个模拟结果。</p></body></html>',
-              type: 'word',
-              wasBackupMode: true,
-              completedAt: new Date().toISOString()
-            };
-          }
-        }
-        
-        data = cachedTask;
-      } else {
-        // 创建一个模拟任务
-        data = {
-          id: taskId,
-          status: 'processing',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          data: {
-            taskType: 'beautify',
-            createdAt: new Date().toISOString()
-          },
-          result: null,
-          error: null
-        };
-        
-        // 保存到缓存
-        taskStatusCache.set(taskId, data);
+        const cachedStatus = taskStatusCache.get(taskId);
+        debug(`返回缓存的任务状态: ${cachedStatus.status}`);
+        return res.status(200).json({
+          success: true,
+          ...cachedStatus
+        });
       }
-    } else {
-      // 更新缓存
-      taskStatusCache.set(taskId, { ...data });
+      
+      // 返回模拟状态（以保证前端不会崩溃）
+      return res.status(200).json({
+        success: true,
+        taskId: taskId,
+        status: 'pending',
+        result: null,
+        error: '无法获取任务状态，可能任务表不存在',
+        progress: 0
+      });
     }
     
     // 计算进度
@@ -125,11 +123,7 @@ module.exports = async (req, res) => {
         break;
     }
     
-    console.log(`任务${taskId}状态: ${data.status}, 进度: ${progress}%`);
-    
-    // 返回任务状态和结果
-    return res.status(200).json({
-      success: true,
+    const responseData = {
       taskId: data.id,
       status: data.status,
       result: data.result,
@@ -137,6 +131,23 @@ module.exports = async (req, res) => {
       progress: progress,
       createdAt: data.created_at,
       updatedAt: data.updated_at
+    };
+    
+    // 更新缓存
+    taskStatusCache.set(taskId, responseData);
+    
+    // 清理旧缓存项 - 只保留最新的100项
+    if (taskStatusCache.size > 100) {
+      const oldestKey = [...taskStatusCache.keys()][0];
+      taskStatusCache.delete(oldestKey);
+    }
+    
+    debug(`任务${taskId}状态: ${data.status}, 进度: ${progress}%`);
+    
+    // 返回任务状态
+    return res.status(200).json({
+      success: true,
+      ...responseData
     });
     
   } catch (error) {
