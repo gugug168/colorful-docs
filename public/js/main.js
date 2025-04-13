@@ -1032,6 +1032,9 @@ $(document).ready(function() {
                 // 开始轮询任务状态
                 startTaskStatusPolling(data.taskId);
                 
+                // 重新启用美化按钮
+                $('#beautify-btn').prop('disabled', false);
+                
                 return; // 提前返回，后续处理由轮询函数完成
             }
             

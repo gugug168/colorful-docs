@@ -500,7 +500,7 @@
         const customRequirements = $('#custom-requirements').val();
         
         // 检查是否已上传文档
-        if (!uploadedDocument) {
+        if (!currentUploadedFile) {
             alert('请先上传文档！');
             return;
         }
@@ -510,11 +510,11 @@
         
         // 准备请求数据
         const requestData = {
-            filename: uploadedDocument.filename,
-            targetFormat: uploadedDocument.targetFormat,
-            htmlContent: uploadedDocument.html,
+            filename: currentUploadedFile.filename,
+            targetFormat: currentUploadedFile.type,
+            htmlContent: currentUploadedFile.html,
             customRequirements: customRequirements,
-            colorizedImages: uploadedDocument.colorizedImages || []
+            colorizedImages: currentUploadedFile.colorizedImages || []
         };
         
         // 发送美化请求
