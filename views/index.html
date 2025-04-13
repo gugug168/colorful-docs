@@ -493,6 +493,8 @@
     let currentTaskId = null;
     // 任务状态定时器
     let taskCheckTimer = null;
+    // 美化结果
+    let beautyResult = null;
 
     // 美化文档
     $('#beautify-btn').click(function() {
@@ -760,6 +762,52 @@
         $('#taskErrorInfo').removeClass('d-none');
         $('#taskErrorText').text(errorMessage);
         $('.task-info').addClass('d-none');
+    }
+    
+    // 下载美化后的文件
+    function downloadBeautifiedFile() {
+        // 检查是否有处理结果
+        if (!beautyResult || !beautyResult.outputFileName) {
+            showMessage('无法下载文件，文件信息不完整', 'danger');
+            return;
+        }
+        
+        // 隐藏弹窗
+        $('#taskProgressModal').modal('hide');
+        
+        // 显示加载状态
+        showLoading('准备下载文件...');
+        
+        // 构建下载URL
+        const downloadUrl = `/download?file=${encodeURIComponent(beautyResult.outputFileName)}`;
+        
+        // 使用临时链接下载文件
+        const downloadLink = document.createElement('a');
+        downloadLink.href = downloadUrl;
+        downloadLink.download = beautyResult.outputFileName.split('/').pop();
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        
+        // 延迟一点点再触发下载，确保UI更新
+        setTimeout(function() {
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            hideLoading();
+            
+            // 显示成功消息
+            showMessage('文件下载已开始', 'success');
+        }, 500);
+    }
+    
+    // 显示预览
+    function showPreview(filename) {
+        if (!filename) {
+            showMessage('无法查看预览，文件名为空', 'danger');
+            return;
+        }
+        
+        // 打开新窗口查看预览
+        window.open(`/view-document/${encodeURIComponent(filename)}`, '_blank');
     }
     </script>
 </body>

@@ -1792,536 +1792,76 @@ $(document).ready(function() {
         });
     }
     
-    // 显示消息
+    /**
+     * 显示消息提示
+     * @param {string} message - 要显示的消息内容
+     * @param {string} type - 消息类型（success, info, warning, danger）
+     * @param {number} duration - 消息显示持续时间（毫秒）
+     */
     function showMessage(message, type, duration = 5000) {
-        // 检查消息容器是否存在
+        // 确保已有的消息被清除
+        clearTimeout(window.messageTimeout);
+        
+        // 确保有一个用于显示消息的容器
         let messageContainer = $('#message-container');
         if (messageContainer.length === 0) {
-            // 创建消息容器
-            $('<div id="message-container" class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index: 1050;"></div>').appendTo('body');
-            messageContainer = $('#message-container');
+            messageContainer = $('<div id="message-container" class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index: 1080;"></div>');
+            $('body').append(messageContainer);
         }
         
-        // 创建消息元素
-        const messageId = 'msg-' + Date.now();
-        const icons = {
-            success: '<i class="fas fa-check-circle me-2"></i>',
-            warning: '<i class="fas fa-exclamation-triangle me-2"></i>',
-            danger: '<i class="fas fa-times-circle me-2"></i>',
-            info: '<i class="fas fa-info-circle me-2"></i>'
-        };
-        
-        const icon = icons[type] || '';
-        const messageHtml = `
-            <div id="${messageId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${icon}${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        // 创建提示元素
+        const alertId = 'custom-alert-' + new Date().getTime();
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${type} shadow-sm alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
             </div>
         `;
         
-        // 添加消息到容器
-        const alert = $(messageHtml).appendTo(messageContainer);
-        
-        // 添加动画
-        alert.css('transform', 'translateY(-20px)');
-        alert.css('opacity', '0');
-        setTimeout(() => {
-            alert.css('transition', 'all 0.3s ease');
-            alert.css('transform', 'translateY(0)');
-            alert.css('opacity', '1');
-        }, 10);
+        // 添加到容器
+        messageContainer.html(alertHtml);
         
         // 设置自动消失
-        setTimeout(function() {
-            alert.css('transform', 'translateY(-20px)');
-            alert.css('opacity', '0');
-            setTimeout(() => {
-                alert.remove();
-            }, 300);
+        window.messageTimeout = setTimeout(() => {
+            $(`#${alertId}`).alert('close');
         }, duration);
     }
     
-    // 显示加载中状态
-    function showLoading(message) {
-        // 检查加载容器是否存在
-        let loadingContainer = $('#loading-container');
-        if (loadingContainer.length === 0) {
-            // 创建加载容器
-            $('<div id="loading-container" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="background-color: rgba(0,0,0,0.5); z-index: 2000;"></div>').appendTo('body');
-            loadingContainer = $('#loading-container');
-        }
-        
-        // 创建加载内容
-        const loadingHtml = `
-            <div class="bg-white p-4 rounded shadow-lg text-center">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mb-0">${message || '正在处理...'}</p>
-            </div>
-        `;
-        
-        // 显示加载状态
-        loadingContainer.html(loadingHtml).removeClass('d-none');
-        
-        // 添加动画
-        const loadingBox = loadingContainer.find('div').first();
-        loadingBox.css('transform', 'scale(0.8)');
-        loadingBox.css('opacity', '0');
-        setTimeout(() => {
-            loadingBox.css('transition', 'all 0.3s ease');
-            loadingBox.css('transform', 'scale(1)');
-            loadingBox.css('opacity', '1');
-        }, 10);
-    }
-    
-    // 隐藏加载中状态
-    function hideLoading() {
-        const loadingContainer = $('#loading-container');
-        const loadingBox = loadingContainer.find('div').first();
-        
-        loadingBox.css('transform', 'scale(0.8)');
-        loadingBox.css('opacity', '0');
-        
-        setTimeout(() => {
-            loadingContainer.addClass('d-none');
-        }, 300);
-    }
-    
-    // 向CSS添加按钮脉冲动画和滚动条样式
-    const style = document.createElement('style');
-    style.innerHTML = `
-        @keyframes pulse-animation {
-            0% {
-                transform: scale(1);
-                box-shadow: 0 0 0 0 rgba(var(--pulse-color, 94, 124, 226), 0.7);
-            }
-            
-            70% {
-                transform: scale(0.98);
-                box-shadow: 0 0 0 10px rgba(var(--pulse-color, 94, 124, 226), 0);
-            }
-            
-            100% {
-                transform: scale(1);
-                box-shadow: 0 0 0 0 rgba(var(--pulse-color, 94, 124, 226), 0);
-            }
-        }
-        
-        .pulse-animation {
-            animation: pulse-animation 0.5s ease-out;
-        }
-        
-        .btn-success-custom.pulse-animation {
-            --pulse-color: 66, 184, 131;
-        }
-        
-        .btn-download.pulse-animation {
-            --pulse-color: 255, 125, 69;
-        }
-        
-        /* 添加滚动条样式 */
-        .content-display {
-            overflow: visible;
-        }
-        
-        .iframe-container {
-            position: relative;
-            overflow: auto;
-        }
-        
-        .result-card {
-            overflow: visible;
-        }
-        
-        .beautified-content-container {
-            overflow: visible;
-        }
-        
-        /* 美化滚动条 */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-    `;
-    document.head.appendChild(style);
-
-    // debounce工具函数:延迟调用函数直到一段时间后才执行
-    function debounce(func, wait) {
-        let timeout;
-        return function() {
-            const context = this, args = arguments;
-            clearTimeout(timeout);
-            timeout = setTimeout(function() {
-                func.apply(context, args);
-            }, wait);
-        };
-    }
-
     /**
-     * 显示美化结果到页面
-     * @param {Object} result - 美化结果对象
+     * 显示加载提示
+     * @param {string} message - 要显示的加载提示消息
      */
-    function showBeautifyResult(result) {
-        const resultElement = document.getElementById('beautifyResult');
-        if (!resultElement) return;
+    function showLoading(message) {
+        // 确保已有的加载提示被清除
+        hideLoading();
         
-        console.log('开始处理美化结果显示');
-        
-        // 美化结果展示前，预处理HTML内容，移除紫色背景和提示词
-        let processedContent = result.content || '';
-        
-        // 从HTML中移除所有紫色背景和提示词区域
-        // 1. 尝试找到紫色背景特征
-        const purpleBackgroundPatterns = [
-            /<div[^>]*style="[^"]*background(?:-color)?:\s*purple[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
-            /<div[^>]*style="[^"]*background(?:-color)?:\s*#[a-fA-F0-9]{3,6}[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
-            /<div[^>]*style="[^"]*background(?:-color)?:\s*rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
-            /<section[^>]*style="[^"]*background[^"]*"[^>]*>[\s\S]*?<\/section>/gi
-        ];
-        
-        // 应用所有紫色背景移除模式
-        purpleBackgroundPatterns.forEach(pattern => {
-            processedContent = processedContent.replace(pattern, '');
-        });
-        
-        // 2. 移除提示词相关内容
-        const promptRelatedPatterns = [
-            /<div[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/div>/gi,
-            /<span[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/span>/gi,
-            /<p[^>]*>[\s\S]*?(?:提示词|美化提示|美化要求|使用以下)[^<]*<\/p>/gi
-        ];
-        
-        // 应用所有提示词内容移除模式
-        promptRelatedPatterns.forEach(pattern => {
-            processedContent = processedContent.replace(pattern, '');
-        });
-        
-        // 3. 移除开头的大块内容（通常是提示词）
-        // 查找body标签
-        const bodyStartTag = processedContent.match(/<body[^>]*>/i);
-        const bodyEndTag = processedContent.match(/<\/body>/i);
-        
-        if (bodyStartTag && bodyEndTag) {
-            const bodyStartIndex = processedContent.indexOf(bodyStartTag[0]) + bodyStartTag[0].length;
-            const bodyEndIndex = processedContent.indexOf(bodyEndTag[0]);
-            
-            // 提取body内容
-            let bodyContent = processedContent.substring(bodyStartIndex, bodyEndIndex);
-            
-            // 判断开头是否有大段文本（通常是提示词）
-            const firstTagMatch = bodyContent.match(/<[a-z][^>]*>/i);
-            if (firstTagMatch && firstTagMatch.index > 150) {
-                // 如果第一个HTML标签之前有超过150字符的内容，认为是提示词，删除它
-                bodyContent = bodyContent.substring(firstTagMatch.index);
-                
-                // 重新构建HTML
-                processedContent = processedContent.substring(0, bodyStartIndex) + 
-                                   bodyContent + 
-                                   processedContent.substring(bodyEndIndex);
-            }
-        }
-        
-        // 4. 添加一些内部样式用于隐藏任何可能漏掉的提示词
-        const hidePromptStyle = `
-        <style>
-            /* 隐藏所有紫色背景元素 */
-            [style*="background-color: purple"],
-            [style*="background-color:#"],
-            [style*="background-color: rgb"],
-            [style*="background: purple"],
-            [style*="background:#"],
-            [style*="background: rgb"] {
-                display: none !important;
-            }
-            
-            /* 强制所有内容可见 */
-            body {
-                display: block !important;
-                overflow: visible !important;
-            }
-        </style>
-        `;
-        
-        // 在head标签结束前插入样式
-        if (processedContent.includes('</head>')) {
-            processedContent = processedContent.replace('</head>', hidePromptStyle + '</head>');
-        } else {
-            // 如果没有head标签，添加到开头
-            processedContent = hidePromptStyle + processedContent;
-        }
-        
-        // 不再显示提示词，直接使用固定标题
-        const title = '文档美化结果';
-        
-        // 构建结果卡片 - 不包含任何提示词信息
-        const cardHtml = `
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 text-truncate">${title}</h5>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary download-beautified" data-id="${result.id}">
-                            <i class="fas fa-download"></i> 下载
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger remove-beautified" data-id="${result.id}">
-                            <i class="fas fa-trash"></i> 删除
-                        </button>
+        // 创建加载提示的HTML
+        const loadingHtml = `
+            <div id="loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="z-index: 1090; background-color: rgba(0, 0, 0, 0.5);">
+                <div class="bg-white p-4 rounded shadow d-flex align-items-center">
+                    <div class="spinner-border text-primary me-3" role="status">
+                        <span class="visually-hidden">加载中...</span>
                     </div>
-                </div>
-                <div class="card-body">
-                    <div class="iframe-container">
-                        <iframe class="beautified-content" sandbox="allow-same-origin" style="width:100%; height:600px; border:1px solid #ddd;"></iframe>
-                    </div>
+                    <span>${message || '加载中...'}</span>
                 </div>
             </div>
         `;
         
-        // 将结果添加到页面
-        resultElement.insertAdjacentHTML('afterbegin', cardHtml);
-        
-        // 防止HTML实体编码问题，使用文档写入方式设置iframe内容
-        const iframe = resultElement.querySelector('.beautified-content');
-        if (iframe) {
-            setTimeout(() => {
-                try {
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                    iframeDoc.open();
-                    iframeDoc.write(processedContent);
-                    iframeDoc.close();
-                    
-                    // 不再使用onload事件，而是延迟处理
-                    setTimeout(() => {
-                        try {
-                            const doc = iframe.contentDocument || iframe.contentWindow.document;
-                            console.log('处理iframe内容 (延迟处理)');
-                            
-                            // 1. 查找并删除所有紫色背景元素和提示词
-                            const allElements = doc.querySelectorAll('*');
-                            allElements.forEach(el => {
-                                // 检查元素内联样式
-                                const style = el.getAttribute('style') || '';
-                                if (style.includes('background') && 
-                                    (style.includes('purple') || style.includes('#') || style.includes('rgb'))) {
-                                    console.log('删除紫色背景元素:', el.tagName);
-                                    if (el.parentNode) {
-                                        el.parentNode.removeChild(el);
-                                    }
-                                }
-                                
-                                // 检查文本内容中的提示词特征
-                                const text = el.textContent || '';
-                                if (text.length > 100 && 
-                                    (text.includes('提示词') || text.includes('美化要求') || 
-                                     text.includes('使用以下') || text.includes('请按照'))) {
-                                    console.log('删除提示词元素:', el.tagName);
-                                    if (el.parentNode) {
-                                        el.parentNode.removeChild(el);
-                                    }
-                                }
-                            });
-                            
-                            // 2. 特别处理：检查文档开头的大段文本（通常是提示词）
-                            const bodyElement = doc.body;
-                            if (bodyElement && bodyElement.childNodes.length > 0) {
-                                // 处理第一个文本节点
-                                if (bodyElement.firstChild && 
-                                    bodyElement.firstChild.nodeType === Node.TEXT_NODE &&
-                                    bodyElement.firstChild.textContent &&
-                                    bodyElement.firstChild.textContent.length > 100) {
-                                    console.log('删除开头文本节点');
-                                    bodyElement.removeChild(bodyElement.firstChild);
-                                }
-                                
-                                // 处理第一个元素节点（如果包含大段文本）
-                                if (bodyElement.firstElementChild &&
-                                    bodyElement.firstElementChild.textContent &&
-                                    bodyElement.firstElementChild.textContent.length > 200) {
-                                    console.log('删除第一个元素节点');
-                                    bodyElement.removeChild(bodyElement.firstElementChild);
-                                }
-                            }
-                            
-                            // 3. 应用上色图片
-                            applyColorizedImages(doc);
-                        } catch (e) {
-                            console.error('处理iframe内容时出错:', e);
-                        }
-                    }, 500); // 延迟500毫秒处理
-                } catch (e) {
-                    console.error('设置iframe内容时出错:', e);
-                    // 如果上面的方法失败，回退到srcdoc方式
-                    iframe.setAttribute('srcdoc', processedContent);
-                    
-                    // 为srcdoc方式添加相同的处理
-                    const oldOnload = iframe.onload;
-                    iframe.onload = function() {
-                        // 移除事件监听器，避免重复触发
-                        iframe.onload = null;
-                        
-                        // 直接处理图片，不依赖onload事件循环
-                        setTimeout(function() {
-                            try {
-                                const doc = iframe.contentDocument || iframe.contentWindow.document;
-                                console.log('srcdoc方式处理iframe加载事件');
-                                
-                                // 如果没有获取到文档，尝试直接添加处理逻辑
-                                if (!doc || !doc.body) {
-                                    console.warn('srcdoc方式无法获取iframe文档，将在加载完成后重试');
-                                    setTimeout(applyColorizedImages, 1000);
-                                    return;
-                                }
-                                
-                                // 直接应用上色图片
-                                applyColorizedImages(doc);
-                            } catch (e) {
-                                console.error('srcdoc方式处理iframe加载后内容时出错:', e);
-                            }
-                        }, 800); // 更长的延迟
-                    };
-                }
-            }, 100);
-        }
-        
-        // 抽取应用上色图片的函数，便于复用
-        function applyColorizedImages(doc) {
-            // 应用已上色图片 - 直接在iframe中应用
-            console.log('-------- 开始处理iframe中的图片，应用上色效果 --------');
-            
-            // 检查是否有上色图片信息
-            if (!currentProcessedFile) {
-                console.log('没有当前处理文件信息');
-                return;
-            }
-            
-            if (!currentProcessedFile.colorizedImages) {
-                console.log('当前处理文件中没有上色图片记录');
-                return;
-            }
-            
-            if (!currentProcessedFile.colorizedImages.length) {
-                console.log('上色图片记录为空数组');
-                return;
-            }
-            
-            const colorizedImages = currentProcessedFile.colorizedImages;
-            console.log(`找到 ${colorizedImages.length} 张上色图片记录：`, 
-                        colorizedImages.map(img => img.originalPath.split('/').pop()).join(', '));
-            
-            // 分析上色记录
-            console.log('上色记录详情:');
-            colorizedImages.forEach((img, index) => {
-                if (img.originalPath && img.colorizedPath) {
-                    const originalName = img.originalPath.split('/').pop().split('\\').pop();
-                    const colorizedName = img.colorizedPath.split('/').pop().split('\\').pop();
-                    console.log(`[${index+1}] 原图: ${originalName} -> 上色图: ${colorizedName}`);
-                }
-            });
-            
-            // 获取iframe中的所有图片
-            if (!doc) {
-                console.error('文档对象无效');
-                return;
-            }
-            
-            if (!doc.querySelectorAll) {
-                console.error('文档对象不支持querySelectorAll方法');
-                return;
-            }
-            
-            const iframeImages = doc.querySelectorAll('img');
-            console.log(`iframe中有 ${iframeImages.length} 张图片：`, 
-                       Array.from(iframeImages).map(img => img.getAttribute('src')).join(', '));
-            
-            // 处理每张图片
-            let replacedCount = 0;
-            iframeImages.forEach((img, imgIndex) => {
-                const imgSrc = img.getAttribute('src');
-                if (!imgSrc) {
-                    console.log(`[图片${imgIndex+1}] 没有src属性，跳过`);
-                    return;
-                }
-                
-                // 提取图片文件名
-                const imgFilename = imgSrc.split('/').pop();
-                console.log(`[图片${imgIndex+1}] 检查: ${imgFilename}`);
-                
-                // 在上色记录中查找匹配
-                let matchFound = false;
-                for (const colorized of colorizedImages) {
-                    if (!colorized.success || !colorized.originalPath) continue;
-                    
-                    const originalFilename = colorized.originalPath.split('/').pop().split('\\').pop();
-                    
-                    // 检查文件名是否匹配
-                    const isExactMatch = imgFilename === originalFilename;
-                    const isPartialMatch = imgSrc.includes(originalFilename);
-                    
-                    if (isExactMatch || isPartialMatch) {
-                        // 找到匹配，替换图片路径
-                        const colorizedFilename = colorized.colorizedPath.split('/').pop().split('\\').pop();
-                        const newSrc = `/images/temp/${colorizedFilename}`;
-                        
-                        console.log(`[图片${imgIndex+1}] 匹配成功! 匹配类型: ${isExactMatch ? '精确匹配' : '部分匹配'}`);
-                        console.log(`[图片${imgIndex+1}] 将 ${imgSrc} 替换为 ${newSrc}`);
-                        
-                        // 保存旧路径用于回退
-                        const oldSrc = imgSrc;
-                        
-                        // 更新图片属性
-                        img.setAttribute('src', newSrc);
-                        img.setAttribute('data-colorized', 'true');
-                        img.setAttribute('data-original', originalFilename);
-                        
-                        // 添加加载失败时的回退处理
-                        img.onerror = function() {
-                            console.log(`[图片${imgIndex+1}] 加载失败，恢复原路径: ${oldSrc}`);
-                            this.src = oldSrc; // 恢复原始路径
-                            this.onerror = null; // 防止循环
-                        };
-                        
-                        replacedCount++;
-                        matchFound = true;
-                        break;
-                    }
-                }
-                
-                if (!matchFound) {
-                    console.log(`[图片${imgIndex+1}] 没有找到匹配的上色图片`);
-                }
-            });
-            
-            if (replacedCount > 0) {
-                console.log(`✓ 成功替换了 ${replacedCount}/${iframeImages.length} 张图片为上色版本`);
-            } else {
-                console.log('✗ 未找到要替换的图片');
-            }
-            
-            console.log('-------- 图片处理完成 --------');
-        }
-        
-        // 添加事件监听器
-        document.querySelectorAll('.download-beautified').forEach(button => {
-            button.addEventListener('click', handleBeautifiedDownload);
-        });
-        
-        document.querySelectorAll('.remove-beautified').forEach(button => {
-            button.addEventListener('click', handleBeautifiedRemove);
-        });
+        // 添加到body
+        $('body').append(loadingHtml);
     }
+    
+    /**
+     * 隐藏加载提示
+     */
+    function hideLoading() {
+        $('#loading-overlay').remove();
+    }
+
+    // 将这些函数附加到window对象上，使它们在全局范围内可用
+    window.showMessage = showMessage;
+    window.showLoading = showLoading;
+    window.hideLoading = hideLoading;
 
     /**
      * 初始化模板预览图片放大功能
