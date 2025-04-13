@@ -1,17 +1,19 @@
 {
   "version": 2,
-  "functions": {
-    "api/check-task.js": {
-      "maxDuration": 10
+  "builds": [
+    {
+      "src": "app.js",
+      "use": "@vercel/node"
     },
-    "app.js": {
-      "maxDuration": 10
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     }
-  },
+  ],
   "routes": [
     {
-      "src": "/api/check-task",
-      "dest": "/api/check-task.js"
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
     },
     {
       "src": "/(.*)",

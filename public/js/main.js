@@ -2698,7 +2698,7 @@ $(document).ready(function() {
         console.log(`检查任务状态: ${taskId}，第${attempts+1}次尝试`);
         
         $.ajax({
-          url: `/api/check-task?taskId=${taskId}`, // 使用Serverless函数端点
+          url: `/api/check-task?taskId=${taskId}`, // Vercel API路径
           type: 'GET',
           timeout: 10000, // 添加超时设置
           success: function(response) {
