@@ -21,9 +21,10 @@ debug('SUPABASE_SERVICE_KEY设置状态:', process.env.SUPABASE_SERVICE_KEY ? '�
 debug('NEXT_PUBLIC_SUPABASE_ANON_KEY设置状态:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '已设置' : '未设置');
 debug('NODE_ENV:', process.env.NODE_ENV);
 
-// 导入Express应用（如果可用）
+// 尝试导入Express应用
 let app;
 try {
+  // 动态导入app模块
   app = require('../app');
   debug('成功导入app.js');
 } catch (error) {
@@ -35,8 +36,8 @@ module.exports = async (req, res) => {
   try {
     // 启用CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     
     // 处理OPTIONS请求
     if (req.method === 'OPTIONS') {
@@ -44,6 +45,16 @@ module.exports = async (req, res) => {
     }
     
     debug(`处理请求: ${req.method} ${req.url}`);
+    
+    // 处理状态检查请求
+    if (req.url === '/api/status' || req.url === '/status') {
+      return res.status(200).json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        message: 'API服务正常运行'
+      });
+    }
     
     // 处理静态资源
     try {
@@ -72,6 +83,7 @@ module.exports = async (req, res) => {
       } catch (error) {
         console.error(`无法加载API处理程序 ${handlerPath}:`, error);
         return res.status(404).json({ 
+          success: false,
           error: '找不到该API端点',
           path: urlPath
         });
@@ -115,6 +127,7 @@ module.exports = async (req, res) => {
               <div class="container py-5 text-center">
                 <h1>文档排版与美化系统</h1>
                 <p class="lead">欢迎使用文档美化系统</p>
+                <p>系统状态: <span class="badge bg-success">正常运行</span></p>
                 <a href="/app" class="btn btn-primary">进入应用</a>
               </div>
             </body>
@@ -150,11 +163,14 @@ module.exports = async (req, res) => {
     const apiInfo = {
       name: "文档美化系统API",
       version: "1.0.0",
+      status: "online",
       endpoints: [
         { path: "/api/check-task", method: "GET", description: "查询任务状态" },
         { path: "/api/templates", method: "GET", description: "获取模板列表" },
-        { path: "/api/beautify-task", method: "POST", description: "创建美化任务" }
-      ]
+        { path: "/api/beautify-task", method: "POST", description: "创建美化任务" },
+        { path: "/api/upload", method: "POST", description: "上传文件" }
+      ],
+      timestamp: new Date().toISOString()
     };
     
     // 返回API信息
