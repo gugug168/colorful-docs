@@ -816,56 +816,96 @@ $(document).ready(function() {
         });
     }
     
-    // 美化文档按钮点击事件
+    // 美化按钮处理 - 创建美化任务
     $('#beautify-btn').on('click', function() {
-        // 获取自定义美化要求
-        const customRequirements = $('#custom-requirements').val().trim();
-        
-        // 获取文件路径和文件名（从按钮属性或会话存储中）
+        // 获取必要的参数
         const filePath = $(this).attr('data-filepath');
         const filename = $(this).attr('data-filename');
         
-        // 检查是否已上传文件
-        if (!currentUploadedFile) {
-            // 尝试从sessionStorage恢复上传文件信息
-            const storedFile = sessionStorage.getItem('uploadedFile');
-            if (storedFile) {
-                try {
-                    currentUploadedFile = JSON.parse(storedFile);
-                    console.log('从会话存储恢复上传文件信息:', currentUploadedFile);
-                } catch (e) {
-                    console.error('解析会话存储中的文件信息失败:', e);
-                }
-            }
-            
-            // 如果仍然没有文件信息但有文件路径和文件名
-            if (!currentUploadedFile && filePath && filename) {
-                currentUploadedFile = {
-                    path: filePath,
-                    filename: filename,
-                    originalname: filename
-                };
-                console.log('从按钮属性创建文件信息:', currentUploadedFile);
-            }
-            
-            // 如果所有尝试都失败
-            if (!currentUploadedFile) {
-                showMessage('请先上传文档', 'danger');
-                return;
+        // 确保文件信息存在
+        if (!filePath || !filename) {
+            console.error('美化按钮缺少必要的文件信息');
+            showMessage('无法美化文档：缺少文件信息', 'danger');
+            return;
+        }
+        
+        console.log('开始美化文档，文件路径:', filePath);
+        
+        // 获取美化选项
+        const selectedApiType = $('#api-type-select').val() || 'deepseek';
+        const selectedTemplate = $('#template-select').val() || '';
+        
+        // 检查是否有自定义要求
+        let customRequirements = '';
+        if ($('#custom-requirements').is(':visible')) {
+            customRequirements = $('#custom-requirements').val();
+        } else if (selectedTemplate) {
+            // 如果选择了模板但没有显示自定义要求，获取模板的要求
+            const templateOption = $('#template-select option:selected');
+            if (templateOption.length > 0) {
+                customRequirements = templateOption.attr('data-requirements') || '';
             }
         }
         
-        // 禁用按钮，防止重复点击
-        $(this).prop('disabled', true);
+        // 获取目标格式
+        const targetFormat = $('input[name="targetFormat"]:checked').val() || 'word';
         
-        // 显示加载状态
-        showLoading('正在使用AI美化文档...');
+        // 显示加载中状态
+        showLoading('正在提交美化任务...');
         
-        // 启动美化处理 - 确保使用正确的文件路径和名称
-        const filePathToUse = currentUploadedFile.path || filePath;
-        const filenameToUse = currentUploadedFile.originalname || filename;
-        
-        processBeautification(filePathToUse, filenameToUse);
+        // 创建美化任务
+        $.ajax({
+            url: '/beautify-task',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                filePath: filePath,
+                filename: filename,
+                targetFormat: targetFormat,
+                apiType: selectedApiType,
+                templateId: selectedTemplate,
+                customRequirements: customRequirements
+            }),
+            success: function(response) {
+                console.log('美化任务创建成功:', response);
+                
+                if (response.success && response.taskId) {
+                    // 保存任务ID
+                    sessionStorage.setItem('currentTaskId', response.taskId);
+                    console.log('保存当前任务ID:', response.taskId);
+                    
+                    // 更新加载提示
+                    updateLoading('正在美化文档，请稍候...');
+                    
+                    // 添加进度条到加载提示
+                    $('#loading-message').append(`
+                        <div class="mt-3">
+                            <div class="progress" style="height: 10px;">
+                                <div id="task-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                    role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" 
+                                    style="width: 0%">
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-1">
+                                <span id="task-status-text" class="small text-muted">等待中...</span>
+                                <span id="task-progress-text" class="small text-muted">0%</span>
+                            </div>
+                        </div>
+                    `);
+                    
+                    // 开始检查任务状态
+                    checkTaskStatus(response.taskId);
+                } else {
+                    hideLoading();
+                    showMessage(response.message || '创建美化任务失败', 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                hideLoading();
+                console.error('创建美化任务请求失败:', error);
+                showMessage('提交美化任务失败: ' + (xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : error), 'danger');
+            }
+        });
     });
     
     // 下载按钮点击事件
@@ -2626,5 +2666,183 @@ $(document).ready(function() {
         
         // 重新启用美化按钮
         $('#beautify-btn').prop('disabled', false);
+    }
+
+    // 检查任务状态
+    function checkTaskStatus(taskId) {
+      if (!taskId) return;
+      
+      // 添加递增延迟，防止过于频繁的请求
+      let attempts = 0;
+      let maxAttempts = 30; // 最大尝试次数
+      
+      // 清除之前的检查间隔
+      if (window.taskCheckInterval) {
+        clearInterval(window.taskCheckInterval);
+        window.taskCheckInterval = null;
+      }
+      
+      function doCheck() {
+        // 检查页面是否还在活跃状态
+        if (document.hidden) {
+          console.log('页面不可见，暂停检查');
+          return;
+        }
+        
+        if (attempts >= maxAttempts) {
+          console.log('达到最大检查次数，停止检查');
+          showMessage('任务检查超时，请刷新页面或再次尝试', 'warning');
+          return;
+        }
+        
+        console.log(`检查任务状态: ${taskId}，第${attempts+1}次尝试`);
+        
+        $.ajax({
+          url: `/api/check-task?taskId=${taskId}`, // 使用Serverless函数端点
+          type: 'GET',
+          timeout: 10000, // 添加超时设置
+          success: function(response) {
+            console.log('收到任务状态响应:', response);
+            
+            if (response.success) {
+              updateTaskProgressUI(response);
+              
+              if (response.status === 'completed') {
+                handleTaskComplete(response);
+                return; // 完成，停止检查
+              } else if (response.status === 'failed') {
+                handleTaskFailure(response);
+                return; // 失败，停止检查
+              } else {
+                // 任务仍在处理中，使用递增延迟
+                attempts++;
+                const delay = Math.min(2000 + (attempts * 1000), 10000); // 2-10秒递增延迟
+                setTimeout(doCheck, delay);
+              }
+            } else {
+              showMessage(response.error || '检查任务状态失败', 'danger');
+            }
+          },
+          error: function(xhr, status, error) {
+            console.error('检查任务状态请求失败:', error);
+            
+            // 如果是网络错误，使用更长延迟重试
+            attempts++;
+            setTimeout(doCheck, 5000);
+          }
+        });
+      }
+      
+      // 启动第一次检查
+      doCheck();
+      
+      // 当页面变为可见时恢复检查
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden && attempts < maxAttempts) {
+          doCheck();
+        }
+      });
+      
+      // 当用户离开页面时清理轮询
+      window.addEventListener('beforeunload', function() {
+        if (window.taskCheckInterval) {
+          clearInterval(window.taskCheckInterval);
+        }
+      });
+    }
+
+    // 处理任务完成
+    function handleTaskComplete(response) {
+      console.log('任务完成:', response);
+      hideLoading();
+      
+      // 保存结果信息到会话存储
+      if (response.result && response.result.path) {
+        const resultData = {
+          path: response.result.path,
+          outputFileName: response.result.outputFileName,
+          type: response.result.type || 'word'
+        };
+        sessionStorage.setItem('beautifyResult', JSON.stringify(resultData));
+        
+        // 加载和显示美化结果
+        loadBeautifiedResult(response.result.path);
+      }
+    }
+
+    // 处理任务失败
+    function handleTaskFailure(response) {
+      console.error('任务失败:', response);
+      hideLoading();
+      showMessage(response.error || '美化任务失败，请重试', 'danger');
+    }
+
+    // 更新任务进度UI
+    function updateTaskProgressUI(response) {
+      // 如果存在进度条元素，则更新进度
+      const progressBar = $('#task-progress-bar');
+      if (progressBar.length > 0) {
+        const progress = response.progress || 0;
+        progressBar.css('width', progress + '%').attr('aria-valuenow', progress);
+        $('#task-progress-text').text(progress + '%');
+        
+        // 更新状态文本
+        let statusText = '处理中...';
+        if (response.status === 'completed') {
+          statusText = '已完成';
+        } else if (response.status === 'failed') {
+          statusText = '失败';
+        } else if (response.status === 'pending') {
+          statusText = '等待中...';
+        }
+        $('#task-status-text').text(statusText);
+      }
+    }
+
+    // 加载美化结果
+    function loadBeautifiedResult(resultPath) {
+      console.log('加载美化结果:', resultPath);
+      
+      // 显示结果区域
+      $('#result-section').removeClass('d-none');
+      
+      // 隐藏预览区域
+      $('#document-preview').addClass('d-none');
+      
+      // 加载结果内容
+      $('#result-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载结果...</p></div>');
+      
+      // 解析路径 - 处理完整URL和相对路径
+      let loadPath = resultPath;
+      if (resultPath.startsWith('http')) {
+        // 这是完整URL，直接使用
+        $.ajax({
+          url: loadPath,
+          type: 'GET',
+          success: function(html) {
+            $('#result-content').html(html);
+            addEntryAnimation('#result-section');
+          },
+          error: function(xhr, status, error) {
+            console.error('加载结果失败:', error);
+            $('#result-content').html('<div class="alert alert-danger">加载美化结果失败，请尝试刷新页面。</div>');
+          }
+        });
+      } else {
+        // 相对路径，使用预览接口
+        const fileName = resultPath.split(/[\/\\]/).pop();
+        $.ajax({
+          url: '/preview/' + encodeURIComponent(fileName),
+          type: 'GET',
+          success: function(html) {
+            $('#result-content').html(html);
+            addEntryAnimation('#result-section');
+          },
+          error: function(xhr, status, error) {
+            console.error('加载结果失败:', error);
+            $('#result-content').html('<div class="alert alert-danger">加载美化结果失败，请尝试刷新页面。</div>');
+          }
+        });
+      }
     }
 });

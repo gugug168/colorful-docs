@@ -466,36 +466,152 @@ app.post('/upload', upload.single('document'), async (req, res) => {
   }
 });
 
-// 美化文档处理路由 - 采用异步队列处理
-app.post('/beautify', async (req, res) => {
+// 创建美化任务
+app.post('/beautify-task', async (req, res) => {
     try {
-        console.log('收到美化请求:', req.body.filename);
+        console.log('收到美化任务请求:', req.body);
         
-        const { filename, targetFormat, htmlContent, customRequirements, colorizedImages } = req.body;
+        // 获取参数
+        const { filePath, filename, targetFormat = 'word', apiType = 'deepseek', templateId = '', customRequirements = '' } = req.body;
         
-        if (!filename || !targetFormat || !htmlContent) {
-            return res.status(400).json({ error: '缺少必要参数' });
+        // 验证文件路径和文件名
+        if (!filePath || !filename) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少文件路径或文件名'
+            });
         }
         
-        // 创建异步任务
+        console.log('处理文件:', filename, '路径:', filePath);
+        
+        // 获取文件HTML内容
+        let htmlContent = '';
+        
+        // 尝试从多个可能的位置加载原始HTML文件
+        const possiblePaths = [
+            filePath, // 原始路径
+            path.join('/tmp', 'temp', path.basename(filePath)), // 在temp目录中查找文件名
+            path.join('/tmp', 'uploads', path.basename(filePath)), // 在uploads目录中查找文件名
+            // 向后兼容旧路径
+            path.join(__dirname, 'temp', path.basename(filePath)),
+            path.join(__dirname, 'uploads', path.basename(filePath))
+        ];
+        
+        let foundHtmlPath = '';
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                console.log('找到文件:', p);
+                try {
+                    htmlContent = fs.readFileSync(p, 'utf8');
+                    foundHtmlPath = p;
+                    break;
+                } catch (err) {
+                    console.error('读取文件失败:', p, err);
+                }
+            }
+        }
+        
+        // 如果没有找到HTML内容但文件确实存在 - 可能是二进制文件，需要转换
+        if (!htmlContent && foundHtmlPath) {
+            console.log('找到文件但无法直接读取为HTML，尝试转换:', foundHtmlPath);
+            
+            // 根据扩展名转换
+            const ext = path.extname(foundHtmlPath).toLowerCase();
+            if (ext === '.docx' || ext === '.doc') {
+                try {
+                    const conversionResult = await docxConverter.convertDocxToHtml(foundHtmlPath);
+                    if (conversionResult.success) {
+                        htmlContent = conversionResult.html;
+                        console.log('成功将Word文档转换为HTML');
+                    } else {
+                        throw new Error('Word转HTML失败: ' + conversionResult.error);
+                    }
+                } catch (err) {
+                    console.error('转换Word文档失败:', err);
+                    return res.status(500).json({
+                        success: false,
+                        message: '转换Word文档失败: ' + err.message
+                    });
+                }
+            } else if (ext === '.pdf') {
+                try {
+                    const conversionResult = await pdfConverter.convertPdfToHtml(foundHtmlPath);
+                    if (conversionResult.success) {
+                        htmlContent = conversionResult.html;
+                        console.log('成功将PDF转换为HTML');
+                    } else {
+                        throw new Error('PDF转HTML失败: ' + conversionResult.error);
+                    }
+                } catch (err) {
+                    console.error('转换PDF文档失败:', err);
+                    return res.status(500).json({
+                        success: false,
+                        message: '转换PDF文档失败: ' + err.message
+                    });
+                }
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: '不支持的文件类型: ' + ext
+                });
+            }
+        }
+        
+        // 如果仍然没有HTML内容
+        if (!htmlContent) {
+            console.error('无法获取HTML内容');
+            return res.status(404).json({
+                success: false,
+                message: '无法获取文件内容，文件可能不存在或格式不支持'
+            });
+        }
+        
+        // 获取API密钥 - 根据选择的API类型
+        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const apiKey = configData.apiKeys[apiType] || '';
+        
+        // 获取模板信息
+        let templateRequirements = '';
+        if (templateId) {
+            try {
+                const templatesData = JSON.parse(fs.readFileSync(templatesPath, 'utf8'));
+                if (templatesData.templates[templateId]) {
+                    templateRequirements = templatesData.templates[templateId].requirements || '';
+                }
+            } catch (err) {
+                console.error('读取模板信息失败:', err);
+            }
+        }
+        
+        // 合并模板要求和自定义要求
+        let finalRequirements = '';
+        if (templateRequirements && customRequirements) {
+            finalRequirements = templateRequirements + '\n\n' + customRequirements;
+        } else {
+            finalRequirements = templateRequirements || customRequirements;
+        }
+        
+        // 准备任务数据
         const taskData = {
-            filename,
-            targetFormat,
-            htmlContent,
-            customRequirements,
-            colorizedImages,
+            filename: filename,
+            filePath: filePath,
+            htmlContent: htmlContent,
+            targetFormat: targetFormat,
+            apiType: apiType,
+            apiKey: apiKey,
+            customRequirements: finalRequirements,
             taskType: 'beautify',
-            requestedAt: new Date().toISOString()
+            createdAt: new Date().toISOString()
         };
         
-        // 将任务添加到队列
+        // 创建任务
         const taskResult = await supabaseClient.createTask(taskData);
         
         if (!taskResult.success) {
-            return res.status(500).json({ error: `创建任务失败: ${taskResult.error}` });
+            throw new Error(`创建任务失败: ${taskResult.error}`);
         }
         
-        // 返回任务ID和状态
+        // 返回任务ID
         res.json({
             success: true,
             taskId: taskResult.taskId,
@@ -505,7 +621,10 @@ app.post('/beautify', async (req, res) => {
         
     } catch (error) {
         console.error('创建美化任务出错:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
