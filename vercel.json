@@ -1,19 +1,25 @@
 {
   "version": 2,
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "@vercel/node@2.5.0",
-      "memory": 1024,
-      "maxDuration": 10,
-      "includeFiles": "utils/** data/**"
+  "builds": [
+    { 
+      "src": "app.js", 
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["views/**", "data/**", "utils/**"],
+        "memory": 1024,
+        "maxDuration": 10
+      }
     },
-    "app.js": {
-      "runtime": "@vercel/node@2.5.0",
-      "includeFiles": "views/** data/** utils/**",
-      "memory": 1024,
-      "maxDuration": 10
+    { 
+      "src": "api/**/*.js", 
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["utils/**", "data/**"],
+        "memory": 1024,
+        "maxDuration": 10
+      }
     }
-  },
+  ],
   "routes": [
     { "handle": "filesystem" },
     {
