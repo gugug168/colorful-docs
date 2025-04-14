@@ -8,8 +8,8 @@ const crypto = require('crypto');
 const path = require('path');
 
 // 从环境变量获取 Supabase 配置
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseKey;
 
 // 创建 Supabase 客户端 - 使用服务角色密钥以获取更高权限
