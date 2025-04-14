@@ -5,11 +5,11 @@
       "runtime": "@vercel/node@2.5.0",
       "memory": 1024,
       "maxDuration": 10,
-      "includeFiles": "utils/**,data/**"
+      "includeFiles": "utils/** data/**"
     },
     "app.js": {
       "runtime": "@vercel/node@2.5.0",
-      "includeFiles": "views/**,data/**,utils/**",
+      "includeFiles": "views/** data/** utils/**",
       "memory": 1024,
       "maxDuration": 10
     }
