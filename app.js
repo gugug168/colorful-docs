@@ -1893,3 +1893,75 @@ async function validateApiKey() {
     return false;
   }
 }
+
+// 创建美化任务（新版本）
+app.post('/beautify-task', async (req, res) => {
+// ... existing code ...
+
+// 添加兼容的/beautify路由
+app.post('/beautify', async (req, res) => {
+  console.log('收到旧版本/beautify请求，转发到/beautify-task:', req.body);
+  
+  try {
+    const { filePath, template, targetFormat, customRequirements } = req.body;
+    
+    // 检查必要参数
+    if (!filePath) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '缺少文件路径参数' 
+      });
+    }
+    
+    // 从文件路径中提取文件名
+    const filename = path.basename(filePath);
+    
+    // 转发请求到beautify-task处理程序
+    req.body = {
+      filePath,
+      filename,
+      templateId: template || '',
+      targetFormat: targetFormat || 'auto',
+      customRequirements: customRequirements || '',
+      apiType: 'deepseek'
+    };
+    
+    // 内部调用beautify-task的处理逻辑
+    const taskResult = await supabaseClient.createTask({
+      filename: filename,
+      filePath: filePath,
+      targetFormat: targetFormat || 'auto',
+      customRequirements: customRequirements || '',
+      templateId: template || '',
+      apiType: 'deepseek',
+      taskType: 'beautify',
+      createdAt: new Date().toISOString()
+    });
+    
+    if (!taskResult.success) {
+      console.error('创建任务失败:', taskResult.error);
+      return res.status(500).json({ 
+        success: false, 
+        message: '创建任务失败' + (taskResult.error ? ': ' + taskResult.error : '')
+      });
+    }
+    
+    // 启动任务处理器进行后台处理
+    taskProcessor.processTask(taskResult.taskId);
+    
+    // 返回任务ID供前端查询状态
+    return res.json({
+      success: true,
+      taskId: taskResult.taskId,
+      status: 'pending',
+      message: '美化任务已提交，请稍后检查结果'
+    });
+    
+  } catch (error) {
+    console.error('处理美化请求出错:', error);
+    return res.status(500).json({
+      success: false,
+      message: '处理请求出错: ' + error.message
+    });
+  }
+});

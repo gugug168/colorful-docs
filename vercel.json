@@ -5,7 +5,7 @@
       "src": "app.js", 
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["views/**", "data/**", "utils/**"],
+        "includeFiles": ["views/**", "data/**", "utils/**", "public/**"],
         "memory": 1024,
         "maxDuration": 10
       }
@@ -21,14 +21,11 @@
     }
   ],
   "routes": [
-    { "handle": "filesystem" },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/app.js"
-    }
+    { "src": "/images/(.*)", "dest": "/public/images/$1" },
+    { "src": "/js/(.*)", "dest": "/public/js/$1" },
+    { "src": "/css/(.*)", "dest": "/public/css/$1" },
+    { "src": "/beautify", "dest": "/app.js" },
+    { "src": "/api/(.*)", "dest": "/api/$1.js" },
+    { "src": "/(.*)", "dest": "/app.js" }
   ]
 } 
