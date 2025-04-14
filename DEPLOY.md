@@ -75,8 +75,8 @@ git push -u origin main
    - 安装命令：`npm install`
 
 3. 添加环境变量：
-   - `SUPABASE_URL` - 您的 Supabase 项目 URL
-   - `SUPABASE_KEY` - 您的 Supabase anon key
+   - `NEXT_PUBLIC_SUPABASE_URL` - 您的 Supabase 项目 URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - 您的 Supabase anon key
    - `DEEPSEEK_API_KEY` - 您的 DeepSeek API 密钥（如适用）
 
 4. 部署项目
