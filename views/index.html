@@ -592,8 +592,13 @@
                     // 显示任务进度弹窗
                     showTaskProgressModal();
                     
-                    // 开始轮询任务状态
-                    startTaskStatusPolling(currentTaskId);
+                    // 直接使用main.js中的函数来检查任务状态
+                    if (window.checkTaskStatus) {
+                        window.checkTaskStatus(currentTaskId);
+                    } else {
+                        console.error('找不到checkTaskStatus函数');
+                        showMessage('无法启动任务状态监控，请刷新页面重试', 'danger');
+                    }
                 } else {
                     // 显示错误
                     showMessage(response.error || '美化请求失败', 'danger');
@@ -606,12 +611,17 @@
                 // 显示错误信息
                 const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : '请求失败，请重试';
                 showMessage(errorMsg, 'danger');
-            }
+            },
+            // 添加请求超时
+            timeout: 30000 // 30秒超时
         });
     });
 
     // 显示任务进度弹窗
     function showTaskProgressModal() {
+        // 确保先隐藏其他所有加载框
+        hideLoading();
+        
         // 重置弹窗状态
         $('#taskStatusText').text('正在处理您的文档，请稍候...');
         $('#taskProgressBar').css('width', '0%');

@@ -2734,6 +2734,20 @@ $(document).ready(function() {
         window.taskCheckInterval = null;
       }
       
+      // 设置超时定时器 - 2分钟后自动失败
+      const taskTimeout = setTimeout(function() {
+        console.log('任务处理超过2分钟，自动标记为失败');
+        hideLoading();
+        showMessage('任务处理超时，请稍后重试', 'danger');
+        
+        // 如果任务进度弹窗存在，更新为失败状态
+        if ($('#taskProgressModal').length > 0) {
+          $('#taskErrorInfo').removeClass('d-none');
+          $('#taskErrorText').text('任务处理超时，服务器可能繁忙');
+          $('.task-info').addClass('d-none');
+        }
+      }, 120000); // 2分钟 = 120秒 = 120000毫秒
+      
       function doCheck() {
         // 检查页面是否还在活跃状态
         if (document.hidden) {
@@ -2743,6 +2757,7 @@ $(document).ready(function() {
         
         if (attempts >= maxAttempts) {
           console.log('达到最大检查次数，停止检查');
+          clearTimeout(taskTimeout); // 清除超时定时器
           showMessage('任务检查超时，请刷新页面或再次尝试', 'warning');
           hideLoading(); // 确保隐藏加载框
           return;
@@ -2766,9 +2781,11 @@ $(document).ready(function() {
               updateTaskProgressUI(response);
               
               if (response.status === 'completed') {
+                clearTimeout(taskTimeout); // 清除超时定时器
                 handleTaskComplete(response);
                 return; // 完成，停止检查
               } else if (response.status === 'failed') {
+                clearTimeout(taskTimeout); // 清除超时定时器
                 handleTaskFailure(response);
                 return; // 失败，停止检查
               } else {
@@ -2805,8 +2822,9 @@ $(document).ready(function() {
         }
       });
       
-      // 当用户离开页面时清理轮询
+      // 当用户离开页面时清理轮询和超时
       window.addEventListener('beforeunload', function() {
+        clearTimeout(taskTimeout);
         if (window.taskCheckInterval) {
           clearInterval(window.taskCheckInterval);
         }
@@ -2907,4 +2925,7 @@ $(document).ready(function() {
         });
       }
     }
+
+    // 将checkTaskStatus函数附加到window对象，以便在index.html中调用
+    window.checkTaskStatus = checkTaskStatus;
 });
