@@ -2061,23 +2061,36 @@ app.post('/beautify', async (req, res) => {
   console.log('收到旧版本/beautify请求，转发到/beautify-task:', req.body);
   
   try {
-    const { filePath, template, targetFormat, customRequirements } = req.body;
+    const { filePath, template, targetFormat, customRequirements, htmlContent, filename } = req.body;
     
-    // 检查必要参数
-    if (!filePath) {
+    // 检查必要参数 - 允许使用filePath或htmlContent
+    if (!filePath && !htmlContent) {
       return res.status(400).json({ 
         success: false, 
-        message: '缺少文件路径参数' 
+        message: '缺少文件路径或HTML内容参数' 
       });
     }
     
-    // 从文件路径中提取文件名
-    const filename = path.basename(filePath);
+    // 从文件路径中提取文件名或使用提供的文件名
+    const finalFilename = filename || (filePath ? path.basename(filePath) : 'document-' + Date.now() + '.html');
+    
+    // 如果提供了HTML内容但没有文件路径，创建临时文件
+    let finalFilePath = filePath;
+    if (htmlContent && !filePath) {
+      // 在临时目录中创建HTML文件
+      const tempDir = path.join('/tmp', 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      finalFilePath = path.join(tempDir, finalFilename);
+      fs.writeFileSync(finalFilePath, htmlContent, 'utf8');
+      console.log(`已将HTML内容保存到临时文件: ${finalFilePath}`);
+    }
     
     // 转发请求到beautify-task处理程序
     req.body = {
-      filePath,
-      filename,
+      filePath: finalFilePath,
+      filename: finalFilename,
       templateId: template || '',
       targetFormat: targetFormat || 'auto',
       customRequirements: customRequirements || '',
@@ -2086,8 +2099,9 @@ app.post('/beautify', async (req, res) => {
     
     // 内部调用beautify-task的处理逻辑
     const taskResult = await supabaseClient.createTask({
-      filename: filename,
-      filePath: filePath,
+      filename: finalFilename,
+      filePath: finalFilePath,
+      htmlContent: htmlContent, // 添加HTML内容
       targetFormat: targetFormat || 'auto',
       customRequirements: customRequirements || '',
       templateId: template || '',
