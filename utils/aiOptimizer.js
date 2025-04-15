@@ -1275,6 +1275,12 @@ function beautifyWithRules(htmlContent, targetFormat = 'word', prompt = '') {
             return htmlContent;
         }
         
+        // 确保defaultView存在
+        if (!doc.defaultView) {
+            doc.defaultView = window;
+            console.log('设置doc.defaultView为jsdom window');
+        }
+        
         // 根据不同格式应用不同规则
         let cssRules = '';
         
@@ -1512,10 +1518,6 @@ function applyPdfFormatting(doc) {
  */
 function cleanupDocument(doc) {
     try {
-        // 获取DOM环境常量
-        const NodeFilter = doc.defaultView.NodeFilter;
-        const Node = doc.defaultView.Node;
-        
         // 移除空段落
         const paragraphs = doc.querySelectorAll('p');
         paragraphs.forEach(p => {
@@ -1532,6 +1534,16 @@ function cleanupDocument(doc) {
                 br.parentNode.removeChild(br);
             }
         });
+        
+        // 检查defaultView是否存在，如果不存在则跳过使用NodeFilter的部分
+        if (!doc.defaultView) {
+            console.log('文档没有defaultView，跳过使用NodeFilter的清理');
+            return;
+        }
+        
+        // 获取DOM环境常量
+        const NodeFilter = doc.defaultView.NodeFilter;
+        const Node = doc.defaultView.Node;
         
         // 清理不必要的空白和注释
         const iterator = doc.createNodeIterator(
