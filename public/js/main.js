@@ -1933,10 +1933,23 @@ $(document).ready(function() {
         $('#loading-overlay').remove();
     }
 
+    /**
+     * 更新加载提示文本
+     * @param {string} message - 要显示的加载提示消息
+     */
+    function updateLoading(message) {
+        if ($('#loading-overlay').length) {
+            $('#loading-overlay .bg-white span').text(message || '加载中...');
+        } else {
+            showLoading(message);
+        }
+    }
+
     // 将这些函数附加到window对象上，使它们在全局范围内可用
     window.showMessage = showMessage;
     window.showLoading = showLoading;
     window.hideLoading = hideLoading;
+    window.updateLoading = updateLoading;
 
     /**
      * 初始化模板预览图片放大功能

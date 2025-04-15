@@ -169,7 +169,7 @@ async function processImageLocal(imagePath, isRecoloring = false, timestamp = nu
         // 将上色后的图片复制到网站可访问的目录
         try {
             // 确保temp目录存在
-            const tempDir = path.join(process.cwd(), 'temp');
+            const tempDir = process.env.NODE_ENV === 'production' ? '/tmp/temp' : path.join(process.cwd(), 'temp');
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
@@ -307,7 +307,7 @@ async function processImage(imagePath, isRecoloring = false, timestamp = null) {
         // 将上色后的图片复制到网站可访问的目录
         try {
             // 确保temp目录存在
-            const tempDir = path.join(process.cwd(), 'temp');
+            const tempDir = process.env.NODE_ENV === 'production' ? '/tmp/temp' : path.join(process.cwd(), 'temp');
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }

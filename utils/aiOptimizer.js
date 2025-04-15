@@ -1262,6 +1262,12 @@ function beautifyWithRules(htmlContent, targetFormat = 'word', prompt = '') {
     console.log(`执行规则美化，目标格式: ${targetFormat}`);
     
     try {
+        // 在Node.js环境中使用jsdom提供DOMParser
+        const { JSDOM } = require('jsdom');
+        const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+        const { window } = dom;
+        const { document, DOMParser, XMLSerializer } = window;
+        
         // 解析HTML文档
         const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
         if (!doc || !doc.body) {

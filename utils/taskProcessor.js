@@ -132,7 +132,8 @@ async function processBeautifyTask(taskId) {
         
         // 保存处理后的HTML到temp目录
         const timestamp = Date.now();
-        const tempDir = path.join(__dirname, '..', 'temp');
+        // 使用/tmp目录(Vercel环境可写目录)
+        const tempDir = process.env.NODE_ENV === 'production' ? '/tmp/temp' : path.join(__dirname, '..', 'temp');
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
@@ -146,7 +147,7 @@ async function processBeautifyTask(taskId) {
         console.log(`任务 ${taskId} 美化后的HTML已保存到: ${outputPath}`);
         
         // 复制到downloads目录供下载
-        const downloadsDir = path.join(__dirname, '..', 'downloads');
+        const downloadsDir = process.env.NODE_ENV === 'production' ? '/tmp/downloads' : path.join(__dirname, '..', 'downloads');
         if (!fs.existsSync(downloadsDir)) {
             fs.mkdirSync(downloadsDir, { recursive: true });
         }
