@@ -2744,6 +2744,7 @@ $(document).ready(function() {
         if (attempts >= maxAttempts) {
           console.log('达到最大检查次数，停止检查');
           showMessage('任务检查超时，请刷新页面或再次尝试', 'warning');
+          hideLoading(); // 确保隐藏加载框
           return;
         }
         
@@ -2778,6 +2779,7 @@ $(document).ready(function() {
               }
             } else {
               showMessage(response.error || '检查任务状态失败', 'warning');
+              hideLoading(); // 确保隐藏加载框
               // 即使出错也继续尝试检查
               attempts++;
               setTimeout(doCheck, 5000);
