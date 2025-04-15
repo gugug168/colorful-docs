@@ -2,7 +2,10 @@
 
 #该项目代码会上传到github托管，然后使用vercel进行部署，然后空间存储使用supabase，同时为了减少vercel的代码运行时间，采用异步执行AI美化，查询supabase的数据库
 
-
+#重点和重复出现的问题
+1、我是使用vercel的环境变量
+2、The `functions` property cannot be used in conjunction with the `builds` property. Please remove one of them.'functions' 属性不能与 'builds' 属性一起使用。请删除其中一个。
+3、
 
 ## 项目概述
 本项目旨在开发一个文档排版与美化系统，能够将用户上传的文档转换为HTML格式，利用AI技术对其进行智能排版和重点知识突出显示，并支持将美化后的文档导出为原格式。系统不会影响原文档中的图片展示，同时能够对重点字句进行字体变色、加粗等处理。
