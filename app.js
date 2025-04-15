@@ -2119,7 +2119,7 @@ app.post('/beautify', async (req, res) => {
     }
     
     // 启动任务处理器进行后台处理
-    taskProcessor.processTask(taskResult.taskId);
+    taskProcessor.processBeautifyTask(taskResult.taskId);
     
     // 返回任务ID供前端查询状态
     return res.json({
