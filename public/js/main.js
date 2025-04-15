@@ -884,7 +884,7 @@ $(document).ready(function() {
                     updateLoading('正在美化文档，请稍候...');
                     
                     // 添加进度条到加载提示
-                    $('#loading-message').append(`
+                    $('#progress-container').html(`
                         <div class="mt-3">
                             <div class="progress" style="height: 10px;">
                                 <div id="task-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
@@ -1913,11 +1913,15 @@ $(document).ready(function() {
         // 创建加载提示的HTML
         const loadingHtml = `
             <div id="loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="z-index: 1090; background-color: rgba(0, 0, 0, 0.5);">
-                <div class="bg-white p-4 rounded shadow d-flex align-items-center">
-                    <div class="spinner-border text-primary me-3" role="status">
-                        <span class="visually-hidden">加载中...</span>
+                <div class="bg-white p-4 rounded shadow">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border text-primary me-3" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <span id="loading-message">${message || '加载中...'}</span>
                     </div>
-                    <span>${message || '加载中...'}</span>
+                    <!-- 进度条将在需要时添加到这里 -->
+                    <div id="progress-container"></div>
                 </div>
             </div>
         `;
@@ -1939,7 +1943,7 @@ $(document).ready(function() {
      */
     function updateLoading(message) {
         if ($('#loading-overlay').length) {
-            $('#loading-overlay .bg-white span').text(message || '加载中...');
+            $('#loading-message').text(message || '加载中...');
         } else {
             showLoading(message);
         }

@@ -1512,6 +1512,10 @@ function applyPdfFormatting(doc) {
  */
 function cleanupDocument(doc) {
     try {
+        // 获取DOM环境常量
+        const NodeFilter = doc.defaultView.NodeFilter;
+        const Node = doc.defaultView.Node;
+        
         // 移除空段落
         const paragraphs = doc.querySelectorAll('p');
         paragraphs.forEach(p => {
