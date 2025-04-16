@@ -259,12 +259,48 @@ async function createTask(taskData) {
  */
 async function updateTaskStatus(taskId, status, data = {}) {
     try {
+        console.log(`开始更新任务 ${taskId} 状态为 ${status}`);
+        
+        // 准备更新数据
         const updateData = {
             status,
             updated_at: new Date().toISOString(),
-            ...data
         };
         
+        // 结果数据需要特殊处理，确保JSON格式正确
+        if (data.result) {
+            try {
+                // 检查result对象是否可以正确序列化
+                const resultStr = JSON.stringify(data.result);
+                updateData.result = data.result;
+                console.log(`任务 ${taskId} 结果数据大小: ${resultStr.length} 字节`);
+            } catch (jsonError) {
+                console.error(`任务 ${taskId} 结果数据无法序列化:`, jsonError);
+                
+                // 尝试创建可序列化的简化版本
+                const safeResult = {
+                    path: data.result.path || null,
+                    outputFileName: data.result.outputFileName || null,
+                    type: data.result.type || null,
+                    originalname: data.result.originalname || null,
+                    wasBackupMode: data.result.wasBackupMode || false,
+                    completedAt: data.result.completedAt || new Date().toISOString()
+                };
+                
+                updateData.result = safeResult;
+                console.log(`任务 ${taskId} 使用简化的结果数据`);
+            }
+        }
+        
+        // 错误数据
+        if (data.error) {
+            updateData.error = data.error;
+        }
+        
+        // 记录更新的数据结构（不包含实际内容）
+        console.log(`任务 ${taskId} 更新数据结构:`, Object.keys(updateData));
+        
+        // 执行更新
         const { error } = await supabase
             .from('tasks')
             .update(updateData)
@@ -272,10 +308,40 @@ async function updateTaskStatus(taskId, status, data = {}) {
             
         if (error) {
             console.error(`更新任务状态失败 (${taskId}):`, error);
+            console.error(`错误详情:`, JSON.stringify(error));
+            
+            // 检查是否是数据太大导致的错误
+            if (error.message && (
+                error.message.includes('payload') || 
+                error.message.includes('too large') || 
+                error.message.includes('exceeded')
+            )) {
+                console.warn(`任务 ${taskId} 可能数据太大，尝试精简数据后重新更新`);
+                
+                // 精简result数据
+                if (updateData.result) {
+                    delete updateData.result.html; // 移除HTML内容
+                    
+                    // 重新尝试更新
+                    const retryResult = await supabase
+                        .from('tasks')
+                        .update(updateData)
+                        .eq('id', taskId);
+                        
+                    if (retryResult.error) {
+                        console.error(`精简数据后更新仍失败 (${taskId}):`, retryResult.error);
+                        throw new Error(`更新失败，即使精简数据后: ${retryResult.error.message}`);
+                    } else {
+                        console.log(`任务 ${taskId} 使用精简数据更新成功`);
+                        return { success: true };
+                    }
+                }
+            }
+            
             throw error;
         }
         
-        console.log(`任务 ${taskId} 状态更新为 ${status}`);
+        console.log(`任务 ${taskId} 状态成功更新为 ${status}`);
         return {
             success: true
         };

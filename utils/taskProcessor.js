@@ -159,49 +159,103 @@ async function processBeautifyTask(taskId) {
         // 清除超时
         clearTimeout(timeoutId);
         
-        // 将文件上传到Supabase存储
-        const fileContent = fs.readFileSync(outputPath);
-        const uploadResult = await supabaseClient.uploadFile(
-            fileContent,
-            `beautified/${outputFileName}`,
-            'uploads'
-        );
+        // 准备结果对象，以防上传失败时仍能保存结果
+        const resultObject = {
+            path: outputPath, // 默认使用本地路径
+            outputFileName: outputFileName,
+            html: optimizedHTML.substring(0, 1000) + '...', // 只保存部分HTML内容
+            type: targetFormat,
+            originalname: filename,
+            wasBackupMode: usedBackupMode,
+            completedAt: new Date().toISOString()
+        };
         
+        // 将文件上传到Supabase存储
         let fileUrl = '';
-        if (uploadResult.success) {
-            fileUrl = uploadResult.url;
-            console.log(`任务 ${taskId} 文件已上传到Supabase: ${fileUrl}`);
-        } else {
-            console.warn(`任务 ${taskId} 文件上传到Supabase失败，将使用本地路径`);
+        try {
+            const fileContent = fs.readFileSync(outputPath);
+            const uploadResult = await supabaseClient.uploadFile(
+                fileContent,
+                `beautified/${outputFileName}`,
+                'uploads'
+            );
+            
+            if (uploadResult.success) {
+                fileUrl = uploadResult.url;
+                resultObject.path = fileUrl; // 更新结果对象使用远程URL
+                console.log(`任务 ${taskId} 文件已上传到Supabase: ${fileUrl}`);
+            } else {
+                console.warn(`任务 ${taskId} 文件上传到Supabase失败，将使用本地路径: ${uploadResult.error}`);
+            }
+        } catch (uploadError) {
+            console.error(`上传文件到Supabase失败: ${uploadError.message}`);
+            // 继续使用本地路径，不中断流程
         }
         
-        // 更新任务状态为已完成
-        await supabaseClient.updateTaskStatus(taskId, 'completed', {
-            result: {
-                path: uploadResult.success ? fileUrl : outputPath,
-                outputFileName: outputFileName,
-                html: optimizedHTML.substring(0, 1000) + '...', // 只保存部分HTML内容
-                type: targetFormat,
-                originalname: filename,
-                wasBackupMode: usedBackupMode,
-                completedAt: new Date().toISOString()
+        // 使用事务或重试机制确保任务状态更新成功
+        let updateSuccess = false;
+        let updateAttempts = 0;
+        const maxUpdateAttempts = 3;
+        
+        while (!updateSuccess && updateAttempts < maxUpdateAttempts) {
+            try {
+                updateAttempts++;
+                // 更新任务状态为已完成，保存结果对象
+                const updateResult = await supabaseClient.updateTaskStatus(taskId, 'completed', {
+                    result: resultObject
+                });
+                
+                if (updateResult.success) {
+                    updateSuccess = true;
+                    console.log(`任务 ${taskId} 状态更新成功, 结果已保存到数据库`);
+                } else {
+                    console.warn(`任务 ${taskId} 状态更新失败（尝试 ${updateAttempts}/${maxUpdateAttempts}）: ${updateResult.error}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                }
+            } catch (updateError) {
+                console.error(`更新任务状态出错（尝试 ${updateAttempts}/${maxUpdateAttempts}）: ${updateError.message}`);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
             }
-        });
+        }
+        
+        if (!updateSuccess) {
+            console.error(`无法更新任务 ${taskId} 状态，已达到最大重试次数`);
+        }
         
         console.log(`任务 ${taskId} 处理完成`);
         return {
             success: true,
             taskId,
             outputFileName,
-            fileUrl: uploadResult.success ? fileUrl : `/download/${outputFileName}`
+            fileUrl: fileUrl || `/download/${outputFileName}`
         };
     } catch (error) {
         console.error(`处理任务 ${taskId} 失败:`, error);
         
-        // 更新任务状态为失败
-        await supabaseClient.updateTaskStatus(taskId, 'failed', {
-            error: error.message
-        });
+        // 使用事务或重试机制确保错误状态更新成功
+        let updateSuccess = false;
+        let updateAttempts = 0;
+        const maxUpdateAttempts = 3;
+        
+        while (!updateSuccess && updateAttempts < maxUpdateAttempts) {
+            try {
+                updateAttempts++;
+                // 更新任务状态为失败
+                const updateResult = await supabaseClient.updateTaskStatus(taskId, 'failed', {
+                    error: error.message
+                });
+                
+                if (updateResult.success) {
+                    updateSuccess = true;
+                } else {
+                    console.warn(`更新失败状态失败（尝试 ${updateAttempts}/${maxUpdateAttempts}）: ${updateResult.error}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                }
+            } catch (updateError) {
+                console.error(`更新失败状态出错（尝试 ${updateAttempts}/${maxUpdateAttempts}）: ${updateError.message}`);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+            }
+        }
         
         return {
             success: false,
