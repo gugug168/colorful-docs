@@ -2602,6 +2602,9 @@ $(document).ready(function() {
         return;
       }
       
+      // 打印当前检查的任务ID，便于调试
+      console.log(`正在检查任务状态，任务ID: ${taskId}`);
+      
       // 如果任务已经被标记为停止检查，则不继续
       if (window.activeTaskChecks && window.activeTaskChecks[taskId] === false) {
         console.log(`任务 ${taskId} 已停止检查`);
@@ -2628,28 +2631,41 @@ $(document).ready(function() {
         dataType: 'json',
         timeout: 10000, // 10秒超时
         success: function(response) {
-          console.log('任务状态:', response);
+          console.log(`任务 ${taskId} 状态响应:`, response);
           
           // 更新UI显示
           updateTaskStatusUI(taskId, response);
           
           // 根据任务状态处理
           if (response.status === 'completed') {
+            console.log(`任务 ${taskId} 已完成，处理结果...`);
             // 任务完成，处理结果
             handleTaskCompletion(response);
             // 停止状态检查
             stopTaskStatusCheck(taskId);
+            
+            // 确保停止检查循环
+            window.activeTaskChecks[taskId] = false;
+            
+            // 如果有结果URL，直接加载
+            if (response.result && response.result.path) {
+              console.log(`加载任务结果: ${response.result.path}`);
+              loadBeautifiedResult(response.result.path);
+            }
           } else if (response.status === 'failed') {
+            console.log(`任务 ${taskId} 失败，处理错误...`);
             // 任务失败，处理错误
             handleTaskFailure(response);
             // 停止状态检查
             stopTaskStatusCheck(taskId);
           } else if (response.status === 'processing' || response.status === 'pending') {
+            console.log(`任务 ${taskId} ${response.status}中，继续检查...`);
             // 任务仍在处理中，继续检查
             setTimeout(function() {
               checkTaskStatus(taskId);
             }, 2000); // 2秒后再次检查
           } else {
+            console.log(`任务 ${taskId} 状态未知: ${response.status}`);
             // 未知状态，视为失败
             handleTaskFailure({
               taskId: taskId,
@@ -2660,7 +2676,8 @@ $(document).ready(function() {
           }
         },
         error: function(xhr, status, error) {
-          console.error('检查任务状态失败:', status, error, xhr.responseText);
+          console.error(`任务 ${taskId} 状态检查失败:`, status, error);
+          console.error('错误响应:', xhr.responseText);
           
           // 如果是超时，设置特定错误消息
           let errorMsg = '检查任务状态失败';

@@ -198,56 +198,27 @@ const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 限制为10MB
-  },
-  fileFilter: function (req, file, cb) {
-    // 接受doc、docx、pdf和图片文件
-    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
-        file.mimetype === 'application/msword' ||
-        file.mimetype === 'application/pdf' ||
-        file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('只支持Word文档(.doc/.docx)、PDF文件和图片!'), false);
-    }
+    // 修改文件大小限制，提高到50MB
+    fileSize: 50 * 1024 * 1024,
   }
 });
 
-// 在应用程序初始化后设置CORS
-// 添加中间件
-app.use(cors({
-  origin: '*', // 允许所有域名访问，也可以设置为特定域名
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Disposition', 'Content-Type']  // 允许前端访问这些响应头
-}));
+// 设置CORS - 配置允许访问该API的来源
+app.use(cors());
 
-// 添加特定请求头，确保图片可以跨域访问
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
-  res.header('Timing-Allow-Origin', '*');  // 允许计时API
-  
-  // 如果是请求图片，添加额外的缓存控制
-  if (req.path.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i)) {
-    res.header('Cache-Control', 'public, max-age=3600');  // 1小时缓存
-  }
-  
-  next();
-});
-
-// 主页路由
+// 首页路由
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'landing.html'));
-});
-
-app.get('/app', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
 
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'admin.html'));
+// API测试页面路由
+app.get('/test-deepseek', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'test-deepseek.html'));
+});
+
+// 应用页面路由
+app.get('/app', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
 
 // 上传文件处理路由
@@ -2226,6 +2197,88 @@ app.post('/beautify', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '处理请求出错: ' + error.message
+    });
+  }
+});
+
+// 测试DeepSeek API路由
+app.get('/test-deepseek', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'test-deepseek.html'));
+});
+
+// DeepSeek API测试接口
+app.post('/api/test-deepseek', async (req, res) => {
+  const prompt = req.body.prompt || "请将以下文字转换为HTML格式：这是一个测试段落，请美化它。";
+  
+  console.log("[DeepSeek API测试] 接收到测试请求:", { prompt });
+  
+  try {
+    const startTime = Date.now();
+    
+    // 获取API配置
+    const apiType = config.apiConfig.type || 'deepseek';
+    const apiKey = process.env[`${apiType.toUpperCase()}_API_KEY`] || config.apiKeys[apiType];
+    const apiModel = config.apiConfig.model || 'deepseek-chat';
+    
+    console.log(`[DeepSeek API测试] 使用API类型: ${apiType}, 模型: ${apiModel}`);
+    console.log(`[DeepSeek API测试] API密钥长度: ${apiKey ? apiKey.length : 0}, 前5位: ${apiKey ? apiKey.substring(0, 5) : 'N/A'}`);
+    
+    // 准备请求参数
+    const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+    const temperature = config.parameters.deepseek.temperature || 0.7;
+    const maxTokens = config.parameters.deepseek.max_tokens || 4000;
+    
+    // 设置请求头
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    };
+    
+    // 设置请求体
+    const requestBody = {
+      model: apiModel,
+      messages: [
+        { role: "system", content: "你是一个专业的网页开发和设计助手，擅长将文本转换为美观的HTML。" },
+        { role: "user", content: prompt }
+      ],
+      temperature: temperature,
+      max_tokens: maxTokens
+    };
+    
+    console.log(`[DeepSeek API测试] 发送请求到: ${apiUrl}`);
+    
+    // 发送请求
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestBody),
+      timeout: 30000
+    });
+    
+    const responseTime = Date.now() - startTime;
+    
+    // 解析响应
+    const responseData = await response.json();
+    
+    console.log(`[DeepSeek API测试] 响应状态码: ${response.status}, 耗时: ${responseTime}ms`);
+    
+    if (!response.ok) {
+      throw new Error(`API返回错误: ${response.status} - ${responseData.error?.message || JSON.stringify(responseData)}`);
+    }
+    
+    // 返回测试结果
+    return res.json({
+      success: true,
+      status: response.status,
+      responseTime: responseTime,
+      data: responseData
+    });
+    
+  } catch (error) {
+    console.error("[DeepSeek API测试] 错误:", error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });

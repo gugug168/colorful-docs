@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek API 测试</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .navbar-custom {
+            background-color: #6a11cb;
+            background-image: linear-gradient(to right, #6a11cb, #2575fc);
+            color: white;
+        }
+
+        .navbar-custom .navbar-brand,
+        .navbar-custom .nav-link {
+            color: white;
+        }
+
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: #6a11cb;
+            background-image: linear-gradient(to right, #6a11cb, #2575fc);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            padding: 15px;
+        }
+
+        .btn-primary {
+            background-color: #6a11cb;
+            background-image: linear-gradient(to right, #6a11cb, #2575fc);
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background-color: #5a0fc0;
+            background-image: linear-gradient(to right, #5a0fc0, #1f65e6);
+        }
+
+        #responseArea {
+            border-radius: 5px;
+            background-color: #f5f5f5;
+            padding: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .status-container {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-loading {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-custom">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-magic me-2"></i>文档排版与美化系统
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/test-deepseek">
+                            <i class="fas fa-vial me-1"></i>测试API
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="fas fa-home me-1"></i>返回首页
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="mb-0"><i class="fas fa-vial me-2"></i>DeepSeek API 测试</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group mb-3">
+                            <label for="promptInput" class="form-label">测试提示词：</label>
+                            <textarea class="form-control" id="promptInput" rows="3" placeholder="输入一段文本，测试API返回结果...">请将以下文字转换为HTML格式：这是一个测试段落，请美化它。</textarea>
+                        </div>
+                        <button id="testApiBtn" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-2"></i>发送测试请求
+                        </button>
+                        <div id="statusContainer" class="status-container d-none">
+                            <div id="statusMessage"></div>
+                        </div>
+                        <hr>
+                        <h5><i class="fas fa-reply me-2"></i>API 响应：</h5>
+                        <div id="responseArea">等待测试结果...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $("#testApiBtn").click(function() {
+                const prompt = $("#promptInput").val();
+                if (!prompt) {
+                    showStatus("请输入测试提示词", "error");
+                    return;
+                }
+
+                // 显示加载状态
+                showStatus("正在发送请求到DeepSeek API...", "loading");
+                $("#responseArea").text("处理中...");
+                $("#testApiBtn").prop("disabled", true);
+
+                // 发送请求到测试接口
+                $.ajax({
+                    url: "/api/test-deepseek",
+                    type: "POST",
+                    data: JSON.stringify({ prompt: prompt }),
+                    contentType: "application/json",
+                    success: function(response) {
+                        // 显示成功状态
+                        showStatus("API请求成功！", "success");
+                        // 格式化显示JSON响应
+                        $("#responseArea").text(JSON.stringify(response, null, 2));
+                    },
+                    error: function(xhr, status, error) {
+                        // 显示错误状态
+                        showStatus("API请求失败: " + (xhr.responseJSON ? xhr.responseJSON.error : error), "error");
+                        console.error("API测试失败:", xhr.responseText);
+                        $("#responseArea").text("错误: " + xhr.responseText);
+                    },
+                    complete: function() {
+                        // 恢复按钮状态
+                        $("#testApiBtn").prop("disabled", false);
+                    }
+                });
+            });
+
+            // 显示状态信息
+            function showStatus(message, type) {
+                const statusContainer = $("#statusContainer");
+                const statusMessage = $("#statusMessage");
+                
+                // 移除所有状态类
+                statusContainer.removeClass("status-success status-error status-loading");
+                
+                // 添加对应状态类
+                statusContainer.addClass("status-" + type);
+                
+                // 设置消息
+                statusMessage.html('<i class="fas ' + getIconForType(type) + ' me-2"></i>' + message);
+                
+                // 显示状态容器
+                statusContainer.removeClass("d-none");
+            }
+
+            // 根据状态类型获取图标
+            function getIconForType(type) {
+                switch(type) {
+                    case "success": return "fa-check-circle";
+                    case "error": return "fa-exclamation-circle";
+                    case "loading": return "fa-spinner fa-spin";
+                    default: return "fa-info-circle";
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
