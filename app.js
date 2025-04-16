@@ -208,7 +208,7 @@ app.use(cors());
 
 // 首页路由
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'index.html'));
+  res.sendFile(path.join(__dirname, 'views', 'landing.html'));
 });
 
 // API测试页面路由
@@ -2266,11 +2266,18 @@ app.post('/api/test-deepseek', async (req, res) => {
       throw new Error(`API返回错误: ${response.status} - ${responseData.error?.message || JSON.stringify(responseData)}`);
     }
     
-    // 返回测试结果
+    // 提取AI的回复内容
+    const aiReply = responseData.choices && responseData.choices[0] && responseData.choices[0].message
+      ? responseData.choices[0].message.content
+      : '无法获取AI回复';
+    
+    // 返回测试结果，包含用户问题和AI回复
     return res.json({
       success: true,
       status: response.status,
       responseTime: responseTime,
+      userQuestion: prompt,
+      aiReply: aiReply,
       data: responseData
     });
     
