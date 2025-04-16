@@ -2623,9 +2623,8 @@ $(document).ready(function() {
       
       // 发送AJAX请求检查任务状态
       $.ajax({
-        url: '/api/task-status',
+        url: '/check-task/' + taskId, // 使用正确的API路径
         type: 'GET',
-        data: { taskId: taskId },
         dataType: 'json',
         timeout: 10000, // 10秒超时
         success: function(response) {
@@ -2661,7 +2660,7 @@ $(document).ready(function() {
           }
         },
         error: function(xhr, status, error) {
-          console.error('检查任务状态失败:', status, error);
+          console.error('检查任务状态失败:', status, error, xhr.responseText);
           
           // 如果是超时，设置特定错误消息
           let errorMsg = '检查任务状态失败';
