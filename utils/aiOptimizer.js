@@ -520,13 +520,20 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 console.log(`开始第${retryCount+1}次API请求...`);
                 const requestStartTime = Date.now();
                 
+                // 记录更详细的API请求信息
+                console.log('DeepSeek API请求URL: https://api.deepseek.com/v1/chat/completions');
+                console.log('DeepSeek API请求方法: POST');
+                console.log('DeepSeek API请求头: Authorization: Bearer sk-*****, Content-Type: application/json');
+                
                 // 添加请求内容的日志记录
                 console.log('API请求体结构:', JSON.stringify({
                     model: requestBody.model,
                     temperature: requestBody.temperature,
                     max_tokens: requestBody.max_tokens,
                     stream: requestBody.stream,
-                    message_count: requestBody.messages.length
+                    message_count: requestBody.messages.length,
+                    system_content_length: requestBody.messages[0].content.length,
+                    user_content_length: requestBody.messages[1].content.length
                 }));
                 
                 response = await axios.post(
@@ -558,6 +565,14 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                     // 服务器响应了错误状态码
                     console.error('DeepSeek API错误状态码:', apiError.response.status);
                     console.error('DeepSeek API错误详情:', JSON.stringify(apiError.response.data));
+                    
+                    // 详细记录错误信息
+                    console.error('完整错误响应: ', JSON.stringify({
+                        status: apiError.response.status,
+                        statusText: apiError.response.statusText,
+                        headers: apiError.response.headers,
+                        data: apiError.response.data
+                    }));
                     
                     // 特别处理401错误（未授权）
                     if (apiError.response.status === 401) {

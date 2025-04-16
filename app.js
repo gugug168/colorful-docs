@@ -663,6 +663,48 @@ app.get('/check-task/:taskId', async (req, res) => {
     }
 });
 
+// 添加API格式的任务状态查询路由 - 与前端代码匹配
+app.get('/api/task-status', async (req, res) => {
+    try {
+        const taskId = req.query.taskId;
+        
+        if (!taskId) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少必要的taskId参数'
+            });
+        }
+        
+        // 获取任务信息
+        const taskResult = await supabaseClient.getTask(taskId);
+        
+        if (!taskResult.success) {
+            return res.status(404).json({ 
+                success: false, 
+                error: `任务不存在或已过期: ${taskResult.error}` 
+            });
+        }
+        
+        const task = taskResult.task;
+        
+        // 返回任务状态和结果
+        res.json({
+            success: true,
+            taskId: task.id,
+            status: task.status,
+            result: task.result,
+            error: task.error,
+            progress: getTaskProgress(task),
+            createdAt: task.created_at,
+            updatedAt: task.updated_at
+        });
+        
+    } catch (error) {
+        console.error('API获取任务状态出错:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // 计算任务进度
 function getTaskProgress(task) {
     switch (task.status) {
@@ -1839,6 +1881,9 @@ app.listen(port, () => {
  */
 async function validateApiKey() {
   try {
+    console.log('开始验证API配置...');
+    console.log(`当前API类型: ${globalApiConfig.apiType}`);
+    
     // 检查API密钥是否为默认值或明显无效值
     if (globalApiConfig.apiKey === 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' || 
         globalApiConfig.apiKey.length < 20) {
@@ -1847,42 +1892,89 @@ async function validateApiKey() {
       return;
     }
     
+    console.log(`API密钥长度: ${globalApiConfig.apiKey.length}`);
+    console.log(`API密钥前5位和后5位: ${globalApiConfig.apiKey.substring(0, 5)}...${globalApiConfig.apiKey.substring(globalApiConfig.apiKey.length-5)}`);
+    
     // 根据API类型进行验证
     if (globalApiConfig.apiType === 'deepseek') {
       console.log('正在验证DeepSeek API密钥...');
       try {
         const axios = require('axios');
+        console.log('发送DeepSeek API测试请求...');
+        
+        // 构建简单的测试请求
+        const testRequestBody = {
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: 'Hello, please respond with just the word "Verified" to validate API connection.' }
+          ],
+          temperature: 0.1,
+          max_tokens: 10
+        };
+        
+        console.log('测试请求体:', JSON.stringify(testRequestBody));
+        
+        // 设置请求选项
+        const requestOptions = {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${globalApiConfig.apiKey}`
+          },
+          timeout: 10000 // 10秒超时
+        };
+        
+        console.log('请求选项:', JSON.stringify({
+          url: 'https://api.deepseek.com/v1/chat/completions',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer sk-*****'
+          },
+          timeout: 10000
+        }));
+        
         const response = await axios.post(
           'https://api.deepseek.com/v1/chat/completions',
-          {
-            model: 'deepseek-chat',
-            messages: [
-              { role: 'system', content: 'You are a helpful assistant.' },
-              { role: 'user', content: 'Hello, please respond with just the word "Verified" to validate API connection.' }
-            ],
-            temperature: 0.1,
-            max_tokens: 10
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${globalApiConfig.apiKey}`
-            }
-          }
+          testRequestBody,
+          requestOptions
         );
         
+        console.log('DeepSeek API测试响应状态码:', response.status);
+        
         if (response.data && response.data.choices && response.data.choices[0]) {
+          console.log('DeepSeek API测试响应内容:', JSON.stringify(response.data));
           console.log('DeepSeek API密钥验证成功');
           return true;
         } else {
-          console.warn('DeepSeek API返回了意外的响应格式');
+          console.warn('DeepSeek API返回了意外的响应格式:', JSON.stringify(response.data));
           return false;
         }
       } catch (err) {
         console.warn('DeepSeek API密钥验证失败:', err.message);
-        if (err.response && err.response.status === 401) {
-          console.error('DeepSeek API密钥无效，请检查apiKey设置');
+        
+        if (err.response) {
+          console.error('DeepSeek API错误响应:', JSON.stringify({
+            status: err.response.status,
+            statusText: err.response.statusText,
+            data: err.response.data
+          }));
+          
+          if (err.response.status === 401) {
+            console.error('DeepSeek API密钥无效，请检查apiKey设置');
+          } else if (err.response.status === 403) {
+            console.error('DeepSeek API密钥没有权限，请检查账户权限');
+          } else if (err.response.status === 429) {
+            console.error('DeepSeek API请求频率过高，请降低请求频率或升级账户');
+          } else {
+            console.error(`DeepSeek API服务器错误: ${err.response.status}`);
+          }
+        } else if (err.request) {
+          console.error('DeepSeek API没有响应:', err.message);
+        } else {
+          console.error('DeepSeek API请求配置错误:', err.message);
         }
+        
         return false;
       }
     }
