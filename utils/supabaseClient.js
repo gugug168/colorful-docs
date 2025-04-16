@@ -12,6 +12,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseKey;
 
+// 记录环境变量配置，帮助调试（注意隐藏密钥部分）
+console.log('Supabase配置状态:');
+console.log(`- URL: ${supabaseUrl ? '已配置' : '未配置'}`);
+console.log(`- 匿名密钥: ${supabaseKey ? '已配置(' + supabaseKey.substring(0, 5) + '...' + supabaseKey.substring(supabaseKey.length-5) + ')' : '未配置'}`);
+console.log(`- 服务密钥: ${supabaseServiceKey !== supabaseKey ? '已配置(独立)' : '使用匿名密钥'}`);
+
 // 创建 Supabase 客户端 - 使用服务角色密钥以获取更高权限
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
@@ -19,6 +25,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
         autoRefreshToken: false,
     },
 });
+
+// 验证Supabase客户端是否成功创建
+if (!supabase) {
+    console.error('❌ Supabase客户端创建失败! 请检查环境变量配置。');
+} else {
+    console.log('✓ Supabase客户端创建成功');
+}
 
 /**
  * 清理文件路径，确保它是有效的 Supabase 存储键
@@ -51,10 +64,33 @@ function sanitizeFilePath(filePath) {
  */
 async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
     try {
+        if (!fileBuffer) {
+            throw new Error('文件数据为空，无法上传');
+        }
+        
+        // 日志文件大小
+        console.log(`上传文件 ${filePath} 大小: ${fileBuffer.length} 字节`);
+        
+        // 检查是否超过Supabase的文件大小限制 (默认50MB)
+        const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+        if (fileBuffer.length > MAX_FILE_SIZE) {
+            console.error(`文件过大: ${(fileBuffer.length/1024/1024).toFixed(2)}MB 超过Supabase限制 (50MB)`);
+            return {
+                success: false,
+                error: `文件过大: ${(fileBuffer.length/1024/1024).toFixed(2)}MB 超过限制 (50MB)`,
+                details: '请减小文件大小或使用外部存储服务'
+            };
+        }
+        
         // 对文件路径进行清理
         const sanitizedFilePath = sanitizeFilePath(filePath);
         console.log('原始文件路径:', filePath);
         console.log('清理后的文件路径:', sanitizedFilePath);
+        
+        // 检查sanitizedFilePath的有效性
+        if (!sanitizedFilePath || sanitizedFilePath.length < 5) {
+            throw new Error('生成的文件路径无效: ' + sanitizedFilePath);
+        }
         
         const options = {
             contentType: 'application/octet-stream',
@@ -64,15 +100,45 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
         
         console.log(`尝试上传文件到 ${bucket}/${sanitizedFilePath}`);
         
-        const { data, error } = await supabase.storage
+        // 确保bucket存在
+        try {
+            const { data: bucketData, error: bucketError } = await supabase.storage.getBucket(bucket);
+            if (bucketError) {
+                console.warn(`获取存储桶 ${bucket} 信息失败:`, bucketError);
+                console.log('将尝试继续上传，但可能存在权限问题');
+            } else {
+                console.log(`存储桶 ${bucket} 存在，继续上传`);
+            }
+        } catch (bucketCheckError) {
+            console.warn(`检查存储桶 ${bucket} 时出错:`, bucketCheckError);
+        }
+        
+        // 添加超时控制
+        const uploadPromise = supabase.storage
             .from(bucket)
             .upload(sanitizedFilePath, fileBuffer, options);
+            
+        // 设置超时
+        const timeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('上传超时，请重试')), 60000)); // 60秒超时
+            
+        // 使用Promise.race来实现超时控制
+        const { data, error } = await Promise.race([uploadPromise, timeout]);
 
         if (error) {
             console.error('Supabase Storage 上传错误:', error);
+            console.error('错误代码:', error.code);
+            console.error('错误消息:', error.message);
+            console.error('错误详情:', JSON.stringify(error));
+            
             if (error.message && error.message.includes('row-level security policy')) {
                 console.error('权限错误: 这可能是由于Supabase的行级安全策略设置导致的。请检查存储桶权限或使用服务角色密钥。');
             }
+            
+            if (error.statusCode === 413 || (error.message && error.message.includes('too large'))) {
+                console.error('文件大小超过限制。Supabase免费计划限制为50MB。');
+            }
+            
             throw error;
         }
 
@@ -81,6 +147,9 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
             .from(bucket)
             .getPublicUrl(sanitizedFilePath);
 
+        console.log(`✓ 文件成功上传到 ${bucket}/${sanitizedFilePath}`);
+        console.log(`✓ 公共URL: ${urlData.publicUrl}`);
+        
         return {
             success: true,
             path: sanitizedFilePath,
@@ -90,10 +159,21 @@ async function uploadFile(fileBuffer, filePath, bucket = 'uploads') {
         };
     } catch (error) {
         console.error('上传文件到 Supabase 失败:', error);
+        console.error('错误堆栈:', error.stack);
+        
+        // 尝试更详细的错误信息
+        let errorDetails = error.message;
+        try {
+            if (error.error) errorDetails += ` | API错误: ${JSON.stringify(error.error)}`;
+            if (error.status) errorDetails += ` | 状态码: ${error.status}`;
+        } catch (e) {
+            // 忽略序列化错误
+        }
+        
         return {
             success: false,
             error: error.message,
-            details: JSON.stringify(error)
+            details: errorDetails
         };
     }
 }
@@ -274,6 +354,17 @@ async function updateTaskStatus(taskId, status, data = {}) {
                 const resultStr = JSON.stringify(data.result);
                 updateData.result = data.result;
                 console.log(`任务 ${taskId} 结果数据大小: ${resultStr.length} 字节`);
+                
+                // 检查数据大小是否超过Supabase限制(1MB)
+                if (resultStr.length > 1024 * 1024) {
+                    console.warn(`结果数据过大 (${(resultStr.length/1024/1024).toFixed(2)}MB)，将自动截断`);
+                    // 预先处理，避免后续失败
+                    if (data.result.html && typeof data.result.html === 'string') {
+                        // 截断HTML内容
+                        data.result.html = data.result.html.substring(0, 1000) + '... [内容过长已截断]';
+                        updateData.result = data.result;
+                    }
+                }
             } catch (jsonError) {
                 console.error(`任务 ${taskId} 结果数据无法序列化:`, jsonError);
                 
@@ -284,7 +375,10 @@ async function updateTaskStatus(taskId, status, data = {}) {
                     type: data.result.type || null,
                     originalname: data.result.originalname || null,
                     wasBackupMode: data.result.wasBackupMode || false,
-                    completedAt: data.result.completedAt || new Date().toISOString()
+                    completedAt: data.result.completedAt || new Date().toISOString(),
+                    // 添加一个标志，表示这是简化版
+                    isSimplified: true,
+                    error: jsonError.message
                 };
                 
                 updateData.result = safeResult;
@@ -295,6 +389,10 @@ async function updateTaskStatus(taskId, status, data = {}) {
         // 错误数据
         if (data.error) {
             updateData.error = data.error;
+            // 确保错误信息不会太长
+            if (typeof updateData.error === 'string' && updateData.error.length > 1000) {
+                updateData.error = updateData.error.substring(0, 1000) + '... [错误信息过长已截断]';
+            }
         }
         
         // 记录更新的数据结构（不包含实际内容）
@@ -316,37 +414,55 @@ async function updateTaskStatus(taskId, status, data = {}) {
                 error.message.includes('too large') || 
                 error.message.includes('exceeded')
             )) {
-                console.warn(`任务 ${taskId} 可能数据太大，尝试精简数据后重新更新`);
+                console.warn(`任务 ${taskId} 数据太大，尝试极度精简数据后重新更新`);
                 
-                // 精简result数据
-                if (updateData.result) {
-                    delete updateData.result.html; // 移除HTML内容
+                // 极度精简数据
+                const minimalData = {
+                    status,
+                    updated_at: new Date().toISOString(),
+                };
+                
+                // 如果是completed状态，添加最小结果
+                if (status === 'completed' && data.result) {
+                    minimalData.result = {
+                        path: data.result.path || null,
+                        outputFileName: data.result.outputFileName || null,
+                        isExtremelySimplifed: true
+                    };
+                }
+                
+                // 如果是失败状态，添加最小错误信息
+                if (status === 'failed' && data.error) {
+                    minimalData.error = typeof data.error === 'string' 
+                        ? data.error.substring(0, 500) 
+                        : '任务失败 (详细信息过大)';
+                }
+                
+                // 重新尝试更新
+                const retryResult = await supabase
+                    .from('tasks')
+                    .update(minimalData)
+                    .eq('id', taskId);
                     
-                    // 重新尝试更新
-                    const retryResult = await supabase
-                        .from('tasks')
-                        .update(updateData)
-                        .eq('id', taskId);
-                        
-                    if (retryResult.error) {
-                        console.error(`精简数据后更新仍失败 (${taskId}):`, retryResult.error);
-                        throw new Error(`更新失败，即使精简数据后: ${retryResult.error.message}`);
-                    } else {
-                        console.log(`任务 ${taskId} 使用精简数据更新成功`);
-                        return { success: true };
-                    }
+                if (retryResult.error) {
+                    console.error(`极度精简数据后更新仍失败 (${taskId}):`, retryResult.error);
+                    throw new Error(`更新失败，即使极度精简数据后: ${retryResult.error.message}`);
+                } else {
+                    console.log(`任务 ${taskId} 使用极度精简数据更新成功`);
+                    return { success: true, wasSimplified: true };
                 }
             }
             
             throw error;
         }
         
-        console.log(`任务 ${taskId} 状态成功更新为 ${status}`);
+        console.log(`✓ 任务 ${taskId} 状态成功更新为 ${status}`);
         return {
             success: true
         };
     } catch (error) {
         console.error(`更新任务状态失败 (${taskId}):`, error);
+        console.error('错误堆栈:', error.stack);
         return {
             success: false,
             error: error.message

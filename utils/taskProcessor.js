@@ -8,6 +8,15 @@ const aiOptimizer = require('./aiOptimizer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { processHtmlWithAI } = require('./aiOptimizer');
+const { 
+    uploadFile, 
+    updateTaskStatus, 
+    getTask,
+    cleanupExpiredTasks
+} = require('./supabaseClient');
+const { saveOutputFile } = require('./fileManager');
+const { htmlBeautify } = require('./htmlUtils');
 
 // 全局API配置 - 应从app.js中导入或通过环境变量设置
 let globalApiConfig = {
@@ -18,12 +27,55 @@ let globalApiConfig = {
     }
 };
 
+// 记录API配置状态（隐藏敏感信息）
+console.log('API配置状态:');
+console.log(`- API类型: ${globalApiConfig.apiType}`);
+console.log(`- OpenAI API: ${globalApiConfig.apiKey ? '已配置' : '未配置'}`);
+console.log(`- Azure API: ${globalApiConfig.azureApiKey ? '已配置' : '未配置'}`);
+console.log(`- Azure Endpoint: ${globalApiConfig.azureEndpoint ? '已配置' : '未配置'}`);
+console.log(`- Azure 部署名称: ${globalApiConfig.azureDeploymentName ? '已配置' : '未配置'}`);
+console.log(`- Anthropic API: ${globalApiConfig.anthropicApiKey ? '已配置' : '未配置'}`);
+console.log(`- Gemini API: ${globalApiConfig.geminiApiKey ? '已配置' : '未配置'}`);
+
 /**
  * 设置全局API配置
  * @param {Object} config - API配置
  */
 function setApiConfig(config) {
-    globalApiConfig = config;
+    // 保存以前的配置用于日志
+    const previousConfig = { ...globalApiConfig };
+    
+    if (config.apiType) globalApiConfig.apiType = config.apiType;
+    if (config.apiKey) globalApiConfig.apiKey = config.apiKey;
+    if (config.azureApiKey) globalApiConfig.azureApiKey = config.azureApiKey;
+    if (config.azureEndpoint) globalApiConfig.azureEndpoint = config.azureEndpoint;
+    if (config.azureDeploymentName) globalApiConfig.azureDeploymentName = config.azureDeploymentName;
+    if (config.anthropicApiKey) globalApiConfig.anthropicApiKey = config.anthropicApiKey;
+    if (config.geminiApiKey) globalApiConfig.geminiApiKey = config.geminiApiKey;
+    
+    // 记录配置变更（不显示实际密钥）
+    console.log('API配置已更新:');
+    if (previousConfig.apiType !== globalApiConfig.apiType) {
+        console.log(`- API类型: ${previousConfig.apiType} -> ${globalApiConfig.apiType}`);
+    }
+    if (previousConfig.apiKey !== globalApiConfig.apiKey) {
+        console.log('- OpenAI API密钥已更新');
+    }
+    if (previousConfig.azureApiKey !== globalApiConfig.azureApiKey) {
+        console.log('- Azure API密钥已更新');
+    }
+    if (previousConfig.azureEndpoint !== globalApiConfig.azureEndpoint) {
+        console.log('- Azure Endpoint已更新');
+    }
+    if (previousConfig.azureDeploymentName !== globalApiConfig.azureDeploymentName) {
+        console.log('- Azure部署名称已更新');
+    }
+    if (previousConfig.anthropicApiKey !== globalApiConfig.anthropicApiKey) {
+        console.log('- Anthropic API密钥已更新');
+    }
+    if (previousConfig.geminiApiKey !== globalApiConfig.geminiApiKey) {
+        console.log('- Gemini API密钥已更新');
+    }
 }
 
 /**
@@ -265,69 +317,333 @@ async function processBeautifyTask(taskId) {
 }
 
 /**
- * 启动任务处理器
- * 定期检查并处理队列中的任务
+ * 处理AI优化任务
+ * @param {Object} task - 任务对象
+ * @returns {Promise<Object>} - 处理结果
  */
-function startTaskProcessor() {
-    // 清理过期任务
-    cleanupExpiredTasks();
+async function processAiOptimizationTask(task) {
+    let isCompleted = false;
+    const timeoutId = setTimeout(() => {
+        if (!isCompleted) {
+            console.error(`AI优化任务 ${task.id} 执行超时`);
+            updateTaskStatus(task.id, 'failed', {
+                error: "任务执行超时，请稍后重试。AI处理大文件可能需要更长时间。"
+            }).catch(e => console.error('更新超时状态失败:', e));
+        }
+    }, 600000); // 10分钟超时
     
-    // 每10秒检查一次队列
-    setInterval(async () => {
-        try {
-            // 获取待处理任务
-            const { data, error } = await supabaseClient.supabase
-                .from('tasks')
-                .select('*')
-                .eq('status', 'pending')
-                .order('created_at', { ascending: true })
-                .limit(1);
-                
-            if (error) {
-                console.error('获取待处理任务失败:', error);
-                return;
+    try {
+        console.log(`开始处理AI优化任务 ${task.id}`);
+        console.log(`任务类型: ${task.type}, 文件: ${task.filename || '未知'}`);
+        
+        // 检查任务必要字段
+        if (!task.type) throw new Error("任务缺少类型字段");
+        if (!task.id) throw new Error("任务缺少ID字段");
+        
+        // 更新任务状态为处理中
+        await updateTaskStatus(task.id, 'processing');
+        
+        // 检查文件路径
+        if (!task.filepath) {
+            throw new Error("任务缺少文件路径");
+        }
+        
+        // 读取文件内容
+        console.log(`读取文件内容: ${task.filepath}`);
+        
+        if (!fs.existsSync(task.filepath)) {
+            throw new Error(`文件不存在: ${task.filepath}`);
+        }
+        
+        const fileContent = fs.readFileSync(task.filepath, 'utf8');
+        
+        // 文件大小检查
+        const fileSizeKB = Buffer.byteLength(fileContent, 'utf8') / 1024;
+        console.log(`文件大小: ${fileSizeKB.toFixed(2)} KB`);
+        
+        // 设置更合理的文件大小限制
+        const MAX_SIZE_KB = 5000; // 5MB
+        
+        if (fileSizeKB > MAX_SIZE_KB) {
+            throw new Error(`文件过大 (${fileSizeKB.toFixed(2)} KB)，超过处理限制 (${MAX_SIZE_KB} KB)`);
+        }
+        
+        // 根据文件类型进行优化处理
+        if (task.type === 'optimize_html') {
+            console.log(`使用AI优化HTML文件: ${task.filename || path.basename(task.filepath)}`);
+            
+            // 确认HTML格式
+            const htmlValidator = require('html-validator');
+            let validationResult;
+            try {
+                // 使用简单验证，避免过长时间
+                if (fileContent.trim().length > 0 && (
+                    !fileContent.includes('<html') && 
+                    !fileContent.includes('<body') && 
+                    !fileContent.includes('<head')
+                )) {
+                    console.warn(`文件可能不是有效的HTML: ${task.filename}`);
+                }
+            } catch (validationError) {
+                console.warn(`HTML验证失败 (非致命): ${validationError.message}`);
             }
             
-            if (data && data.length > 0) {
-                const task = data[0];
-                console.log(`发现待处理任务: ${task.id}, 类型: ${task.data.taskType || '美化'}`);
+            // 获取AI配置
+            let aiConfig = {
+                ...globalApiConfig,
+                backupMode: false, // 默认不使用备用模式
+                custom_instruction: task.custom_instruction || '',
+                optimization_level: task.optimization_level || 'balanced'
+            };
+            
+            // 如果主要API未配置，尝试使用备用API
+            if (
+                (aiConfig.apiType === 'openai' && !aiConfig.apiKey) ||
+                (aiConfig.apiType === 'azure' && (!aiConfig.azureApiKey || !aiConfig.azureEndpoint)) ||
+                (aiConfig.apiType === 'anthropic' && !aiConfig.anthropicApiKey) ||
+                (aiConfig.apiType === 'gemini' && !aiConfig.geminiApiKey)
+            ) {
+                console.warn(`主要API (${aiConfig.apiType}) 未配置，尝试备用模式`);
                 
-                // 根据任务类型处理
-                if (task.data.taskType === 'colorize') {
-                    // 处理上色任务
-                    // 未来可以添加其他任务处理器
+                // 尝试查找可用的备用API
+                if (aiConfig.apiKey) {
+                    aiConfig.apiType = 'openai';
+                    aiConfig.backupMode = true;
+                } else if (aiConfig.azureApiKey && aiConfig.azureEndpoint) {
+                    aiConfig.apiType = 'azure';
+                    aiConfig.backupMode = true;
+                } else if (aiConfig.anthropicApiKey) {
+                    aiConfig.apiType = 'anthropic';
+                    aiConfig.backupMode = true;
+                } else if (aiConfig.geminiApiKey) {
+                    aiConfig.apiType = 'gemini';
+                    aiConfig.backupMode = true;
                 } else {
-                    // 默认处理美化任务
-                    processBeautifyTask(task.id);
+                    throw new Error("所有API均未配置，无法处理AI任务");
                 }
+                
+                console.log(`已切换到备用API: ${aiConfig.apiType}`);
             }
-        } catch (error) {
-            console.error('任务处理器执行失败:', error);
-        }
-    }, 10000); // 每10秒检查一次
-    
-    // 每小时执行一次过期任务清理
-    setInterval(cleanupExpiredTasks, 60 * 60 * 1000);
-    
-    console.log('任务处理器已启动');
-}
-
-/**
- * 清理过期任务
- */
-async function cleanupExpiredTasks() {
-    try {
-        const result = await supabaseClient.cleanupExpiredTasks();
-        if (result.success && result.deletedCount > 0) {
-            console.log(`已清理 ${result.deletedCount} 个过期任务`);
+            
+            // 使用AI处理HTML内容
+            console.log(`开始AI优化，使用${aiConfig.apiType}模型处理...`);
+            const aiResult = await processHtmlWithAI(
+                fileContent, 
+                aiConfig, 
+                task.optimization_level || 'balanced'
+            );
+            
+            if (!aiResult.success) {
+                throw new Error(`AI处理失败: ${aiResult.error}`);
+            }
+            
+            // 生成输出文件名
+            const originalFileName = task.filename || path.basename(task.filepath);
+            const outputFileName = `optimized_${originalFileName}`;
+            const outputPath = path.join(path.dirname(task.filepath), outputFileName);
+            
+            // 保存优化后的文件
+            console.log(`保存AI优化后的HTML到: ${outputPath}`);
+            saveOutputFile(outputPath, aiResult.optimizedHtml);
+            
+            // 上传到存储
+            const uploadPath = `results/${task.id}/${outputFileName}`;
+            console.log(`上传结果文件到: ${uploadPath}`);
+            const uploadResult = await uploadFile(Buffer.from(aiResult.optimizedHtml), uploadPath);
+            
+            if (!uploadResult.success) {
+                throw new Error(`上传结果失败: ${uploadResult.error}`);
+            }
+            
+            // 标记任务完成
+            isCompleted = true;
+            clearTimeout(timeoutId);
+            
+            console.log(`AI优化任务 ${task.id} 完成，更新状态`);
+            // 更新任务状态为已完成
+            await updateTaskStatus(task.id, 'completed', {
+                result: {
+                    path: uploadResult.url,
+                    outputFileName,
+                    html: aiResult.optimizedHtml.slice(0, 1000) + (aiResult.optimizedHtml.length > 1000 ? '...' : ''), // 只保存部分HTML用于预览
+                    originalname: originalFileName,
+                    wasBackupMode: aiConfig.backupMode,
+                    type: task.type,
+                    usedModel: aiResult.usedModel || aiConfig.apiType,
+                    completedAt: new Date().toISOString()
+                }
+            });
+            
+            return {
+                success: true,
+                path: uploadResult.url,
+                message: 'HTML已成功通过AI优化'
+            };
+        } else {
+            throw new Error(`不支持的任务类型: ${task.type}`);
         }
     } catch (error) {
-        console.error('清理过期任务失败:', error);
+        console.error(`处理AI任务失败 (${task.id}):`, error);
+        console.error('错误堆栈:', error.stack);
+        
+        // 尝试获取更详细的错误信息
+        let detailedError = error.message;
+        try {
+            if (error.code) detailedError += ` (代码: ${error.code})`;
+            if (error.response && error.response.data) {
+                detailedError += ` - API错误: ${JSON.stringify(error.response.data)}`;
+            }
+        } catch (e) {
+            // 忽略序列化错误
+        }
+        
+        // 更新任务状态为失败
+        try {
+            isCompleted = true;
+            clearTimeout(timeoutId);
+            
+            await updateTaskStatus(task.id, 'failed', {
+                error: detailedError
+            });
+        } catch (updateError) {
+            console.error(`更新任务状态失败 (${task.id}):`, updateError);
+        }
+        
+        return {
+            success: false,
+            error: detailedError
+        };
+    } finally {
+        // 确保超时被清除
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        // 清理临时文件（如果需要）
+        try {
+            // 添加清理逻辑
+            console.log(`任务 ${task.id} 处理完成，执行清理工作`);
+        } catch (cleanupError) {
+            console.error('清理临时文件失败:', cleanupError);
+        }
     }
 }
 
+/**
+ * 处理任务，根据任务类型调用不同的处理函数
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 处理结果
+ */
+async function processTask(taskId) {
+    try {
+        console.log(`开始获取任务 ${taskId} 详情`);
+        const task = await getTask(taskId);
+        
+        if (!task) {
+            console.error(`任务 ${taskId} 不存在`);
+            return {
+                success: false,
+                error: '任务不存在'
+            };
+        }
+        
+        console.log(`任务信息: ID=${task.id}, 类型=${task.type}, 状态=${task.status}`);
+        
+        // 检查任务状态，避免重复处理
+        if (task.status === 'completed') {
+            console.log(`任务 ${taskId} 已完成，无需再次处理`);
+            return {
+                success: true,
+                message: '任务已完成'
+            };
+        }
+        
+        if (task.status === 'failed') {
+            console.log(`任务 ${taskId} 之前已失败，将重新尝试处理`);
+        }
+        
+        if (task.status === 'processing') {
+            console.log(`任务 ${taskId} 正在处理中，检查是否超时...`);
+            
+            // 检查任务是否已经处理时间过长（超过15分钟）
+            const updatedAt = new Date(task.updated_at);
+            const now = new Date();
+            const diffMinutes = (now - updatedAt) / (1000 * 60);
+            
+            if (diffMinutes < 15) {
+                console.log(`任务 ${taskId} 处理中 (${diffMinutes.toFixed(2)}分钟)，未超时`);
+                return {
+                    success: false,
+                    error: '任务正在处理中'
+                };
+            } else {
+                console.warn(`任务 ${taskId} 处理超时 (${diffMinutes.toFixed(2)}分钟)，将重新尝试`);
+            }
+        }
+        
+        // 根据任务类型调用不同的处理函数
+        switch (task.type) {
+            case 'beautify_html':
+                return await processBeautifyTask(taskId);
+            case 'optimize_html':
+                return await processAiOptimizationTask(task);
+            default:
+                throw new Error(`不支持的任务类型: ${task.type}`);
+        }
+    } catch (error) {
+        console.error(`处理任务 ${taskId} 失败:`, error);
+        console.error('错误堆栈:', error.stack);
+        
+        // 尝试更新任务状态为失败（如果可能）
+        try {
+            await updateTaskStatus(taskId, 'failed', {
+                error: error.message
+            });
+        } catch (updateError) {
+            console.error(`更新任务状态失败 (${taskId}):`, updateError);
+        }
+        
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * 定期清理过期任务
+ * 每小时运行一次
+ */
+function setupTaskCleanup() {
+    console.log('设置定期任务清理定时任务');
+    
+    // 立即清理一次
+    cleanupExpiredTasks()
+        .then(result => {
+            console.log(`初始任务清理完成: ${result.cleanedCount} 个任务已清理`);
+        })
+        .catch(error => {
+            console.error('初始任务清理失败:', error);
+        });
+    
+    // 设置每小时清理一次
+    const ONE_HOUR = 60 * 60 * 1000;
+    setInterval(() => {
+        console.log('执行定期任务清理...');
+        cleanupExpiredTasks()
+            .then(result => {
+                console.log(`定期任务清理完成: ${result.cleanedCount} 个任务已清理`);
+            })
+            .catch(error => {
+                console.error('定期任务清理失败:', error);
+            });
+    }, ONE_HOUR);
+}
+
+// 启动时设置定期清理
+setupTaskCleanup();
+
 module.exports = {
+    processTask,
+    setApiConfig,
     processBeautifyTask,
-    startTaskProcessor,
-    setApiConfig
+    processAiOptimizationTask
 }; 
