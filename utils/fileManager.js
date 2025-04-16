@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const schedule = require('node-schedule');
 const { createFileError, logErrorToFile } = require('./errorHandler');
 
 // 配置
@@ -341,17 +340,68 @@ async function cleanupExpiredFiles() {
     }
 }
 
+/**
+ * 计算距离下一个3点的毫秒数
+ * @returns {number} 毫秒数
+ */
+function getMillisecondsUntil3AM() {
+    const now = new Date();
+    const target = new Date(now);
+    
+    // 设置目标时间为凌晨3点
+    target.setHours(3, 0, 0, 0);
+    
+    // 如果当前时间已经过了今天的3点，目标时间设为明天3点
+    if (now >= target) {
+        target.setDate(target.getDate() + 1);
+    }
+    
+    // 计算时间差（毫秒）
+    return target.getTime() - now.getTime();
+}
+
+/**
+ * 设置每日凌晨3点运行的定时任务
+ */
+function setupDailyTask() {
+    // 计算距离下一个3点的毫秒数
+    const msUntil3AM = getMillisecondsUntil3AM();
+    
+    console.log(`距离下次清理任务还有：${Math.floor(msUntil3AM / (1000 * 60 * 60))}小时${Math.floor((msUntil3AM % (1000 * 60 * 60)) / (1000 * 60))}分钟`);
+    
+    // 设置定时器在下一个3点运行
+    setTimeout(() => {
+        // 执行清理任务
+        console.log('执行定时清理任务...');
+        cleanupExpiredFiles()
+            .then(result => {
+                console.log(`定期文件清理完成: ${result.cleaned} 个文件已清理`);
+            })
+            .catch(error => {
+                console.error('定期文件清理失败:', error);
+                logErrorToFile(error);
+            })
+            .finally(() => {
+                // 设置下一个每日任务
+                setupDailyTask();
+            });
+    }, msUntil3AM);
+}
+
 // 设置每日定时清理任务 (凌晨3点运行)
 try {
-    const cleanupJob = schedule.scheduleJob('0 3 * * *', async () => {
-        console.log('执行定时清理任务...');
-        try {
-            await cleanupExpiredFiles();
-        } catch (error) {
-            console.error('定时清理任务失败:', error);
+    // 立即执行一次清理
+    cleanupExpiredFiles()
+        .then(result => {
+            console.log(`初始文件清理完成: ${result.cleaned} 个文件已清理`);
+        })
+        .catch(error => {
+            console.error('初始文件清理失败:', error);
             logErrorToFile(error);
-        }
-    });
+        });
+    
+    // 设置每天凌晨3点的定时任务
+    setupDailyTask();
     
     console.log('已设置文件清理定时任务');
 } catch (error) {
