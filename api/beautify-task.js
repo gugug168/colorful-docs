@@ -7,7 +7,29 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 处理Vercel无服务器函数
+/**
+ * 添加兼容性处理，支持旧版本API调用
+ * 如果请求路径包含/beautify（而不是/beautify-task），使用兼容处理
+ */
+const handleLegacyRequest = (req, res) => {
+  console.log('收到旧版本美化请求，提供兼容处理');
+  
+  // 从请求中提取数据
+  const body = req.body || {};
+  const { filename, targetFormat, customRequirements } = body;
+  
+  // 返回响应，引导前端使用新API
+  return res.status(200).json({
+    success: true,
+    taskId: 'mock-task-' + Date.now(),
+    status: 'pending',
+    message: '请使用/api/beautify-task端点替代/beautify'
+  });
+};
+
+/**
+ * 处理请求 - 入口点
+ */
 module.exports = async (req, res) => {
   // 启用CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,6 +39,12 @@ module.exports = async (req, res) => {
   // 处理OPTIONS请求
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+  
+  // 检查请求路径，处理兼容性调用
+  const requestPath = req.url || '';
+  if (requestPath.includes('/beautify') && !requestPath.includes('/beautify-task')) {
+    return handleLegacyRequest(req, res);
   }
   
   // 只处理POST请求

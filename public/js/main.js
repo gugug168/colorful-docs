@@ -2989,45 +2989,27 @@ $(document).ready(function() {
         
         // 检查是否是Supabase URL
         if (resultPath.includes('supabase') && resultPath.includes('/storage/')) {
-          console.log('检测到Supabase存储URL，使用代理获取内容');
+          console.log('检测到Supabase存储URL，使用下载API获取内容');
           
-          // 使用代理API获取内容
-          $.ajax({
-            url: '/api/fetch-remote?url=' + encodeURIComponent(resultPath),
-            type: 'GET',
-            success: function(html) {
-              $('#result-content').html(html);
-              addEntryAnimation('#result-section');
-            },
-            error: function(xhr, status, error) {
-              console.error('从Supabase加载内容失败:', error);
-              
-              // 尝试使用预览API作为备选
-              console.log('尝试使用预览API加载:', fileName);
-              $.ajax({
-                url: '/preview/' + encodeURIComponent(fileName),
-                type: 'GET',
-                success: function(html) {
-                  $('#result-content').html(html);
-                  addEntryAnimation('#result-section');
-                },
-                error: function(xhr2, status2, error2) {
-                  console.error('使用预览API加载也失败:', error2);
-                  // 显示错误消息和直接链接
-                  $('#result-content').html(`
-                    <div class="alert alert-warning">
-                      <h4>加载结果内容失败</h4>
-                      <p>无法自动加载结果内容，您可以：</p>
-                      <ol>
-                        <li>直接 <a href="${resultPath}" target="_blank" class="btn btn-sm btn-outline-primary">打开结果链接</a></li>
-                        <li>或 <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-sm btn-outline-success">下载结果文件</a></li>
-                      </ol>
-                    </div>
-                  `);
-                }
-              });
-            }
-          });
+          // 直接在iframe中显示内容
+          $('#result-content').html(`
+            <div class="text-center py-3">
+              <h4>文档处理完成</h4>
+              <p>您的文档已处理完成，可以通过以下方式查看：</p>
+              <p>
+                <a href="${resultPath}" target="_blank" class="btn btn-outline-primary">
+                  <i class="fas fa-external-link-alt me-1"></i> 在新窗口中查看
+                </a>
+                <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-outline-success ms-2">
+                  <i class="fas fa-download me-1"></i> 下载文档
+                </a>
+              </p>
+              <div class="mt-3">
+                <iframe src="/download?file=${encodeURIComponent(resultPath)}&mode=view" style="width:100%; height:500px; border:1px solid #ddd;"></iframe>
+              </div>
+            </div>
+          `);
+          addEntryAnimation('#result-section');
         } else if (resultPath.startsWith('http')) {
           // 普通HTTP URL，直接加载
           console.log('加载HTTP URL:', loadPath);

@@ -1,6 +1,6 @@
 /**
- * 文件下载API
- * 支持下载本地文件和远程URL内容
+ * 文件下载和内容获取API
+ * 支持下载本地文件、远程URL内容和预览内容
  */
 
 const fs = require('fs');
@@ -60,13 +60,18 @@ async function cacheRemoteContent(url) {
             throw new Error(`HTTP错误! 状态: ${response.status}`);
         }
         
+        // 获取内容类型
+        const contentType = response.headers.get('content-type');
+        
         // 获取内容并写入文件
         const content = await response.text();
         fs.writeFileSync(localFilePath, content);
         
         return {
             path: localFilePath,
-            fileName: safeFileName
+            fileName: safeFileName,
+            content: content,
+            contentType: contentType || 'text/html'
         };
     } catch (error) {
         console.error('缓存远程内容失败:', error);
@@ -79,19 +84,32 @@ async function cacheRemoteContent(url) {
  */
 module.exports = async (req, res) => {
     try {
+        // 启用CORS
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        
+        // 处理OPTIONS请求
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+        
         const fileParam = req.query.file;
+        const mode = req.query.mode || 'download'; // 'download' 或 'view'
         
         if (!fileParam) {
             return res.status(400).send('缺少文件参数');
         }
         
-        console.log(`下载请求: ${fileParam}`);
+        console.log(`文件请求: ${fileParam}, 模式: ${mode}`);
         
         // 判断是否为URL
         const isUrl = fileParam.startsWith('http');
         
         let filePath;
         let fileName;
+        let fileContent;
+        let contentType;
         
         if (isUrl) {
             // 处理远程URL
@@ -99,6 +117,8 @@ module.exports = async (req, res) => {
                 const cacheResult = await cacheRemoteContent(fileParam);
                 filePath = cacheResult.path;
                 fileName = cacheResult.fileName;
+                fileContent = cacheResult.content;
+                contentType = cacheResult.contentType;
                 console.log(`远程文件已缓存到: ${filePath}`);
             } catch (e) {
                 console.error('处理远程URL失败:', e);
@@ -175,31 +195,70 @@ module.exports = async (req, res) => {
                 console.error(`找不到文件: ${fileParam} 尝试的路径: ${JSON.stringify(possibleDirs.map(dir => path.join(dir, fileName)), null, 2)}`);
                 return res.status(404).send(`找不到文件: ${fileName}`);
             }
+            
+            // 读取文件内容
+            try {
+                fileContent = fs.readFileSync(filePath, 'utf8');
+                
+                // 根据文件扩展名确定内容类型
+                const extname = path.extname(filePath).toLowerCase();
+                if (extname === '.html') {
+                    contentType = 'text/html';
+                } else if (extname === '.css') {
+                    contentType = 'text/css';
+                } else if (extname === '.js') {
+                    contentType = 'application/javascript';
+                } else if (extname === '.json') {
+                    contentType = 'application/json';
+                } else if (['.jpg', '.jpeg'].includes(extname)) {
+                    contentType = 'image/jpeg';
+                } else if (extname === '.png') {
+                    contentType = 'image/png';
+                } else if (extname === '.gif') {
+                    contentType = 'image/gif';
+                } else if (extname === '.svg') {
+                    contentType = 'image/svg+xml';
+                } else if (extname === '.pdf') {
+                    contentType = 'application/pdf';
+                } else {
+                    contentType = 'application/octet-stream';
+                }
+            } catch (e) {
+                console.error(`读取文件内容失败: ${e.message}`);
+                // 继续执行，将使用文件流模式
+            }
         }
         
-        console.log(`提供下载: ${filePath} (${fileName})`);
+        console.log(`提供文件: ${filePath} (${fileName}), 模式: ${mode}`);
         
-        // 设置响应头
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        
-        // 发送文件
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.pipe(res);
-        
-        // 错误处理
-        fileStream.on('error', (error) => {
-            console.error('文件流错误:', error);
-            if (!res.headersSent) {
-                res.status(500).send(`读取文件错误: ${error.message}`);
-            } else {
-                res.end();
-            }
-        });
+        // 根据模式处理请求
+        if (mode === 'view' && fileContent && contentType) {
+            // 视图模式 - 直接返回内容
+            res.setHeader('Content-Type', contentType);
+            return res.send(fileContent);
+        } else {
+            // 下载模式 - 发送文件作为附件
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+            res.setHeader('Content-Type', 'application/octet-stream');
+            
+            // 发送文件
+            const fileStream = fs.createReadStream(filePath);
+            fileStream.pipe(res);
+            
+            // 错误处理
+            fileStream.on('error', (error) => {
+                console.error('文件流错误:', error);
+                if (!res.headersSent) {
+                    res.status(500).send(`读取文件错误: ${error.message}`);
+                } else {
+                    res.end();
+                }
+            });
+        }
     } catch (error) {
-        console.error('下载处理错误:', error);
+        console.error('文件处理错误:', error);
         if (!res.headersSent) {
-            res.status(500).send(`处理下载请求时发生错误: ${error.message}`);
+            res.status(500).send(`处理文件请求时发生错误: ${error.message}`);
         } else {
             res.end();
         }

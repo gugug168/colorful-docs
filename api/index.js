@@ -5,42 +5,43 @@ const debug = (...args) => {
   console.log(new Date().toISOString(), ...args);
 };
 
+// 引入其他API处理模块以适应Vercel的路由架构
+// 这样在Vercel上，/api/* 请求会被正确路由到相应的处理程序
+const processTasks = require('./processTasks');
+const checkTask = require('./check-task');
+const task = require('./task');
+const upload = require('./upload');
+const beautifyTask = require('./beautify-task');
+const templates = require('./templates');
+const download = require('./download');
+
+/**
+ * API路由适配器
+ * 根据请求路径将请求分发到对应的处理函数
+ */
 module.exports = async (req, res) => {
-  try {
-    // 启用CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
-    // 处理OPTIONS请求
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-    
-    debug(`API索引请求: ${req.method} ${req.url}`);
-
-    // 只处理GET请求
-    if (req.method !== 'GET') {
-      return res.status(405).json({ success: false, error: '方法不允许' });
-    }
-
-    // 返回API信息
-    const apiInfo = {
-      name: "文档美化系统API",
-      version: "1.0.0",
-      status: "online",
-      description: "此端点提供API基本信息。具体功能请访问 /api/status, /api/check-task 等端点。",
-      timestamp: new Date().toISOString()
-    };
-    
-    return res.status(200).json(apiInfo);
-
-  } catch (error) {
-    console.error('处理API索引请求时发生错误:', error);
-    res.status(500).json({
-      success: false,
-      error: '服务器内部错误',
-      message: error.message
-    });
+  // 获取请求路径
+  const url = req.url || '';
+  console.log(`[API] ${req.method} ${url}`);
+  
+  // 简单请求分发，按路径匹配
+  if (url.includes('/processTasks') || url.includes('/process-tasks')) {
+    return await processTasks(req, res);
+  } else if (url.includes('/check-task/') || url.includes('/check-task')) {
+    return await checkTask(req, res);
+  } else if (url.includes('/task')) {
+    return await task(req, res);
+  } else if (url.includes('/upload')) {
+    return await upload(req, res);
+  } else if (url.includes('/beautify-task') || url.includes('/beautify')) {
+    return await beautifyTask(req, res);
+  } else if (url.includes('/templates')) {
+    return await templates(req, res);
+  } else if (url.includes('/download')) {
+    return await download(req, res);
   }
+  
+  // 未匹配到路由，返回404
+  res.statusCode = 404;
+  res.end(JSON.stringify({ error: 'API路由未找到' }));
 }; 
