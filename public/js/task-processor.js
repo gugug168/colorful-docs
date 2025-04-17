@@ -219,6 +219,12 @@ function triggerTaskProcessing() {
             // 有任务正在处理
             window.taskStatus[data.taskId] = TASK_STATUS.PROCESSING;
             
+            // 初始化任务超时跟踪
+            if (window.taskCheckStartTimes && !window.taskCheckStartTimes[data.taskId]) {
+                window.taskCheckStartTimes[data.taskId] = Date.now();
+                console.log(`设置任务 ${data.taskId} 开始检查时间为当前时间`);
+            }
+            
             // 确保main.js中的checkTaskStatus函数只被调用一次
             if (window.checkTaskStatus && !window.activeTaskChecks[data.taskId]) {
                 console.log(`通过main.js检查任务${data.taskId}状态...`);
@@ -231,6 +237,11 @@ function triggerTaskProcessing() {
             if (data.success && data.processed) {
                 console.log('任务已成功处理，获取结果:', data.taskId);
                 window.taskStatus[data.taskId] = TASK_STATUS.COMPLETED;
+                
+                // 清理任务超时跟踪
+                if (window.taskCheckStartTimes && window.taskCheckStartTimes[data.taskId]) {
+                    delete window.taskCheckStartTimes[data.taskId];
+                }
                 
                 // 获取任务详细结果
                 fetchTaskResult(data.taskId);

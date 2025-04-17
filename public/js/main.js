@@ -2593,7 +2593,10 @@ $(document).ready(function() {
 
     // 全局变量 - 保存当前正在检查的任务Map
     window.activeTaskChecks = {};
-    
+
+    // 全局变量 - 保存任务开始检查的时间戳
+    window.taskCheckStartTimes = {};
+
     // 检查任务状态
     function checkTaskStatus(taskId) {
       // 如果任务ID为空，不执行检查
@@ -2616,6 +2619,11 @@ $(document).ready(function() {
         window.activeTaskChecks = {};
       }
       
+      // 确保任务检查时间对象存在
+      if (!window.taskCheckStartTimes) {
+        window.taskCheckStartTimes = {};
+      }
+      
       // 检查这个任务是否已经在检查中，防止重复检查
       if (window.activeTaskChecks[taskId] === true) {
         console.log(`任务 ${taskId} 已在检查中，避免重复`);
@@ -2624,6 +2632,48 @@ $(document).ready(function() {
       
       // 标记此任务正在检查中
       window.activeTaskChecks[taskId] = true;
+      
+      // 记录任务首次检查的时间戳（如果尚未记录）
+      if (!window.taskCheckStartTimes[taskId]) {
+        window.taskCheckStartTimes[taskId] = Date.now();
+        console.log(`任务 ${taskId} 开始检查时间: ${new Date(window.taskCheckStartTimes[taskId]).toLocaleTimeString()}`);
+      }
+      
+      // 检查是否已超时（3分钟 = 180000毫秒）
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - window.taskCheckStartTimes[taskId];
+      const maxCheckTime = 3 * 60 * 1000; // 3分钟
+      
+      if (elapsedTime > maxCheckTime) {
+        console.warn(`任务 ${taskId} 检查超时，已经等待了 ${Math.floor(elapsedTime/1000)} 秒，超过了3分钟限制`);
+        
+        // 标记任务为失败
+        if (window.taskStatus) {
+          window.taskStatus[taskId] = 'failed';
+        }
+        
+        // 更新UI显示失败信息
+        updateTaskStatusUI(taskId, {
+          status: 'failed',
+          statusText: '处理超时',
+          error: '任务处理时间超过3分钟，自动取消'
+        });
+        
+        // 触发任务失败处理
+        handleTaskFailure({
+          taskId: taskId,
+          status: 'failed',
+          error: '任务处理超时（超过3分钟）'
+        });
+        
+        // 停止任务检查
+        stopTaskStatusCheck(taskId);
+        
+        // 清理任务开始时间
+        delete window.taskCheckStartTimes[taskId];
+        
+        return;
+      }
       
       // 显示任务进度弹窗（如果存在）
       if ($('#taskProgressModal').length > 0 && !$('#taskProgressModal').hasClass('show')) {
@@ -2653,6 +2703,9 @@ $(document).ready(function() {
             // 确保停止检查循环
             window.activeTaskChecks[taskId] = false;
             
+            // 清理任务开始时间
+            delete window.taskCheckStartTimes[taskId];
+            
             // 更新全局任务状态对象
             if (window.taskStatus) {
               window.taskStatus[taskId] = 'completed';
@@ -2669,6 +2722,9 @@ $(document).ready(function() {
             handleTaskFailure(response);
             // 停止状态检查
             stopTaskStatusCheck(taskId);
+            
+            // 清理任务开始时间
+            delete window.taskCheckStartTimes[taskId];
             
             // 更新全局任务状态对象
             if (window.taskStatus) {
@@ -2699,6 +2755,9 @@ $(document).ready(function() {
             // 停止状态检查
             stopTaskStatusCheck(taskId);
             
+            // 清理任务开始时间
+            delete window.taskCheckStartTimes[taskId];
+            
             // 更新全局任务状态对象
             if (window.taskStatus) {
               window.taskStatus[taskId] = 'failed';
@@ -2724,6 +2783,9 @@ $(document).ready(function() {
           // 停止状态检查
           stopTaskStatusCheck(taskId);
           
+          // 清理任务开始时间
+          delete window.taskCheckStartTimes[taskId];
+          
           // 更新全局任务状态对象
           if (window.taskStatus) {
             window.taskStatus[taskId] = 'failed';
@@ -2742,6 +2804,11 @@ $(document).ready(function() {
         if (window.taskChecks && window.taskChecks[taskId]) {
           delete window.taskChecks[taskId];
         }
+        
+        // 清理任务开始时间
+        if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
+          delete window.taskCheckStartTimes[taskId];
+        }
       }
     }
 
@@ -2752,6 +2819,9 @@ $(document).ready(function() {
       
       // 清理全局任务检查对象
       window.taskChecks = {};
+      
+      // 清理所有任务开始时间
+      window.taskCheckStartTimes = {};
     }
 
     // 计算下次检查的延迟时间
@@ -3323,3 +3393,15 @@ $(document).ready(function() {
       $(document).trigger('taskFailed', [response]);
     }
 });
+
+// 设置页面卸载事件，清理所有任务检查
+window.addEventListener('beforeunload', function() {
+  console.log('页面卸载，清理所有任务检查');
+  stopAllTaskStatusChecks();
+});
+
+// 全局变量 - 保存当前正在检查的任务Map
+window.activeTaskChecks = {};
+
+// 全局变量 - 保存任务开始检查的时间戳
+window.taskCheckStartTimes = {};
