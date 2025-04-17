@@ -2616,6 +2616,12 @@ $(document).ready(function() {
         window.activeTaskChecks = {};
       }
       
+      // 检查这个任务是否已经在检查中，防止重复检查
+      if (window.activeTaskChecks[taskId] === true) {
+        console.log(`任务 ${taskId} 已在检查中，避免重复`);
+        return;
+      }
+      
       // 标记此任务正在检查中
       window.activeTaskChecks[taskId] = true;
       
@@ -2647,6 +2653,11 @@ $(document).ready(function() {
             // 确保停止检查循环
             window.activeTaskChecks[taskId] = false;
             
+            // 更新全局任务状态对象
+            if (window.taskStatus) {
+              window.taskStatus[taskId] = 'completed';
+            }
+            
             // 如果有结果URL，直接加载
             if (response.result && response.result.path) {
               console.log(`加载任务结果: ${response.result.path}`);
@@ -2658,9 +2669,23 @@ $(document).ready(function() {
             handleTaskFailure(response);
             // 停止状态检查
             stopTaskStatusCheck(taskId);
+            
+            // 更新全局任务状态对象
+            if (window.taskStatus) {
+              window.taskStatus[taskId] = 'failed';
+            }
           } else if (response.status === 'processing' || response.status === 'pending') {
             console.log(`任务 ${taskId} ${response.status}中，继续检查...`);
+            
+            // 更新全局任务状态对象
+            if (window.taskStatus) {
+              window.taskStatus[taskId] = response.status;
+            }
+            
             // 任务仍在处理中，继续检查
+            // 释放当前检查锁以允许下一次检查
+            window.activeTaskChecks[taskId] = false;
+            
             setTimeout(function() {
               checkTaskStatus(taskId);
             }, 2000); // 2秒后再次检查
@@ -2673,6 +2698,11 @@ $(document).ready(function() {
             });
             // 停止状态检查
             stopTaskStatusCheck(taskId);
+            
+            // 更新全局任务状态对象
+            if (window.taskStatus) {
+              window.taskStatus[taskId] = 'failed';
+            }
           }
         },
         error: function(xhr, status, error) {
@@ -2693,6 +2723,11 @@ $(document).ready(function() {
           
           // 停止状态检查
           stopTaskStatusCheck(taskId);
+          
+          // 更新全局任务状态对象
+          if (window.taskStatus) {
+            window.taskStatus[taskId] = 'failed';
+          }
         }
       });
     }
@@ -2702,6 +2737,11 @@ $(document).ready(function() {
       if (window.activeTaskChecks) {
         window.activeTaskChecks[taskId] = false;
         console.log(`已停止检查任务 ${taskId} 的状态`);
+        
+        // 清理相关资源
+        if (window.taskChecks && window.taskChecks[taskId]) {
+          delete window.taskChecks[taskId];
+        }
       }
     }
 
@@ -2709,6 +2749,9 @@ $(document).ready(function() {
     function stopAllTaskStatusChecks() {
       window.activeTaskChecks = {};
       console.log('已停止所有任务状态检查');
+      
+      // 清理全局任务检查对象
+      window.taskChecks = {};
     }
 
     // 计算下次检查的延迟时间
@@ -2737,6 +2780,12 @@ $(document).ready(function() {
     function updateTaskStatusUI(taskId, response) {
       // 如果存在任务进度弹窗，更新它
       if ($('#taskProgressModal').length > 0) {
+        // 防止response为undefined
+        if (!response) {
+          console.warn('updateTaskStatusUI被调用时response为undefined');
+          return;
+        }
+        
         // 更新状态文本
         const statusText = response.statusText || (
           response.status === 'processing' ? '正在处理中...' : 

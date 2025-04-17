@@ -579,12 +579,40 @@ async function processTask(taskId) {
             }
         }
         
+        // 检查并设置默认任务类型
+        if (!task.type) {
+            console.warn(`任务 ${taskId} 未指定类型，从data属性中查找...`);
+            
+            // 尝试从data属性中获取任务类型
+            if (task.data && task.data.taskType) {
+                task.type = task.data.taskType === 'beautify' ? 'beautify_html' : task.data.taskType;
+                console.log(`从data属性中找到任务类型: ${task.type}`);
+            } else {
+                // 设置默认任务类型
+                task.type = 'beautify_html';
+                console.warn(`未能找到任务类型，设置为默认类型: beautify_html`);
+                
+                // 尝试更新数据库中的任务类型
+                try {
+                    await updateTaskStatus(taskId, task.status, {
+                        type: task.type
+                    });
+                    console.log(`已更新任务 ${taskId} 的类型为 ${task.type}`);
+                } catch (updateError) {
+                    console.error(`更新任务类型失败 (${taskId}):`, updateError);
+                }
+            }
+        }
+        
         // 根据任务类型调用不同的处理函数
         switch (task.type) {
             case 'beautify_html':
                 return await processBeautifyTask(taskId);
             case 'optimize_html':
                 return await processAiOptimizationTask(task);
+            case 'beautify':  // 兼容beautify类型
+                console.log(`兼容处理beautify类型任务 ${taskId}`);
+                return await processBeautifyTask(taskId);
             default:
                 throw new Error(`不支持的任务类型: ${task.type}`);
         }

@@ -583,7 +583,9 @@
             targetFormat: fileInfo.type,
             htmlContent: fileInfo.html,
             customRequirements: customRequirements,
-            colorizedImages: fileInfo.colorizedImages || []
+            colorizedImages: fileInfo.colorizedImages || [],
+            type: 'beautify_html',  // 明确设置任务类型
+            taskType: 'beautify_html'  // 兼容不同的属性名
         };
         
         // 发送美化请求
@@ -600,6 +602,10 @@
                 if (response.success) {
                     // 保存任务ID
                     currentTaskId = response.taskId;
+                    
+                    // 也保存到会话存储
+                    sessionStorage.setItem('currentTaskId', response.taskId);
+                    sessionStorage.setItem('taskType_' + response.taskId, 'beautify_html');
                     
                     // 显示任务进度弹窗
                     showTaskProgressModal();

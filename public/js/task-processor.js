@@ -96,9 +96,6 @@ function initTaskProcessor() {
                 console.log('当前有任务正在处理中，等待完成...');
             }
         }
-        
-        // 更新UI上的任务状态
-        updateTaskStatusUI();
     }, 5000); // 每5秒检查一次
     
     // 将定时器ID保存到window对象，以便需要时可以清除
@@ -204,6 +201,10 @@ function triggerTaskProcessing() {
             // 保存到会话存储
             try {
                 sessionStorage.setItem('currentTaskId', data.taskId);
+                // 确保任务类型也被保存 - 设置为beautify_html
+                if (!sessionStorage.getItem('taskType_' + data.taskId)) {
+                    sessionStorage.setItem('taskType_' + data.taskId, 'beautify_html');
+                }
             } catch (e) {
                 console.error('保存任务ID到会话存储失败:', e);
             }
@@ -218,13 +219,12 @@ function triggerTaskProcessing() {
             // 有任务正在处理
             window.taskStatus[data.taskId] = TASK_STATUS.PROCESSING;
             
-            // 更新UI上的任务状态
-            updateTaskStatusUI(data.taskId, '处理中');
-            
-            // 触发任务状态检查 - 使用main.js中的checkTaskStatus函数
-            if (window.checkTaskStatus) {
+            // 确保main.js中的checkTaskStatus函数只被调用一次
+            if (window.checkTaskStatus && !window.activeTaskChecks[data.taskId]) {
                 console.log(`通过main.js检查任务${data.taskId}状态...`);
                 window.checkTaskStatus(data.taskId);
+            } else {
+                console.log(`任务${data.taskId}已经在检查中或checkTaskStatus不可用`);
             }
             
             // 如果任务已处理完成
@@ -232,14 +232,8 @@ function triggerTaskProcessing() {
                 console.log('任务已成功处理，获取结果:', data.taskId);
                 window.taskStatus[data.taskId] = TASK_STATUS.COMPLETED;
                 
-                // 更新UI上的任务状态
-                updateTaskStatusUI(data.taskId, '已完成');
-                
                 // 获取任务详细结果
                 fetchTaskResult(data.taskId);
-                
-                // 立即再次触发处理下一个任务
-                setTimeout(triggerTaskProcessing, 1000);
             }
         } else if (data.message) {
             console.log(`API消息: ${data.message}`);
@@ -353,23 +347,44 @@ function fetchTaskResult(taskId) {
 
 /**
  * 更新UI上的任务状态显示
+ * 注意：此函数本地更新UI，不会触发额外的任务检查
  * @param {string} taskId - 任务ID，不提供则更新所有任务
- * @param {string} status - 要更新的状态文本
+ * @param {Object} response - 响应对象，包含status和statusText
  */
-function updateTaskStatusUI(taskId, status) {
-    if (taskId && status) {
+function updateTaskStatusUI(taskId, response) {
+    // 避免空响应或未定义响应导致错误
+    if (!response) {
+        console.warn('updateTaskStatusUI被调用时response为undefined');
+        return;
+    }
+    
+    // 如果调用来自定时器检查，且main.js中的updateTaskStatusUI可用，则使用main.js的实现
+    if (typeof window.updateTaskStatusUI === 'function' && window.updateTaskStatusUI !== updateTaskStatusUI) {
+        // 避免在main.js中继续调用checkTaskStatus而创建重复检查
+        const originalResponse = {...response};
+        
+        // 提供必要的响应，避免触发新的任务检查
+        window.updateTaskStatusUI(taskId, originalResponse);
+        return;
+    }
+    
+    // 本地UI更新逻辑
+    if (taskId && response) {
         // 更新特定任务的状态
         const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
         if (taskElement) {
             const statusElement = taskElement.querySelector('.task-status');
             if (statusElement) {
-                statusElement.textContent = status;
+                const status = response.status || '';
+                const statusText = response.statusText || '';
+                
+                statusElement.textContent = statusText;
                 
                 // 更新状态颜色
                 statusElement.classList.remove('text-warning', 'text-danger', 'text-success');
-                if (status === '处理中') {
+                if (status === 'processing') {
                     statusElement.classList.add('text-warning');
-                } else if (status === '已完成') {
+                } else if (status === 'completed') {
                     statusElement.classList.add('text-success');
                     
                     // 如果页面上有刷新按钮，触发刷新
@@ -377,7 +392,7 @@ function updateTaskStatusUI(taskId, status) {
                     if (refreshButton) {
                         refreshButton.click();
                     }
-                } else if (status.includes('错误') || status.includes('失败')) {
+                } else if (status === 'failed' || statusText.includes('错误') || statusText.includes('失败')) {
                     statusElement.classList.add('text-danger');
                 }
             }
@@ -391,9 +406,9 @@ function updateTaskStatusUI(taskId, status) {
             if (!modalTaskId || modalTaskId === taskId) {
                 const statusText = taskProgressModal.querySelector('#taskStatusText');
                 if (statusText) {
-                    if (status === '处理中') {
+                    if (response.status === 'processing') {
                         statusText.textContent = '正在处理您的文档，请稍候...';
-                    } else if (status === '已完成') {
+                    } else if (response.status === 'completed') {
                         statusText.textContent = '文档处理完成！';
                         
                         // 显示完成信息区域
@@ -420,26 +435,43 @@ function updateTaskStatusUI(taskId, status) {
             if (taskElement) {
                 const statusElement = taskElement.querySelector('.task-status');
                 if (statusElement) {
-                    let statusText = '待处理';
-                    let statusClass = 'text-warning';
+                    let statusObj = {
+                        status: 'pending',
+                        statusText: '待处理'
+                    };
                     
                     switch(window.taskStatus[taskId]) {
                         case TASK_STATUS.PROCESSING:
-                            statusText = '处理中';
-                            statusClass = 'text-warning';
+                            statusObj = {
+                                status: 'processing',
+                                statusText: '处理中'
+                            };
                             break;
                         case TASK_STATUS.COMPLETED:
-                            statusText = '已完成';
-                            statusClass = 'text-success';
+                            statusObj = {
+                                status: 'completed',
+                                statusText: '已完成'
+                            };
                             break;
                         case TASK_STATUS.FAILED:
-                            statusText = '处理失败';
-                            statusClass = 'text-danger';
+                            statusObj = {
+                                status: 'failed',
+                                statusText: '处理失败'
+                            };
                             break;
                     }
                     
-                    statusElement.textContent = statusText;
-                    statusElement.className = 'task-status ' + statusClass;
+                    statusElement.textContent = statusObj.statusText;
+                    
+                    // 更新状态颜色
+                    statusElement.classList.remove('text-warning', 'text-danger', 'text-success');
+                    if (statusObj.status === 'processing') {
+                        statusElement.classList.add('text-warning');
+                    } else if (statusObj.status === 'completed') {
+                        statusElement.classList.add('text-success');
+                    } else if (statusObj.status === 'failed') {
+                        statusElement.classList.add('text-danger');
+                    }
                 }
             }
         }
