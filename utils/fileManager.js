@@ -34,9 +34,9 @@ const config = {
         'image/gif',
         'image/svg+xml'
     ],
-    // 目录路径
-    TEMP_DIR: path.join(process.cwd(), 'uploads', 'temp'),
-    RESULTS_DIR: path.join(process.cwd(), 'uploads', 'results')
+    // 目录路径 - 在Vercel环境中使用/tmp目录
+    TEMP_DIR: process.env.NODE_ENV === 'production' ? '/tmp/uploads/temp' : path.join(process.cwd(), 'uploads', 'temp'),
+    RESULTS_DIR: process.env.NODE_ENV === 'production' ? '/tmp/uploads/results' : path.join(process.cwd(), 'uploads', 'results')
 };
 
 /**

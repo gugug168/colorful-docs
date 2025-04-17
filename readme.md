@@ -4,11 +4,13 @@
 
 #重点和重复出现的问题
 1、我是使用vercel的环境变量
-2、The `functions` property cannot be used in conjunction with the `builds` property. Please remove one of them.'functions' 属性不能与 'builds' 属性一起使用。请删除其中一个。
+2、在vercel.json中The `functions` property cannot be used in conjunction with the `builds` property. Please remove one of them.'functions' 属性不能与 'builds' 属性一起使用。请删除其中一个。
 3、
 
 ## 项目概述
 本项目旨在开发一个文档排版与美化系统，能够将用户上传的文档转换为HTML格式，利用AI技术对其进行智能排版和重点知识突出显示，并支持将美化后的文档导出为原格式。系统不会影响原文档中的图片展示，同时能够对重点字句进行字体变色、加粗等处理。
+
+项目采用Vercel进行部署，Supabase用于空间存储和数据库，并使用异步任务处理AI美化请求，以减少Vercel的代码运行时间。
 
 ## 核心功能
 ### 文档转HTML转换
@@ -60,136 +62,268 @@
 2. 图片信息会临时保存在内存中
 3. 在AI处理完成后，将图片引用恢复到生成的HTML中
 
-## 技术栈选择（新手友好版）
+## 技术栈
 
 ### 前端技术
-- **HTML/CSS/JavaScript**：基础网页开发，无需复杂框架
-- **Bootstrap 5**：现成的响应式UI组件，快速构建漂亮界面
-- **jQuery**：简化DOM操作，降低JavaScript使用难度
+- **HTML/CSS/JavaScript**：基础网页开发
+- **Bootstrap 5**：响应式UI组件
+- **jQuery**：简化DOM操作
 
 ### 后端技术
-- **Node.js + Express**：简单易学的JavaScript后端环境
-- **nodemon**：自动重启服务器，方便开发
+- **Node.js + Express**：主要后端环境
+- **Serverless部署**：使用Vercel部署
+
+### 存储解决方案
+- **Supabase**：用于文件存储和数据库
+  - 文件存储：处理上传的文件和结果存储
+  - 数据库：存储任务状态和配置信息
 
 ### 文档处理
 - **mammoth.js**：处理Word文档转HTML
-- **pdf.js**：处理PDF文档转HTML
+- **pdf-parse**：处理PDF文档转HTML
 - **multer**：处理文件上传
+- **html-to-docx**：HTML转回Word格式
+- **html-pdf-node**：HTML转PDF
 
-### AI集成
-- **OpenAI API (GPT-4)**：使用简单的API调用实现内容分析和优化
-- **预设提示词模板**：简化AI调用复杂度
+### AI集成与处理
+- **AI提供商**：支持DeepSeek和百度文心大模型
+  - 模块化设计，支持扩展其他AI服务
+- **异步任务处理**：减少Vercel函数执行时间
+- **备用优化模式**：当AI服务不可用时的本地处理方案
 
-### 存储
-- **本地文件系统**：简单直接，无需数据库配置
+### 错误处理与日志
+- **统一错误处理机制**：分类处理各种错误类型
+- **详细日志记录**：记录系统运行状态和错误信息
 
-### 导出功能
-- **html-docx-js**：HTML转回Word格式
-- **jsPDF**：生成PDF文件
-
-## 开发步骤详解
-
-### 1. 环境搭建
-1. 安装Node.js（从官网下载Windows安装包）
-2. 创建项目文件夹并初始化
-   ```
-   mkdir colorful-docs
-   cd colorful-docs
-   npm init -y
-   ```
-3. 安装必要依赖
-   ```
-   npm install express multer mammoth pdf.js-extract html-docx-js jspdf bootstrap jquery openai
-   npm install nodemon --save-dev
-   ```
-
-### 2. 基础项目结构
+## 项目结构
 ```
 colorful-docs/
   ├── public/           // 静态资源
   │   ├── css/          // 样式文件
   │   ├── js/           // 客户端JavaScript
   │   └── images/       // 图片资源
-  ├── uploads/          // 上传文件临时存储
-  ├── temp/             // 处理过程临时文件
+  ├── uploads/          // 上传文件存储
+  │   ├── temp/         // 临时存储
+  │   └── results/      // 处理结果存储
   ├── downloads/        // 导出文件存储
-  ├── views/            // HTML页面
+  ├── logs/             // 日志文件目录
   ├── app.js            // 主应用入口
+  ├── vercel.json       // Vercel配置文件
+  ├── api/              // Serverless API函数
+  │   └── process.js    // 处理API请求
   ├── routes/           // 路由处理
+  │   ├── upload.js     // 上传路由
+  │   ├── process.js    // 处理路由
+  │   └── download.js   // 下载路由
   └── utils/            // 工具函数
-      ├── docxConverter.js  // Word转换器
-      ├── pdfConverter.js   // PDF转换器
-      └── aiProcessor.js    // AI处理
+      ├── supabaseClient.js    // Supabase客户端配置
+      ├── taskProcessor.js     // 任务处理器
+      ├── fileManager.js       // 文件管理工具
+      ├── errorHandler.js      // 错误处理工具
+      ├── validatorUtils.js    // 表单验证工具
+      ├── aiOptimizer.js       // AI优化处理
+      ├── htmlUtils.js         // HTML处理工具
+      └── imageColorizer.js    // 图片处理工具
 ```
 
-### 3. 功能实现简化方案
+## 核心模块详解
 
-#### 文档转HTML流程
-1. 用户通过网页表单上传文档
-2. 使用mammoth.js直接转换Word文档为HTML
-3. 使用pdf.js-extract提取PDF内容并转为HTML
-4. 临时存储图片到public/images/temp目录
+### 1. Supabase客户端配置 (utils/supabaseClient.js)
+- 管理与Supabase的连接
+- 处理文件上传、下载、列表和删除
+- 管理异步任务队列
 
-#### AI排版美化（简化版）
-1. 分析HTML结构，通过简单规则识别标题、段落等
-2. 使用OpenAI API分析内容并标记重要部分
-3. 应用预定义的CSS样式突出显示重要内容
-4. 使用简单的API调用替代复杂的NLP模型
+```javascript
+// 主要功能
+uploadFile()      // 上传文件到Supabase Storage
+getFile()         // 从Supabase Storage获取文件
+createTask()      // 创建异步处理任务
+updateTaskStatus() // 更新任务状态
+getTask()         // 获取任务信息
+```
 
-#### 导出功能简化
-1. HTML转Word：使用html-docx-js库
-2. HTML转PDF：使用jsPDF库
-3. 提供下载链接
+### 2. 任务处理器 (utils/taskProcessor.js)
+- 异步任务处理的核心模块
+- 支持不同类型的处理任务（美化、优化等）
+- 处理超时和错误情况
 
-## 部署指南（Windows系统）
+```javascript
+// 主要功能
+processTask()          // 任务处理的入口函数
+processBeautifyTask()  // 处理美化任务
+processAiOptimizationTask() // 处理AI优化任务
+setApiConfig()         // 设置全局API配置
+```
 
-### 本地开发环境
-1. 安装Node.js (LTS版本)
-2. 使用命令提示符或PowerShell运行项目
-   ```
-   npm run dev  // 使用nodemon自动重启服务器
-   ```
-3. 浏览器访问 http://localhost:3000
+### 3. 文件管理工具 (utils/fileManager.js)
+- 处理文件上传、保存和清理
+- 管理临时文件和结果文件
+- 定期清理过期文件
 
-### 简易生产环境
-1. 租用简单虚拟主机或使用Vercel/Netlify等平台
-2. 按照平台说明部署Node.js应用
+```javascript
+// 主要功能
+upload                // multer配置，处理文件上传
+getFileInfo()         // 获取文件信息
+saveResultToFile()    // 保存结果到文件
+moveFileToResults()   // 移动文件到结果目录
+cleanupExpiredFiles() // 清理过期文件
+```
 
-## 进阶优化建议
-1. 先实现基础功能，再逐步增加复杂功能
-2. 使用现成的颜色主题和样式模板
-3. 开始时可用简单的规则替代AI分析，降低复杂度
-4. 先支持Word文档，成功后再添加PDF支持
+### 4. 错误处理工具 (utils/errorHandler.js)
+- 提供统一的错误处理机制
+- 支持多种错误类型（验证、文件、数据库等）
+- 错误日志记录
+
+```javascript
+// 主要功能
+createError()         // 创建通用错误对象
+logErrorToFile()      // 记录错误到日志文件
+handleApiError()      // 处理API错误并返回适当响应
+errorMiddleware()     // Express错误中间件
+```
+
+### 5. 表单验证工具 (utils/validatorUtils.js)
+- 验证各种表单字段
+- 提供丰富的验证规则
+- 生成结构化错误信息
+
+```javascript
+// 主要功能
+validateRequired()    // 验证必填字段
+validateLength()      // 验证字符串长度
+validateEmail()       // 验证电子邮件格式
+validateUrl()         // 验证URL格式
+validateNumber()      // 验证数字
+validateDate()        // 验证日期
+validateObject()      // 验证对象
+validateArray()       // 验证数组
+```
+
+### 6. AI优化处理 (utils/aiOptimizer.js)
+- 调用不同AI服务处理内容
+- 生成优化提示
+- 处理AI返回结果
+
+```javascript
+// 主要功能
+processWithDeepseek() // 使用DeepSeek处理HTML
+beautifyWithBaidu()   // 使用百度文心处理HTML
+beautifyWithRules()   // 本地规则处理（备用模式）
+generateOptimizationPrompt() // 生成优化提示
+```
 
 ## 实现流程
-### 上传阶段
-1. 用户上传文档
-2. 服务器接收并临时存储
-3. 文件格式验证与安全检查
 
-### 转换阶段
-1. 根据文件类型选择相应转换工具
-2. 将文档转换为HTML格式
-3. 提取并处理文档中的图片
-4. 生成初步HTML结构
+### 文档上传与处理流程
+1. 用户上传文档到前端
+2. 文档通过API上传到服务器
+3. 文件被临时存储并验证
+4. 创建异步处理任务并存储在Supabase
+5. 返回任务ID给前端，前端使用它查询处理状态
+6. 异步任务处理器处理文档:
+   - 转换为HTML
+   - 提取图片
+   - 调用AI服务进行优化
+   - 处理完成后更新任务状态
+7. 前端轮询查询任务状态
+8. 处理完成后，用户可以预览和下载结果
 
-### AI处理阶段
-1. 分析文档内容和结构
-2. 识别重点知识点和关键字句
-3. 应用排版规则和样式
-4. 生成优化后的HTML
+### AI处理流程
+1. 准备HTML内容和优化提示
+2. 根据配置选择AI服务提供商（DeepSeek、百度等）
+3. 调用相应的AI API处理内容
+4. 如果AI处理失败，使用本地备用优化规则
+5. 处理返回的优化内容
+6. 替换或恢复图片引用
+7. 存储结果并更新任务状态
 
-### 展示阶段
-1. 预览优化后的HTML效果
-2. 提供简单的调整选项
-3. 用户确认效果
+## 部署指南
 
-### 导出阶段
-1. 将优化后的HTML转换回原格式
-2. 提供下载选项
+### Vercel部署
+1. Fork或Clone项目仓库
+2. 在Vercel上创建新项目并连接仓库
+3. 设置以下环境变量:
+   - `NEXT_PUBLIC_SUPABASE_URL`: Supabase项目URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase匿名密钥
+   - `SUPABASE_SERVICE_KEY`: Supabase服务密钥（可选）
+   - `DEEPSEEK_API_KEY`: DeepSeek API密钥（可选）
+   - `BAIDU_API_KEY`: 百度文心API密钥（可选）
+   - `BAIDU_API_SECRET`: 百度文心API密钥（可选）
+4. 部署项目
+
+### Supabase设置
+1. 创建Supabase项目
+2. 创建以下存储桶:
+   - `uploads`: 存储上传的文件
+   - `results`: 存储处理结果
+3. 设置适当的存储桶权限
+4. 创建`tasks`表用于存储任务信息:
+   ```sql
+   create table tasks (
+     id uuid primary key,
+     status text,
+     created_at timestamp with time zone,
+     updated_at timestamp with time zone,
+     data jsonb,
+     result jsonb,
+     error text,
+     expires_at timestamp with time zone
+   );
+   ```
+
+## 关键依赖项
+请确保在package.json中包含以下依赖:
+
+```json
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "axios": "^0.27.2",
+    "express": "^4.18.2",
+    "html-pdf-node": "^1.0.8",
+    "html-to-docx": "^1.6.5",
+    "mammoth": "^1.5.1",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "puppeteer": "^19.7.0",
+    "uuid": "^9.0.0"
+  }
+}
+```
+
+## 常见问题与解决方案
+
+### 1. Vercel部署超时问题
+**问题**: Vercel函数执行超过10秒会终止  
+**解决方案**: 使用异步任务处理机制，将长时间运行的任务存储在Supabase，然后使用单独的处理器处理
+
+### 2. 文件大小限制
+**问题**: Vercel和Supabase对文件大小有限制  
+**解决方案**: 
+- 在前端添加文件大小验证
+- 实现文件分块上传(大文件)
+- 优化图片和内容以减小文件大小
+
+### 3. AI服务不可用
+**问题**: AI服务可能暂时不可用  
+**解决方案**: 实现本地备用处理逻辑(`beautifyWithRules`函数)
+
+### 4. 处理任务失败
+**问题**: 任务可能因各种原因失败  
+**解决方案**:
+- 实现详细的错误记录
+- 自动重试机制
+- 用户友好的错误提示
+
+## 后续优化方向
+1. 添加用户认证系统
+2. 实现更多文档格式的支持
+3. 优化AI处理提示，提高优化质量
+4. 增加批量处理功能
+5. 添加自定义主题和模板选择
 
 ## 注意事项
-1. 本项目适合新手小白学习开发
-2. 提供了详细的开发步骤说明
-3. 使用Windows系统开发和部署
-4. 如有问题，请参考各工具的官方文档
+1. 密钥和敏感信息应保存在环境变量中
+2. 定期清理临时文件和过期任务
+3. 监控API使用情况和费用
+4. 注意AI服务提供商的使用限制和费率
