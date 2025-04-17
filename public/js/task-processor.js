@@ -84,16 +84,50 @@ function initTaskProcessor() {
         if (pendingTaskIds.length > 0) {
             console.log('检测到待处理的任务:', pendingTaskIds);
             
+            // 检查这些任务是否真的还在处理中
+            let hasRealProcessingTask = false;
+            
             // 检查是否有正在处理中的任务
             const processingTasks = Object.keys(window.taskStatus).filter(
                 taskId => window.taskStatus[taskId] === TASK_STATUS.PROCESSING
             );
             
-            if (processingTasks.length === 0) {
+            if (processingTasks.length > 0) {
+                console.log('标记为处理中的任务:', processingTasks);
+                
+                // 检查这些处理中的任务是否已经超时（超过3分钟）
+                const currentTime = Date.now();
+                const stillProcessing = processingTasks.filter(taskId => {
+                    if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
+                        const elapsedTime = currentTime - window.taskCheckStartTimes[taskId];
+                        const isTimeout = elapsedTime > 3 * 60 * 1000; // 3分钟
+                        
+                        if (isTimeout) {
+                            console.log(`任务 ${taskId} 已经处理超过3分钟，认为已超时`);
+                            // 将任务标记为失败
+                            window.taskStatus[taskId] = TASK_STATUS.FAILED;
+                            // 清理任务开始时间
+                            delete window.taskCheckStartTimes[taskId];
+                            return false;
+                        }
+                        return true;
+                    }
+                    // 如果没有开始时间，则认为不在处理中
+                    return false;
+                });
+                
+                hasRealProcessingTask = stillProcessing.length > 0;
+                
+                if (hasRealProcessingTask) {
+                    console.log('当前有任务正在处理中，等待完成...');
+                } else {
+                    console.log('没有实际处理中的任务，可以开始新任务处理');
+                }
+            }
+            
+            if (!hasRealProcessingTask) {
                 // 没有正在处理的任务，触发API处理下一个任务
                 triggerTaskProcessing();
-            } else {
-                console.log('当前有任务正在处理中，等待完成...');
             }
         }
     }, 5000); // 每5秒检查一次
@@ -138,19 +172,28 @@ function getActiveTaskIds() {
     const taskProgressModal = document.getElementById('taskProgressModal');
     if (taskProgressModal && window.getComputedStyle(taskProgressModal).display !== 'none') {
         const taskIdFromModal = taskProgressModal.getAttribute('data-task-id');
-        if (taskIdFromModal && !taskIds.includes(taskIdFromModal) && 
-            (!window.taskStatus[taskIdFromModal] || 
-             window.taskStatus[taskIdFromModal] === TASK_STATUS.PENDING)) {
-            taskIds.push(taskIdFromModal);
+        if (taskIdFromModal && !taskIds.includes(taskIdFromModal)) {
+            // 检查任务当前状态
+            const currentStatus = window.taskStatus[taskIdFromModal];
+            // 只有在状态为空或待处理或处理中时才添加
+            if (!currentStatus || 
+                currentStatus === TASK_STATUS.PENDING || 
+                currentStatus === TASK_STATUS.PROCESSING) {
+                taskIds.push(taskIdFromModal);
+            }
         }
     }
     
     // 也从全局taskChecks对象中获取任务
     if (window.taskChecks) {
         for (const taskId in window.taskChecks) {
-            if (!taskIds.includes(taskId) && 
-                (!window.taskStatus[taskId] || window.taskStatus[taskId] === TASK_STATUS.PENDING)) {
-                taskIds.push(taskId);
+            if (!taskIds.includes(taskId)) {
+                // 检查任务当前状态
+                const currentStatus = window.taskStatus[taskId];
+                // 只有在状态为空或待处理时才添加
+                if (!currentStatus || currentStatus === TASK_STATUS.PENDING) {
+                    taskIds.push(taskId);
+                }
             }
         }
     }
@@ -158,15 +201,27 @@ function getActiveTaskIds() {
     // 从会话存储中获取当前任务ID（如果有）
     try {
         const currentTaskId = sessionStorage.getItem('currentTaskId');
-        if (currentTaskId && !taskIds.includes(currentTaskId) && 
-            (!window.taskStatus[currentTaskId] || window.taskStatus[currentTaskId] === TASK_STATUS.PENDING)) {
-            taskIds.push(currentTaskId);
+        if (currentTaskId && !taskIds.includes(currentTaskId)) {
+            // 检查任务当前状态
+            const currentStatus = window.taskStatus[currentTaskId];
+            // 只有在状态为空或待处理或处理中时才添加
+            if (!currentStatus || 
+                currentStatus === TASK_STATUS.PENDING || 
+                currentStatus === TASK_STATUS.PROCESSING) {
+                taskIds.push(currentTaskId);
+            }
         }
     } catch (e) {
         console.error('从会话存储获取任务ID失败:', e);
     }
     
-    return taskIds;
+    // 过滤掉已知完成或失败的任务
+    return taskIds.filter(taskId => {
+        const status = window.taskStatus[taskId];
+        return !status || 
+               status === TASK_STATUS.PENDING || 
+               status === TASK_STATUS.PROCESSING;
+    });
 }
 
 /**

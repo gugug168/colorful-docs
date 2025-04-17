@@ -2965,37 +2965,171 @@ $(document).ready(function() {
       // 加载结果内容
       $('#result-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载结果...</p></div>');
       
-      // 解析路径 - 处理完整URL和相对路径
-      let loadPath = resultPath;
-      if (resultPath.startsWith('http')) {
-        // 这是完整URL，直接使用
-        $.ajax({
-          url: loadPath,
-          type: 'GET',
-          success: function(html) {
-            $('#result-content').html(html);
-            addEntryAnimation('#result-section');
-          },
-          error: function(xhr, status, error) {
-            console.error('加载结果失败:', error);
-            $('#result-content').html('<div class="alert alert-danger">加载美化结果失败，请尝试刷新页面。</div>');
+      try {
+        // 解析路径 - 处理完整URL和相对路径
+        let loadPath = resultPath;
+        let fileName = '';
+        
+        // 尝试从路径中提取文件名
+        try {
+          // 对于http URL，找到最后一个斜杠后的所有内容
+          if (resultPath.startsWith('http')) {
+            const urlPath = new URL(resultPath).pathname;
+            fileName = urlPath.split('/').pop();
+            console.log('从URL提取的文件名:', fileName);
+          } else {
+            // 对于相对路径，直接分割
+            fileName = resultPath.split(/[\/\\]/).pop();
           }
-        });
-      } else {
-        // 相对路径，使用预览接口
-        const fileName = resultPath.split(/[\/\\]/).pop();
-        $.ajax({
-          url: '/preview/' + encodeURIComponent(fileName),
-          type: 'GET',
-          success: function(html) {
-            $('#result-content').html(html);
-            addEntryAnimation('#result-section');
-          },
-          error: function(xhr, status, error) {
-            console.error('加载结果失败:', error);
-            $('#result-content').html('<div class="alert alert-danger">加载美化结果失败，请尝试刷新页面。</div>');
-          }
-        });
+        } catch (e) {
+          console.error('提取文件名失败:', e);
+          // 回退策略，生成一个随机文件名
+          fileName = 'result-' + Date.now() + '.html';
+        }
+        
+        // 检查是否是Supabase URL
+        if (resultPath.includes('supabase') && resultPath.includes('/storage/')) {
+          console.log('检测到Supabase存储URL，使用代理获取内容');
+          
+          // 使用代理API获取内容
+          $.ajax({
+            url: '/api/fetch-remote?url=' + encodeURIComponent(resultPath),
+            type: 'GET',
+            success: function(html) {
+              $('#result-content').html(html);
+              addEntryAnimation('#result-section');
+            },
+            error: function(xhr, status, error) {
+              console.error('从Supabase加载内容失败:', error);
+              
+              // 尝试使用预览API作为备选
+              console.log('尝试使用预览API加载:', fileName);
+              $.ajax({
+                url: '/preview/' + encodeURIComponent(fileName),
+                type: 'GET',
+                success: function(html) {
+                  $('#result-content').html(html);
+                  addEntryAnimation('#result-section');
+                },
+                error: function(xhr2, status2, error2) {
+                  console.error('使用预览API加载也失败:', error2);
+                  // 显示错误消息和直接链接
+                  $('#result-content').html(`
+                    <div class="alert alert-warning">
+                      <h4>加载结果内容失败</h4>
+                      <p>无法自动加载结果内容，您可以：</p>
+                      <ol>
+                        <li>直接 <a href="${resultPath}" target="_blank" class="btn btn-sm btn-outline-primary">打开结果链接</a></li>
+                        <li>或 <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-sm btn-outline-success">下载结果文件</a></li>
+                      </ol>
+                    </div>
+                  `);
+                }
+              });
+            }
+          });
+        } else if (resultPath.startsWith('http')) {
+          // 普通HTTP URL，直接加载
+          console.log('加载HTTP URL:', loadPath);
+          $.ajax({
+            url: loadPath,
+            type: 'GET',
+            success: function(html) {
+              $('#result-content').html(html);
+              addEntryAnimation('#result-section');
+            },
+            error: function(xhr, status, error) {
+              console.error('加载HTTP结果失败:', error);
+              
+              // 显示错误消息和直接链接
+              $('#result-content').html(`
+                <div class="alert alert-warning">
+                  <h4>加载结果内容失败</h4>
+                  <p>无法加载结果内容，您可以：</p>
+                  <ol>
+                    <li>直接 <a href="${resultPath}" target="_blank" class="btn btn-sm btn-outline-primary">打开结果链接</a></li>
+                    <li>或 <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-sm btn-outline-success">下载结果文件</a></li>
+                  </ol>
+                </div>
+              `);
+            }
+          });
+        } else {
+          // 相对路径，使用预览接口
+          console.log('使用预览API加载:', fileName);
+          $.ajax({
+            url: '/preview/' + encodeURIComponent(fileName),
+            type: 'GET',
+            success: function(html) {
+              $('#result-content').html(html);
+              addEntryAnimation('#result-section');
+            },
+            error: function(xhr, status, error) {
+              console.error('使用预览API加载失败:', error);
+              $('#result-content').html(`
+                <div class="alert alert-danger">
+                  <h4>加载美化结果失败</h4>
+                  <p>请尝试刷新页面或重新提交任务。</p>
+                  <p>错误详情: ${error}</p>
+                </div>
+              `);
+            }
+          });
+        }
+        
+        // 设置结果查看和下载按钮
+        setupResultButtons(resultPath, fileName);
+        
+      } catch (e) {
+        console.error('加载结果时发生错误:', e);
+        $('#result-content').html(`
+          <div class="alert alert-danger">
+            <h4>处理结果路径时发生错误</h4>
+            <p>请尝试刷新页面或重新提交任务。</p>
+            <p>错误详情: ${e.message}</p>
+          </div>
+        `);
+      }
+    }
+
+    /**
+     * 设置结果按钮（查看和下载）
+     * @param {string} resultPath - 结果文件路径
+     * @param {string} fileName - 文件名
+     */
+    function setupResultButtons(resultPath, fileName) {
+      // 更新任务进度弹窗中的按钮
+      const modal = document.getElementById('taskProgressModal');
+      if (modal) {
+        // 显示完成信息
+        const completeInfo = modal.querySelector('#taskCompleteInfo');
+        if (completeInfo) {
+          completeInfo.classList.remove('d-none');
+        }
+        
+        // 显示查看按钮
+        const viewBtn = modal.querySelector('#viewPreviewBtn');
+        if (viewBtn) {
+          viewBtn.classList.remove('d-none');
+          viewBtn.onclick = function() {
+            // 打开新窗口查看文档
+            if (resultPath.startsWith('http')) {
+              window.open(resultPath, '_blank');
+            } else {
+              window.open(`/view-document/${encodeURIComponent(fileName)}`, '_blank');
+            }
+          };
+        }
+        
+        // 显示下载按钮
+        const downloadBtn = modal.querySelector('#downloadResultBtn');
+        if (downloadBtn) {
+          downloadBtn.classList.remove('d-none');
+          downloadBtn.onclick = function() {
+            // 下载文档
+            window.location.href = `/download?file=${encodeURIComponent(resultPath)}`;
+          };
+        }
       }
     }
 
