@@ -76,6 +76,12 @@ function initTaskProcessor() {
     // 初始化任务状态跟踪对象
     window.taskStatus = window.taskStatus || {};
     
+    // 初始化任务开始时间跟踪
+    window.taskCheckStartTimes = window.taskCheckStartTimes || {};
+    
+    // 初始化任务重试计数
+    window.taskRetryCount = window.taskRetryCount || {};
+    
     // 检查是否有待处理状态的任务
     const taskCheckInterval = setInterval(function() {
         // 获取页面上的待处理任务ID
@@ -108,6 +114,43 @@ function initTaskProcessor() {
                             window.taskStatus[taskId] = TASK_STATUS.FAILED;
                             // 清理任务开始时间
                             delete window.taskCheckStartTimes[taskId];
+                            
+                            // 更新UI显示任务失败
+                            const taskElements = document.querySelectorAll(`[data-task-id="${taskId}"]`);
+                            taskElements.forEach(el => {
+                                const statusEl = el.querySelector('.task-status');
+                                if (statusEl) {
+                                    statusEl.textContent = '处理失败（超时）';
+                                    statusEl.classList.remove('text-warning');
+                                    statusEl.classList.add('text-danger');
+                                }
+                            });
+                            
+                            // 如果正在显示进度弹窗，更新弹窗状态
+                            const taskModal = document.getElementById('taskProgressModal');
+                            if (taskModal && taskModal.getAttribute('data-task-id') === taskId) {
+                                const statusText = taskModal.querySelector('#taskStatusText');
+                                if (statusText) {
+                                    statusText.textContent = '处理超时，请重试';
+                                }
+                                
+                                const progressBar = taskModal.querySelector('.progress-bar');
+                                if (progressBar) {
+                                    progressBar.classList.remove('progress-bar-striped', 'progress-bar-animated', 'bg-warning', 'bg-success');
+                                    progressBar.classList.add('bg-danger');
+                                    progressBar.style.width = '100%';
+                                }
+                                
+                                const errorText = taskModal.querySelector('#errorText');
+                                if (errorText) {
+                                    errorText.textContent = '任务处理超时，请重新提交或稍后再试';
+                                    errorText.style.display = 'block';
+                                }
+                            }
+                            
+                            // 尝试通过API取消该任务
+                            cancelTimeoutTask(taskId);
+                            
                             return false;
                         }
                         return true;
@@ -125,10 +168,40 @@ function initTaskProcessor() {
                 }
             }
             
+            // 检查特定任务是否一直处于待处理状态
+            pendingTaskIds.forEach(taskId => {
+                if (!window.taskRetryCount[taskId]) {
+                    window.taskRetryCount[taskId] = 0;
+                }
+                
+                // 如果一个任务已经尝试了超过10次还是待处理，标记为失败
+                if (window.taskRetryCount[taskId] > 10) {
+                    console.log(`任务 ${taskId} 重试超过10次，标记为失败`);
+                    window.taskStatus[taskId] = TASK_STATUS.FAILED;
+                    delete window.taskRetryCount[taskId];
+                    
+                    // 更新UI显示任务失败
+                    const taskElements = document.querySelectorAll(`[data-task-id="${taskId}"]`);
+                    taskElements.forEach(el => {
+                        const statusEl = el.querySelector('.task-status');
+                        if (statusEl) {
+                            statusEl.textContent = '处理失败（重试超限）';
+                            statusEl.classList.remove('text-warning');
+                            statusEl.classList.add('text-danger');
+                        }
+                    });
+                } else {
+                    window.taskRetryCount[taskId]++;
+                }
+            });
+            
             if (!hasRealProcessingTask) {
                 // 没有正在处理的任务，触发API处理下一个任务
                 triggerTaskProcessing();
             }
+        } else {
+            // 没有待处理任务，清理所有跟踪状态
+            cleanupTaskTracking();
         }
     }, 5000); // 每5秒检查一次
     
@@ -139,6 +212,54 @@ function initTaskProcessor() {
     
     // 立即触发一次任务处理
     setTimeout(triggerTaskProcessing, 1000);
+}
+
+/**
+ * 清理所有任务跟踪状态
+ */
+function cleanupTaskTracking() {
+    // 仅保留已完成和失败的任务状态，清理其他状态
+    for (const taskId in window.taskStatus) {
+        if (window.taskStatus[taskId] !== TASK_STATUS.COMPLETED && 
+            window.taskStatus[taskId] !== TASK_STATUS.FAILED) {
+            delete window.taskStatus[taskId];
+        }
+    }
+    
+    // 清理所有任务开始时间
+    window.taskCheckStartTimes = {};
+    
+    // 清理所有任务重试计数
+    window.taskRetryCount = {};
+    
+    console.log('已清理任务跟踪状态');
+}
+
+/**
+ * 尝试通过API取消超时任务
+ * @param {string} taskId - 任务ID
+ */
+function cancelTimeoutTask(taskId) {
+    console.log(`尝试取消超时任务: ${taskId}`);
+    
+    fetch(`/api/cancelTask/${taskId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('取消任务响应:', data);
+    })
+    .catch(error => {
+        console.error('取消任务请求失败:', error);
+    });
 }
 
 /**

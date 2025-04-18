@@ -14,6 +14,7 @@ const upload = require('./upload');
 const beautifyTask = require('./beautify-task');
 const templates = require('./templates');
 const download = require('./download');
+const cancelTask = require('./cancelTask');
 
 /**
  * API路由适配器
@@ -39,6 +40,8 @@ module.exports = async (req, res) => {
     return await templates(req, res);
   } else if (url.includes('/download')) {
     return await download(req, res);
+  } else if (url.includes('/cancelTask/')) {
+    return await cancelTask(req, res);
   }
   
   // 未匹配到路由，返回404
