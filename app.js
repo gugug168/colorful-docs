@@ -232,6 +232,7 @@ app.post('/upload', upload.single('document'), async (req, res) => {
             originalFileName: originalFileName,
             encodedFileName: encodedFileName,
             filename: req.body.filename,
+            fileNameInfo: req.body.fileNameInfo ? JSON.parse(req.body.fileNameInfo) : null,
             file: req.file ? {
                 originalname: req.file.originalname,
                 filename: req.file.filename,
@@ -243,7 +244,23 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         // 解码文件名，用于显示
         let decodedFileName;
         try {
-            decodedFileName = decodeURIComponent(encodedFileName || req.body.filename || originalFileName);
+            // 优先使用encodedFileName参数进行解码
+            if (encodedFileName) {
+                decodedFileName = decodeURIComponent(encodedFileName);
+            } else if (req.body.filename) {
+                // 尝试解码filename字段
+                try {
+                    decodedFileName = decodeURIComponent(req.body.filename);
+                } catch (decodeErr) {
+                    // 如果解码失败，可能filename已经是解码后的状态
+                    decodedFileName = req.body.filename;
+                }
+            } else {
+                // 最后使用原始文件名
+                decodedFileName = originalFileName;
+            }
+            
+            console.log('解码后的文件名:', decodedFileName);
         } catch (e) {
             console.error('解码文件名失败:', e);
             decodedFileName = originalFileName;

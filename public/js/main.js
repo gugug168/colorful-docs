@@ -546,24 +546,35 @@ $(document).ready(function() {
                 // 添加文件类型参数
                 formData.append('fileType', fileType);
                 
-                // 确保文件名编码正确
+                // 确保文件名编码正确 - 增强版
                 try {
                     // 获取原始文件名并转换为UTF-8编码
                     const originalFilename = file.name;
                     const encodedFilename = encodeURIComponent(originalFilename);
-                    formData.append('filename', encodedFilename);
                     
-                    // 增强编码处理，确保中文文件名不会乱码
+                    // 添加编码和原始文件名
+                    formData.append('filename', encodedFilename); // 始终使用编码后的文件名作为主要参数
                     formData.append('originalFileName', originalFilename);
                     formData.append('encodedFileName', encodedFilename);
                     
                     // 保存原始文件名和编码后的文件名，方便调试
                     console.log('原始文件名:', originalFilename);
                     console.log('编码后文件名:', encodedFilename);
+                    
+                    // 为调试目的添加显式编码信息
+                    formData.append('fileNameInfo', JSON.stringify({
+                        original: originalFilename,
+                        encoded: encodedFilename,
+                        type: fileType,
+                        timestamp: Date.now()
+                    }));
                 } catch (e) {
                     console.error('文件名编码失败:', e);
-                    // 使用默认文件名
-                    formData.append('filename', 'document.' + fileType);
+                    // 使用默认文件名，但也进行编码
+                    const defaultName = 'document.' + fileType;
+                    formData.append('filename', encodeURIComponent(defaultName));
+                    formData.append('originalFileName', defaultName);
+                    formData.append('encodedFileName', encodeURIComponent(defaultName));
                 }
                 
                 // 上传文件

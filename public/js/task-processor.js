@@ -457,6 +457,23 @@ function triggerTaskProcessing() {
             }
         } else if (data.message) {
             console.log(`API消息: ${data.message}`);
+            
+            // 检查是否有错误信息
+            if (data.error) {
+                console.error('任务处理API错误:', data.error);
+                // 如果是特定任务的错误，标记为失败
+                if (data.failedTaskId) {
+                    window.taskStatus[data.failedTaskId] = TASK_STATUS.FAILED;
+                    // 清理任务超时跟踪
+                    if (window.taskCheckStartTimes && window.taskCheckStartTimes[data.failedTaskId]) {
+                        delete window.taskCheckStartTimes[data.failedTaskId];
+                    }
+                    // 确保在main.js中也标记为停止
+                    if (window.activeTaskChecks) {
+                        window.activeTaskChecks[data.failedTaskId] = false;
+                    }
+                }
+            }
         }
     })
     .catch(error => {
