@@ -477,68 +477,148 @@ $(document).ready(function() {
         }
     }
     
-    // 初始化上传区域交互效果
+    /**
+     * 初始化文件上传区域
+     */
     function initUploadZone() {
-        const uploadZone = $('.upload-zone');
-        const fileInput = $('#fileInput');
-        const uploadPrompt = $('.upload-prompt');
+        // 获取文件上传区域元素
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
         
-        // 显示上传提示
-        uploadPrompt.removeClass('d-none');
-        
-        // 点击上传区域时触发文件选择
-        uploadZone.on('click', function(e) {
-            if (e.target !== fileInput[0]) {
-                fileInput.click();
-            }
-        });
-        
-        // 处理拖放效果
-        uploadZone.on('dragover', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            $(this).addClass('border-primary').css('background-color', 'rgba(212, 224, 255, 0.7)');
-        });
-        
-        uploadZone.on('dragleave', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            $(this).removeClass('border-primary').css('background-color', '');
-        });
-        
-        uploadZone.on('drop', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            $(this).removeClass('border-primary').css('background-color', '');
+        if (uploadZone && fileInput) {
+            // 拖拽上传处理
+            uploadZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.classList.add('upload-zone-active');
+            });
             
-            if (e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files.length) {
-                fileInput[0].files = e.originalEvent.dataTransfer.files;
-                // 更新文件名显示
-                const fileName = fileInput[0].files[0].name;
-                updateFileNameDisplay(fileName);
-            }
-        });
-        
-        // 文件选择变化时显示文件名
-        fileInput.on('change', function() {
-            if (this.files && this.files.length) {
-                const fileName = this.files[0].name;
-                updateFileNameDisplay(fileName);
-            }
-        });
-        
-        // 更新文件名显示
-        function updateFileNameDisplay(fileName) {
-            // 创建或更新文件名显示元素
-            let fileNameDisplay = uploadZone.find('.selected-file');
-            if (fileNameDisplay.length === 0) {
-                uploadPrompt.html(`
-                    <i class="fas fa-file-alt fs-2 mb-2 text-primary"></i>
-                    <p class="selected-file mb-0">${fileName}</p>
-                    <p class="text-muted small mt-1">点击重新选择</p>
-                `);
-            } else {
-                fileNameDisplay.text(fileName);
+            uploadZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.classList.remove('upload-zone-active');
+            });
+            
+            uploadZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.classList.remove('upload-zone-active');
+                
+                if (e.dataTransfer.files.length > 0) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileUpload(e.dataTransfer.files[0]);
+                }
+            });
+            
+            // 点击上传区域触发文件选择
+            uploadZone.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            // 文件选择变化处理
+            fileInput.addEventListener('change', function() {
+                if (this.files.length > 0) {
+                    handleFileUpload(this.files[0]);
+                }
+            });
+            
+            // 初始化上传文件API
+            function handleFileUpload(file) {
+                // 检查文件类型
+                const fileType = file.name.split('.').pop().toLowerCase();
+                const allowedTypes = ['docx', 'doc', 'pdf', 'pptx', 'ppt', 'txt', 'md', 'html', 'htm'];
+                
+                if (!allowedTypes.includes(fileType)) {
+                    showMessage('不支持的文件类型，请上传Word、PDF、PPT、文本或HTML文件', 'danger');
+                    return;
+                }
+                
+                // 更新上传区域显示
+                updateFileNameDisplay(file.name);
+                
+                // 显示加载中状态
+                showLoading('正在上传文件...');
+                
+                // 创建FormData对象
+                const formData = new FormData();
+                formData.append('document', file);
+                
+                // 添加文件类型参数
+                formData.append('fileType', fileType);
+                
+                // 确保文件名编码正确
+                try {
+                    // 获取原始文件名并转换为UTF-8编码
+                    const originalFilename = file.name;
+                    const encodedFilename = encodeURIComponent(originalFilename);
+                    formData.append('filename', encodedFilename);
+                    
+                    // 保存原始文件名和编码后的文件名，方便调试
+                    console.log('原始文件名:', originalFilename);
+                    console.log('编码后文件名:', encodedFilename);
+                } catch (e) {
+                    console.error('文件名编码失败:', e);
+                    // 使用默认文件名
+                    formData.append('filename', 'document.' + fileType);
+                }
+                
+                // 上传文件
+                $.ajax({
+                    url: '/upload',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            console.log('文件上传成功:', response);
+                            hideLoading();
+                            
+                            // 安全处理文件路径和类型
+                            try {
+                                // 解析文件路径和文件名
+                                const parsedPath = response.path || '';
+                                const parsedName = parsedPath.split(/[\/\\]/).pop() || '';
+                                console.log('解析的文件路径和文件名:', {
+                                    path: parsedPath,
+                                    name: parsedName
+                                });
+                                
+                                // 保存上传的文件信息
+                                const fileInfo = {
+                                    originalname: file.name,  // 保存原始文件名
+                                    filename: response.filename || parsedName,
+                                    path: parsedPath,
+                                    url: response.url || parsedPath,
+                                    type: fileType,
+                                    size: file.size
+                                };
+                                sessionStorage.setItem('currentFile', JSON.stringify(fileInfo));
+                                console.log('当前上传文件信息:', fileInfo);
+                                
+                                // 更新UI状态
+                                updateUiAfterFileUpload(parsedPath, fileType);
+                                
+                                // 确保文件预览可见
+                                $('#previewSection').removeClass('d-none');
+                                
+                                // 加载原始文档预览
+                                loadOriginalPreview(parsedPath);
+                            } catch (error) {
+                                console.error('处理上传响应出错:', error);
+                                showMessage('上传成功但处理响应数据出错', 'warning');
+                            }
+                        } else {
+                            hideLoading();
+                            showMessage(response.message || '上传失败，请重试', 'danger');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        hideLoading();
+                        console.error('上传请求失败:', error);
+                        showMessage('上传文件时出错: ' + error, 'danger');
+                    }
+                });
             }
         }
     }
@@ -853,6 +933,9 @@ $(document).ready(function() {
         // 显示加载中状态
         showLoading('正在提交美化任务...');
         
+        // 在提交任务前，清理可能存在的旧任务状态
+        stopAllTaskStatusChecks();
+        
         // 创建美化任务
         $.ajax({
             url: '/api/beautify-task',
@@ -866,7 +949,7 @@ $(document).ready(function() {
             },
             data: JSON.stringify({
                 filePath: filePath,
-                filename: filename,
+                filename: encodeURIComponent(filename), // 确保文件名正确编码
                 targetFormat: targetFormat,
                 apiType: selectedApiType,
                 templateId: selectedTemplate,
@@ -879,6 +962,9 @@ $(document).ready(function() {
                     // 保存任务ID
                     sessionStorage.setItem('currentTaskId', response.taskId);
                     console.log('保存当前任务ID:', response.taskId);
+                    
+                    // 更新全局变量
+                    window.currentTaskId = response.taskId;
                     
                     // 更新加载提示
                     updateLoading('正在美化文档，请稍候...');
@@ -919,7 +1005,7 @@ $(document).ready(function() {
                         type: 'POST',
                         contentType: 'application/json',
                         data: JSON.stringify({
-                            filename: filename,
+                            filename: encodeURIComponent(filename), // 确保文件名正确编码
                             targetFormat: targetFormat,
                             customRequirements: customRequirements
                         }),
@@ -927,6 +1013,7 @@ $(document).ready(function() {
                             console.log('备用美化任务创建成功:', fallbackResponse);
                             if (fallbackResponse.success && fallbackResponse.taskId) {
                                 sessionStorage.setItem('currentTaskId', fallbackResponse.taskId);
+                                window.currentTaskId = fallbackResponse.taskId;
                                 checkTaskStatus(fallbackResponse.taskId);
                             } else {
                                 showMessage('美化任务创建失败，请重试', 'danger');
@@ -2814,14 +2901,28 @@ $(document).ready(function() {
 
     // 停止所有任务状态检查
     function stopAllTaskStatusChecks() {
-      window.activeTaskChecks = {};
-      console.log('已停止所有任务状态检查');
-      
-      // 清理全局任务检查对象
-      window.taskChecks = {};
-      
-      // 清理所有任务开始时间
-      window.taskCheckStartTimes = {};
+        if (window.activeTaskChecks) {
+            console.log('停止所有任务状态检查');
+            // 标记所有任务为停止检查
+            for (const taskId in window.activeTaskChecks) {
+                window.activeTaskChecks[taskId] = false;
+            }
+            
+            // 清理任务状态
+            if (window.taskStatus) {
+                for (const taskId in window.taskStatus) {
+                    if (window.taskStatus[taskId] === 'pending' || window.taskStatus[taskId] === 'processing') {
+                        console.log(`将任务 ${taskId} 标记为失败（手动停止）`);
+                        window.taskStatus[taskId] = 'failed';
+                    }
+                }
+            }
+            
+            // 清理任务开始时间
+            if (window.taskCheckStartTimes) {
+                window.taskCheckStartTimes = {};
+            }
+        }
     }
 
     // 计算下次检查的延迟时间

@@ -115,6 +115,11 @@ function initTaskProcessor() {
                             // 清理任务开始时间
                             delete window.taskCheckStartTimes[taskId];
                             
+                            // 确保在main.js中也标记为停止
+                            if (window.activeTaskChecks) {
+                                window.activeTaskChecks[taskId] = false;
+                            }
+                            
                             // 更新UI显示任务失败
                             const taskElements = document.querySelectorAll(`[data-task-id="${taskId}"]`);
                             taskElements.forEach(el => {
@@ -153,6 +158,16 @@ function initTaskProcessor() {
                             
                             return false;
                         }
+                        
+                        // 检查该任务是否已被main.js标记为停止
+                        const isStoppedInMainJs = window.activeTaskChecks && window.activeTaskChecks[taskId] === false;
+                        if (isStoppedInMainJs) {
+                            console.log(`任务 ${taskId} 已被main.js标记为停止，从处理队列移除`);
+                            window.taskStatus[taskId] = TASK_STATUS.FAILED;
+                            delete window.taskCheckStartTimes[taskId];
+                            return false;
+                        }
+                        
                         return true;
                     }
                     // 如果没有开始时间，则认为不在处理中
@@ -163,6 +178,21 @@ function initTaskProcessor() {
                 
                 if (hasRealProcessingTask) {
                     console.log('当前有任务正在处理中，等待完成...');
+                    
+                    // 增加安全措施：如果某个任务处理时间过长（超过5分钟），强制清理所有任务
+                    const oldestProcessingTask = stillProcessing.reduce((oldest, taskId) => {
+                        const startTime = window.taskCheckStartTimes[taskId] || Date.now();
+                        return (!oldest || startTime < window.taskCheckStartTimes[oldest]) ? taskId : oldest;
+                    }, null);
+                    
+                    if (oldestProcessingTask) {
+                        const oldestElapsedTime = currentTime - window.taskCheckStartTimes[oldestProcessingTask];
+                        if (oldestElapsedTime > 5 * 60 * 1000) { // 5分钟
+                            console.warn('检测到任务处理时间过长，强制清理所有任务状态');
+                            cleanupTaskTracking();
+                            hasRealProcessingTask = false;
+                        }
+                    }
                 } else {
                     console.log('没有实际处理中的任务，可以开始新任务处理');
                 }
@@ -176,9 +206,14 @@ function initTaskProcessor() {
                 
                 // 如果一个任务已经尝试了超过10次还是待处理，标记为失败
                 if (window.taskRetryCount[taskId] > 10) {
-                    console.log(`任务 ${taskId} 重试超过10次，标记为失败`);
+                    console.log(`任务 ${taskId} 重试超过10次，标记为失败。日志如下：${getTaskLog(taskId)}`);
                     window.taskStatus[taskId] = TASK_STATUS.FAILED;
                     delete window.taskRetryCount[taskId];
+                    
+                    // 确保在main.js中也标记为停止
+                    if (window.activeTaskChecks) {
+                        window.activeTaskChecks[taskId] = false;
+                    }
                     
                     // 更新UI显示任务失败
                     const taskElements = document.querySelectorAll(`[data-task-id="${taskId}"]`);
@@ -232,6 +267,11 @@ function cleanupTaskTracking() {
     // 清理所有任务重试计数
     window.taskRetryCount = {};
     
+    // 确保main.js中的活跃任务检查也被清理
+    if (window.activeTaskChecks) {
+        window.activeTaskChecks = {};
+    }
+    
     console.log('已清理任务跟踪状态');
 }
 
@@ -248,87 +288,51 @@ function cancelTimeoutTask(taskId) {
             'Content-Type': 'application/json'
         }
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
-        console.log('取消任务响应:', data);
+        console.log(`取消任务 ${taskId} 结果:`, data);
+        // 确保在全局作用域也标记为失败
+        if (window.activeTaskChecks) {
+            window.activeTaskChecks[taskId] = false;
+        }
     })
     .catch(error => {
-        console.error('取消任务请求失败:', error);
+        console.error(`取消任务 ${taskId} 请求失败:`, error);
     });
 }
 
 /**
- * 获取页面上待处理状态的任务ID
- * @returns {Array} 任务ID数组
+ * 获取当前活跃的任务ID列表
+ * @returns {Array} 当前活跃的任务ID数组
  */
 function getActiveTaskIds() {
+    // 从DOM元素和全局变量中收集任务ID
     const taskIds = [];
     
-    // 从DOM中获取所有任务元素
-    const taskElements = document.querySelectorAll('[data-task-id]');
-    
-    taskElements.forEach(element => {
-        const taskId = element.getAttribute('data-task-id');
-        const taskStatusElement = element.querySelector('.task-status');
-        
-        // 只添加状态为"待处理"的任务
-        if (taskStatusElement && (
-            taskStatusElement.textContent.includes('待处理') || 
-            taskStatusElement.textContent.includes('排队中')
-        )) {
-            // 检查任务是否已被跟踪为完成或失败
-            if (!window.taskStatus[taskId] || 
-                window.taskStatus[taskId] === TASK_STATUS.PENDING) {
-                taskIds.push(taskId);
-            }
+    // 从DOM中查找带有data-task-id属性的元素
+    document.querySelectorAll('[data-task-id]').forEach(el => {
+        const taskId = el.getAttribute('data-task-id');
+        if (taskId && !taskIds.includes(taskId)) {
+            taskIds.push(taskId);
         }
     });
     
-    // 如果还在显示任务进度模态框，并且有任务ID
-    const taskProgressModal = document.getElementById('taskProgressModal');
-    if (taskProgressModal && window.getComputedStyle(taskProgressModal).display !== 'none') {
-        const taskIdFromModal = taskProgressModal.getAttribute('data-task-id');
-        if (taskIdFromModal && !taskIds.includes(taskIdFromModal)) {
-            // 检查任务当前状态
-            const currentStatus = window.taskStatus[taskIdFromModal];
-            // 只有在状态为空或待处理或处理中时才添加
-            if (!currentStatus || 
-                currentStatus === TASK_STATUS.PENDING || 
-                currentStatus === TASK_STATUS.PROCESSING) {
-                taskIds.push(taskIdFromModal);
-            }
-        }
-    }
-    
-    // 也从全局taskChecks对象中获取任务
-    if (window.taskChecks) {
-        for (const taskId in window.taskChecks) {
-            if (!taskIds.includes(taskId)) {
-                // 检查任务当前状态
-                const currentStatus = window.taskStatus[taskId];
-                // 只有在状态为空或待处理时才添加
-                if (!currentStatus || currentStatus === TASK_STATUS.PENDING) {
-                    taskIds.push(taskId);
-                }
-            }
-        }
-    }
-    
-    // 从会话存储中获取当前任务ID（如果有）
+    // 从会话存储中获取当前任务ID
     try {
         const currentTaskId = sessionStorage.getItem('currentTaskId');
+        
+        // 检查任务是否已在其他地方被标记为停止
         if (currentTaskId && !taskIds.includes(currentTaskId)) {
             // 检查任务当前状态
             const currentStatus = window.taskStatus[currentTaskId];
-            // 只有在状态为空或待处理或处理中时才添加
-            if (!currentStatus || 
+            // 检查main.js中的activeTaskChecks是否已将任务标记为停止
+            const isStoppedInMainJs = window.activeTaskChecks && window.activeTaskChecks[currentTaskId] === false;
+            
+            // 只有在状态为待处理或处理中，且未被main.js标记为停止时才添加
+            if ((!currentStatus || 
                 currentStatus === TASK_STATUS.PENDING || 
-                currentStatus === TASK_STATUS.PROCESSING) {
+                currentStatus === TASK_STATUS.PROCESSING) && 
+                !isStoppedInMainJs) {
                 taskIds.push(currentTaskId);
             }
         }
@@ -336,13 +340,42 @@ function getActiveTaskIds() {
         console.error('从会话存储获取任务ID失败:', e);
     }
     
-    // 过滤掉已知完成或失败的任务
+    // 过滤掉已知完成、失败或已停止检查的任务
     return taskIds.filter(taskId => {
         const status = window.taskStatus[taskId];
-        return !status || 
+        const isStoppedInMainJs = window.activeTaskChecks && window.activeTaskChecks[taskId] === false;
+        
+        return (!status || 
                status === TASK_STATUS.PENDING || 
-               status === TASK_STATUS.PROCESSING;
+               status === TASK_STATUS.PROCESSING) && 
+               !isStoppedInMainJs;
     });
+}
+
+/**
+ * 获取任务的日志信息
+ * @param {string} taskId - 任务ID
+ * @returns {string} 任务日志信息
+ */
+function getTaskLog(taskId) {
+    // 尝试从页面中获取任务日志信息
+    try {
+        // 查找任务相关的日志元素
+        const logElement = document.querySelector(`#task-log-${taskId}`);
+        if (logElement) {
+            return logElement.textContent || '';
+        }
+        
+        // 从sessionStorage中尝试获取日志
+        const taskLog = sessionStorage.getItem(`taskLog_${taskId}`);
+        if (taskLog) {
+            return taskLog;
+        }
+    } catch (e) {
+        console.error('获取任务日志失败:', e);
+    }
+    
+    return '无可用日志';
 }
 
 /**
