@@ -553,6 +553,10 @@ $(document).ready(function() {
                     const encodedFilename = encodeURIComponent(originalFilename);
                     formData.append('filename', encodedFilename);
                     
+                    // 增强编码处理，确保中文文件名不会乱码
+                    formData.append('originalFileName', originalFilename);
+                    formData.append('encodedFileName', encodedFilename);
+                    
                     // 保存原始文件名和编码后的文件名，方便调试
                     console.log('原始文件名:', originalFilename);
                     console.log('编码后文件名:', encodedFilename);

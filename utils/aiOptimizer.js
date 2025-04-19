@@ -656,6 +656,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             return await fallbackProcessing(htmlContent, prompt, targetFormat);
         }
         
+        // 添加额外安全检查，防止"Cannot read properties of undefined (reading 'length')"错误
+        if (!response.data.choices[0].message || !response.data.choices[0].message.content) {
+            console.error('DeepSeek API响应缺少消息内容:', JSON.stringify(response.data.choices[0]));
+            console.log('使用本地备份处理...');
+            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+        }
+        
         const assistantResponse = response.data.choices[0].message.content;
         console.log('DeepSeek响应内容长度:', assistantResponse.length);
         
@@ -905,215 +912,193 @@ async function processWithQwq(htmlContent, prompt, apiKey, params = {}) {
  * @returns {string} 处理后的HTML内容
  */
 function extractHtmlFromResponse(response, imageReferences = []) {
-    if (!response) return '';
+    // 安全检查，确保响应不为空
+    if (!response) {
+        console.error('API响应为空，无法提取HTML内容');
+        return '';
+    }
+    
+    // 确保响应是字符串类型
+    if (typeof response !== 'string') {
+        console.error('API响应不是字符串格式:', typeof response);
+        // 尝试转换为字符串
+        try {
+            response = String(response);
+        } catch (error) {
+            console.error('无法将API响应转换为字符串:', error);
+            return '';
+        }
+    }
     
     console.log(`响应内容长度: ${response.length}`);
     
-    // 尝试匹配常见HTML格式
-    const htmlMatches = response.match(/```html\n([\s\S]*?)\n```/);
-    const directHtmlMatches = response.match(/<html[^>]*>([\s\S]*?)<\/html>/i);
-    
-    let htmlContent = '';
-    
-    if (htmlMatches && htmlMatches[1]) {
-        console.log('从代码块中提取HTML');
-        htmlContent = htmlMatches[1];
-    } else if (directHtmlMatches && directHtmlMatches[0]) {
-        console.log('从直接HTML标记中提取');
-        htmlContent = directHtmlMatches[0];
-    } else {
-        // 如果没有明显的HTML标记，尽量清理文本并用作HTML内容
-        console.log('未找到明确的HTML标记，尝试清理响应内容');
-        htmlContent = response
-            // 删除非HTML代码块
-            .replace(/```(?!html)([\s\S]*?)```/g, '')
-            // 删除可能的Markdown标记
-            .replace(/#{1,6} /g, '')
-            .trim();
-        
-        // 检查内容是否包含基本HTML标记，如果没有，则包装它
-        if (!htmlContent.includes('<html') && !htmlContent.includes('<body')) {
-            htmlContent = `<html><body>${htmlContent}</body></html>`;
-        }
+    // 防止处理过长的响应数据
+    const MAX_RESPONSE_LENGTH = 1000000; // 1MB
+    if (response.length > MAX_RESPONSE_LENGTH) {
+        console.warn(`响应内容过长(${response.length})，截断为${MAX_RESPONSE_LENGTH}字节`);
+        response = response.substring(0, MAX_RESPONSE_LENGTH);
     }
     
-    console.log(`提取的HTML内容长度: ${htmlContent.length}`);
-    
-    // 找出所有上色图片引用，优先处理
-    const colorizedReferences = imageReferences ? 
-        imageReferences.filter(ref => ref.isColorized) : [];
-    
-    if (colorizedReferences.length > 0) {
-        console.log(`发现${colorizedReferences.length}个上色图片引用，优先处理`);
+    try {
+        // 尝试从不同模式中提取HTML
+        const htmlMatches = response.match(/```html\n([\s\S]*?)\n```/);
+        const directHtmlMatches = response.match(/<html[^>]*>([\s\S]*?)<\/html>/i);
         
-        // 查找普通图片和占位符，替换为上色版本
-        const originalImagePattern = /<img[^>]*src=["']([^"']*?)(?:_colorized)?["'][^>]*>/gi;
+        let htmlContent = '';
         
-        htmlContent = htmlContent.replace(originalImagePattern, (match, src) => {
-            // 尝试找到匹配的上色图片
-            const baseSrc = src.replace(/_colorized/g, ''); // 移除可能的colorized后缀
-            const colorizedRef = colorizedReferences.find(ref => 
-                ref.src.includes(baseSrc) || 
-                baseSrc.includes(ref.src.replace(/_colorized/g, '')));
+        if (htmlMatches && htmlMatches[1]) {
+            console.log('从代码块中提取HTML内容');
+            htmlContent = htmlMatches[1];
+        } else if (directHtmlMatches && directHtmlMatches[0]) {
+            console.log('从直接HTML标签中提取内容');
+            htmlContent = directHtmlMatches[0];
+        } else {
+            // 如果以上两种方式都没有找到HTML，尝试其他方式
+            console.log('使用其他方式提取HTML内容');
             
-            if (colorizedRef) {
-                console.log(`替换图片为上色版本: ${src} -> ${colorizedRef.src}`);
-                
-                // 确保使用正确的路径格式
-                let colorizedPath = colorizedRef.src;
-                
-                // 检查路径是否需要转换为web路径
-                if (!colorizedPath.startsWith('/') && !colorizedPath.startsWith('http')) {
-                    // 提取文件名并创建web路径
-                    const fileName = path.basename(colorizedPath);
-                    if (fileName.includes('_colorized')) {
-                        colorizedPath = '/temp/' + fileName;
-                        console.log(`转换为Web路径: ${colorizedPath}`);
-                    }
-                }
-                
-                // 构建新的图片标签，保留原始属性，添加data-colorized属性
-                let newTag = match.replace(/src=["'][^"']*["']/i, `src="${colorizedPath}" data-colorized="true"`);
-                return newTag;
-            }
-            
-            return match; // 没有找到匹配的上色图片，保持原样
-        });
-    }
-    
-    // 恢复常规图片引用（包括上色图片）
-    if (imageReferences && imageReferences.length > 0) {
-        console.log(`开始恢复${imageReferences.length}个图片引用...`);
-        
-        // 创建图片占位符和原始图片标签的映射，用于更精确的替换
-        const placeholderMap = {};
-        imageReferences.forEach(ref => {
-            const placeholderId = `img-placeholder-${ref.index}`;
-            placeholderMap[placeholderId] = ref;
-        });
-        
-        // 查找所有图片标签
-        const imgTags = htmlContent.match(/<img[^>]*>/gi) || [];
-        console.log(`找到${imgTags.length}个图片标签等待处理`);
-        
-        // 替换所有图片占位符
-        for (const imgTag of imgTags) {
-            // 提取id属性
-            const idMatch = imgTag.match(/id=["']img-placeholder-(\d+)["']/i);
-            if (idMatch) {
-                const placeholderId = `img-placeholder-${idMatch[1]}`;
-                const ref = placeholderMap[placeholderId];
-                
-                if (ref) {
-                    // 获取正确的src路径
-                    let srcPath = ref.src;
+            // 1. 尝试匹配任何HTML标签段落
+            const bodyContentMatch = response.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyContentMatch && bodyContentMatch[1]) {
+                console.log('找到<body>标签内容');
+                htmlContent = `<html><head><meta charset="UTF-8"></head><body>${bodyContentMatch[1]}</body></html>`;
+            } else {
+                // 2. 检查是否包含基本HTML元素的集合
+                const hasHtmlElements = /<([a-z][a-z0-9]*)\b[^>]*>(.*?)<\/\1>/i.test(response);
+                if (hasHtmlElements) {
+                    console.log('找到HTML元素，将其封装为完整HTML');
+                    htmlContent = `<html><head><meta charset="UTF-8"></head><body>${response}</body></html>`;
+                } else {
+                    // 3. 作为最后的手段，将纯文本作为HTML段落处理
+                    console.log('未找到HTML内容，将响应作为纯文本处理');
                     
-                    // 如果是上色图片，确保使用正确的web路径
-                    if (ref.isColorized && !srcPath.startsWith('/') && !srcPath.startsWith('http')) {
-                        const fileName = path.basename(srcPath);
-                        srcPath = '/temp/' + fileName;
-                        console.log(`转换上色图片为Web路径: ${srcPath}`);
+                    // 去除可能是指令或注释的部分
+                    const cleanText = response
+                        .replace(/^(以下是|这是|Here is).*?HTML内容[：:]/g, '')
+                        .replace(/我已经[^]*?排版和美化/g, '')
+                        .replace(/\[注.*?\]/g, '')
+                        .trim();
+                    
+                    // 如果纯文本被换行符分隔，将其转换为段落
+                    const paragraphs = cleanText.split(/\n\s*\n/)
+                        .map(p => p.trim())
+                        .filter(p => p)
+                        .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+                        .join('\n');
+                    
+                    htmlContent = `<html><head><meta charset="UTF-8"></head><body>${paragraphs}</body></html>`;
+                }
+            }
+        }
+        
+        console.log(`提取的HTML内容长度: ${htmlContent.length}`);
+        
+        // 找出所有上色图片引用，优先处理
+        const colorizedReferences = imageReferences ? 
+            imageReferences.filter(ref => ref.isColorized) : [];
+        
+        if (colorizedReferences.length > 0) {
+            console.log(`发现${colorizedReferences.length}个上色图片引用，优先处理`);
+            
+            // 查找普通图片和占位符，替换为上色版本
+            const originalImagePattern = /<img[^>]*src=["']([^"']*?)(?:_colorized)?["'][^>]*>/gi;
+            
+            htmlContent = htmlContent.replace(originalImagePattern, (match, src) => {
+                // 尝试找到匹配的上色图片
+                const baseSrc = src.replace(/_colorized/g, ''); // 移除可能的colorized后缀
+                const colorizedRef = colorizedReferences.find(ref => 
+                    ref.src.includes(baseSrc) || 
+                    baseSrc.includes(ref.src.replace(/_colorized/g, '')));
+                
+                if (colorizedRef) {
+                    console.log(`替换图片为上色版本: ${src} -> ${colorizedRef.src}`);
+                    
+                    // 确保使用正确的路径格式
+                    let colorizedPath = colorizedRef.src;
+                    
+                    // 检查路径是否需要转换为web路径
+                    if (!colorizedPath.startsWith('/') && !colorizedPath.startsWith('http')) {
+                        // 提取文件名并创建web路径
+                        const fileName = path.basename(colorizedPath);
+                        if (fileName.includes('_colorized')) {
+                            colorizedPath = '/temp/' + fileName;
+                            console.log(`转换为Web路径: ${colorizedPath}`);
+                        }
                     }
                     
-                    // 构建还原后的图片标签
-                    let replacementTag = `<img src="${srcPath}"`;
+                    // 构建新的图片标签，保留原始属性，添加data-colorized属性
+                    let newTag = match.replace(/src=["'][^"']*["']/i, `src="${colorizedPath}" data-colorized="true"`);
+                    return newTag;
+                }
+                
+                return match; // 没有找到匹配的上色图片，保持原样
+            });
+        }
+        
+        // 恢复常规图片引用（包括上色图片）
+        if (imageReferences && imageReferences.length > 0) {
+            console.log(`开始恢复${imageReferences.length}个图片引用...`);
+            
+            // 创建图片占位符和原始图片标签的映射，用于更精确的替换
+            const placeholderMap = {};
+            imageReferences.forEach(ref => {
+                const placeholderId = `img-placeholder-${ref.index}`;
+                placeholderMap[placeholderId] = ref;
+            });
+            
+            // 查找所有图片标签
+            const imgTags = htmlContent.match(/<img[^>]*>/gi) || [];
+            console.log(`找到${imgTags.length}个图片标签等待处理`);
+            
+            // 替换所有图片占位符
+            for (const imgTag of imgTags) {
+                // 提取id属性
+                const idMatch = imgTag.match(/id=["']img-placeholder-(\d+)["']/i);
+                if (idMatch) {
+                    const placeholderId = `img-placeholder-${idMatch[1]}`;
+                    const ref = placeholderMap[placeholderId];
                     
-                    // 添加所有原始属性
-                    if (ref.attributes.alt) replacementTag += ` alt="${ref.attributes.alt}"`;
-                    if (ref.attributes.width) replacementTag += ` width="${ref.attributes.width}"`;
-                    if (ref.attributes.height) replacementTag += ` height="${ref.attributes.height}"`;
-                    if (ref.attributes.class) replacementTag += ` class="${ref.attributes.class}"`;
-                    if (ref.attributes.style) replacementTag += ` style="${ref.attributes.style}"`;
-                    
-                    // 添加colorized标记
-                    if (ref.isColorized) replacementTag += ` data-colorized="true"`;
-                    
-                    replacementTag += '>';
-                    
-                    // 执行精确替换
-                    htmlContent = htmlContent.replace(imgTag, replacementTag);
-                    console.log(`已恢复图片: ${ref.isColorized ? '彩色版' : '普通'} - ${srcPath}`);
+                    if (ref) {
+                        // 获取正确的src路径
+                        let srcPath = ref.src;
+                        
+                        // 如果是上色图片，确保使用正确的web路径
+                        if (ref.isColorized && !srcPath.startsWith('/') && !srcPath.startsWith('http')) {
+                            const fileName = path.basename(srcPath);
+                            srcPath = '/temp/' + fileName;
+                            console.log(`转换上色图片为Web路径: ${srcPath}`);
+                        }
+                        
+                        // 构建还原后的图片标签
+                        let replacementTag = `<img src="${srcPath}"`;
+                        
+                        // 添加所有原始属性
+                        if (ref.attributes.alt) replacementTag += ` alt="${ref.attributes.alt}"`;
+                        if (ref.attributes.width) replacementTag += ` width="${ref.attributes.width}"`;
+                        if (ref.attributes.height) replacementTag += ` height="${ref.attributes.height}"`;
+                        if (ref.attributes.class) replacementTag += ` class="${ref.attributes.class}"`;
+                        if (ref.attributes.style) replacementTag += ` style="${ref.attributes.style}"`;
+                        
+                        // 添加colorized标记
+                        if (ref.isColorized) replacementTag += ` data-colorized="true"`;
+                        
+                        replacementTag += '>';
+                        
+                        // 执行精确替换
+                        htmlContent = htmlContent.replace(imgTag, replacementTag);
+                        console.log(`已恢复图片: ${ref.isColorized ? '彩色版' : '普通'} - ${srcPath}`);
+                    }
                 }
             }
         }
-    }
-    
-    // 还有可能AI修改了占位符的格式，尝试使用正则表达式进行第二次匹配
-    imageReferences.forEach(ref => {
-        const placeholderRegex = new RegExp(`<img[^>]*id=["']img-placeholder-${ref.index}["'][^>]*>`, 'g');
         
-        if (htmlContent.match(placeholderRegex)) {
-            // 获取正确的路径
-            let srcPath = ref.src;
-            
-            // 如果是上色图片，确保使用正确的web路径
-            if (ref.isColorized && !srcPath.startsWith('/') && !srcPath.startsWith('http')) {
-                const fileName = path.basename(srcPath);
-                srcPath = '/temp/' + fileName;
-                console.log(`第二阶段转换上色图片为Web路径: ${srcPath}`);
-            }
-            
-            // 构建还原后的图片标签
-            let imgTag = `<img src="${srcPath}"`;
-            
-            // 添加所有原始属性
-            if (ref.attributes.alt) imgTag += ` alt="${ref.attributes.alt}"`;
-            if (ref.attributes.width) imgTag += ` width="${ref.attributes.width}"`;
-            if (ref.attributes.height) imgTag += ` height="${ref.attributes.height}"`;
-            if (ref.attributes.class) imgTag += ` class="${ref.attributes.class}"`;
-            if (ref.attributes.style) imgTag += ` style="${ref.attributes.style}"`;
-            
-            // 添加colorized标记
-            if (ref.isColorized) imgTag += ` data-colorized="true"`;
-            
-            imgTag += '>';
-            
-            // 执行替换
-            const beforeReplace = htmlContent;
-            htmlContent = htmlContent.replace(placeholderRegex, imgTag);
-            
-            // 检查是否实际进行了替换
-            if (beforeReplace !== htmlContent) {
-                console.log(`通过正则表达式恢复图片: ${srcPath}`);
-            }
-        }
-    });
-    
-    console.log('图片引用恢复完成');
-    
-    // 最后一次检查未恢复的占位符
-    const remainingPlaceholders = htmlContent.match(/<img[^>]*id=["']img-placeholder-\d+["'][^>]*>/g);
-    if (remainingPlaceholders && remainingPlaceholders.length > 0) {
-        console.log(`发现${remainingPlaceholders.length}个未恢复的占位符，尝试最后处理`);
+        // 确保所有相对路径都是正确的
+        htmlContent = htmlContent.replace(/src=["'](\.\/)?images\//g, 'src="/images/');
         
-        for (const placeholder of remainingPlaceholders) {
-            const idMatch = placeholder.match(/id=["']img-placeholder-(\d+)["']/i);
-            const dataSrcMatch = placeholder.match(/data-src=["']([^"']*)["']/i);
-            
-            if (idMatch && dataSrcMatch) {
-                const src = dataSrcMatch[1];
-                // 查找是否有对应的上色图片
-                const colorizedSrc = src.includes('_colorized') ? src : src.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '_colorized.$1');
-                
-                // 处理路径格式
-                let webColorizedPath = colorizedSrc;
-                if (!webColorizedPath.startsWith('/') && !webColorizedPath.startsWith('http')) {
-                    const fileName = path.basename(webColorizedPath);
-                    webColorizedPath = '/temp/' + fileName;
-                    console.log(`转换占位符图片为Web路径: ${webColorizedPath}`);
-                }
-                
-                // 使用上色图片替换占位符
-                htmlContent = htmlContent.replace(placeholder, `<img src="${webColorizedPath}" data-colorized="true" alt="上色图片">`);
-                console.log(`替换未恢复的占位符为上色图片: ${webColorizedPath}`);
-            }
-        }
+        return htmlContent;
+    } catch (error) {
+        console.error('提取HTML内容时出错:', error);
+        return '';
     }
-    
-    // 确保所有相对路径都是正确的
-    htmlContent = htmlContent.replace(/src=["'](\.\/)?images\//g, 'src="/images/');
-    
-    return htmlContent;
 }
 
 /**
