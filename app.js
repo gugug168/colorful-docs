@@ -4,6 +4,7 @@ const multer = require('multer');
 const fs = require('fs');
 const os = require('os');
 const cors = require('cors');
+const crypto = require('crypto');
 
 // 支持 .env 环境变量
 require('dotenv').config();
@@ -303,6 +304,18 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         
         console.log('文件已上传到Supabase:', uploadResult.url);
         
+        // 清理文件名以避免本地文件系统长度限制问题
+        function sanitizeFileName(fileName, ts) {
+            // 获取文件扩展名
+            const extname = path.extname(fileName) || '.tmp';
+            
+            // 生成短文件名 - 使用时间戳和哈希
+            return `doc-${ts}-${crypto.createHash('md5').update(fileName).digest('hex').substring(0, 10)}${extname}`;
+        }
+        
+        // 生成短文件名
+        const shortFilename = sanitizeFileName(safeFileName, timestamp);
+        
         // 保存到本地临时文件用于处理 - 在AWS Lambda环境中，只有/tmp目录可写
         const tempDir = path.join(os.tmpdir(), 'uploads');
         console.log(`使用系统临时目录: ${tempDir}`);
@@ -318,7 +331,7 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         
         // 确保使用可用的目录
         const finalTempDir = fs.existsSync(tempDir) ? tempDir : os.tmpdir();
-        const tempFilePath = path.join(finalTempDir, filename);
+        const tempFilePath = path.join(finalTempDir, shortFilename); // 使用短文件名而不是原始长文件名
         
         try {
             fs.writeFileSync(tempFilePath, buffer);
