@@ -3081,113 +3081,148 @@ $(document).ready(function() {
       // 加载结果内容
       $('#result-content').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在加载结果...</p></div>');
       
-      try {
-        // 解析路径 - 处理完整URL和相对路径
-        let loadPath = resultPath;
-        let fileName = '';
+      // 最大重试次数
+      const maxRetries = 3;
+      let currentRetry = 0;
+      
+      function tryLoadResult() {
+        currentRetry++;
+        console.log(`尝试加载结果 (${currentRetry}/${maxRetries})...`);
         
-        // 尝试从路径中提取文件名
         try {
-          // 对于http URL，找到最后一个斜杠后的所有内容
-          if (resultPath.startsWith('http')) {
-            const urlPath = new URL(resultPath).pathname;
-            fileName = urlPath.split('/').pop();
-            console.log('从URL提取的文件名:', fileName);
-          } else {
-            // 对于相对路径，直接分割
-            fileName = resultPath.split(/[\/\\]/).pop();
-          }
-        } catch (e) {
-          console.error('提取文件名失败:', e);
-          // 回退策略，生成一个随机文件名
-          fileName = 'result-' + Date.now() + '.html';
-        }
-        
-        // 检查是否是Supabase URL
-        if (resultPath.includes('supabase') && resultPath.includes('/storage/')) {
-          console.log('检测到Supabase存储URL，使用下载API获取内容');
+          // 解析路径 - 处理完整URL和相对路径
+          let loadPath = resultPath;
+          let fileName = '';
           
-          // 直接在iframe中显示内容
-          $('#result-content').html(`
-            <div class="text-center py-3">
-              <h4>文档处理完成</h4>
-              <p>您的文档已处理完成，可以通过以下方式查看：</p>
-              <p>
-                <a href="${resultPath}" target="_blank" class="btn btn-outline-primary">
-                  <i class="fas fa-external-link-alt me-1"></i> 在新窗口中查看
-                </a>
-                <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-outline-success ms-2">
-                  <i class="fas fa-download me-1"></i> 下载文档
-                </a>
-              </p>
-              <div class="mt-3">
-                <iframe src="/download?file=${encodeURIComponent(resultPath)}&mode=view" style="width:100%; height:500px; border:1px solid #ddd;"></iframe>
+          // 尝试从路径中提取文件名
+          try {
+            // 对于http URL，找到最后一个斜杠后的所有内容
+            if (resultPath.startsWith('http')) {
+              const urlPath = new URL(resultPath).pathname;
+              fileName = urlPath.split('/').pop();
+              console.log('从URL提取的文件名:', fileName);
+            } else {
+              // 对于相对路径，直接分割
+              fileName = resultPath.split(/[\/\\]/).pop();
+            }
+          } catch (e) {
+            console.error('提取文件名失败:', e);
+            // 回退策略，生成一个随机文件名
+            fileName = 'result-' + Date.now() + '.html';
+          }
+          
+          // 检查是否是Supabase URL
+          if (resultPath.includes('supabase') && resultPath.includes('/storage/')) {
+            console.log('检测到Supabase存储URL，使用下载API获取内容');
+            
+            // 直接在iframe中显示内容
+            $('#result-content').html(`
+              <div class="text-center py-3">
+                <h4>文档处理完成</h4>
+                <p>您的文档已处理完成，可以通过以下方式查看：</p>
+                <p>
+                  <a href="${resultPath}" target="_blank" class="btn btn-outline-primary">
+                    <i class="fas fa-external-link-alt me-1"></i> 在新窗口中查看
+                  </a>
+                  <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-outline-success ms-2">
+                    <i class="fas fa-download me-1"></i> 下载文档
+                  </a>
+                </p>
+                <div class="mt-3">
+                  <iframe src="/download?file=${encodeURIComponent(resultPath)}&mode=view" style="width:100%; height:500px; border:1px solid #ddd;"></iframe>
+                </div>
               </div>
+            `);
+            addEntryAnimation('#result-section');
+          } else if (resultPath.startsWith('http')) {
+            // 普通HTTP URL，直接加载
+            console.log('加载HTTP URL:', loadPath);
+            $.ajax({
+              url: loadPath,
+              type: 'GET',
+              success: function(html) {
+                $('#result-content').html(html);
+                addEntryAnimation('#result-section');
+              },
+              error: function(xhr, status, error) {
+                console.error('加载HTTP结果失败:', error);
+                
+                // 如果重试次数未达到最大值，则重试
+                if (currentRetry < maxRetries) {
+                  console.log(`加载失败，${maxRetries - currentRetry}秒后重试...`);
+                  setTimeout(tryLoadResult, 1000 * (maxRetries - currentRetry));
+                  return;
+                }
+                
+                // 显示错误消息和直接链接
+                $('#result-content').html(`
+                  <div class="alert alert-warning">
+                    <h4>加载结果内容失败</h4>
+                    <p>无法加载结果内容，您可以：</p>
+                    <ol>
+                      <li>直接 <a href="${resultPath}" target="_blank" class="btn btn-sm btn-outline-primary">打开结果链接</a></li>
+                      <li>或 <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-sm btn-outline-success">下载结果文件</a></li>
+                    </ol>
+                  </div>
+                `);
+              }
+            });
+          } else {
+            // 相对路径，使用预览接口
+            console.log('使用预览API加载:', fileName);
+            $.ajax({
+              url: '/preview/' + encodeURIComponent(fileName),
+              type: 'GET',
+              success: function(html) {
+                $('#result-content').html(html);
+                addEntryAnimation('#result-section');
+              },
+              error: function(xhr, status, error) {
+                console.error('使用预览API加载失败:', error);
+                
+                // 如果重试次数未达到最大值，则重试
+                if (currentRetry < maxRetries) {
+                  console.log(`加载失败，${maxRetries - currentRetry}秒后重试...`);
+                  setTimeout(tryLoadResult, 1000 * (maxRetries - currentRetry));
+                  return;
+                }
+                
+                $('#result-content').html(`
+                  <div class="alert alert-danger">
+                    <h4>加载美化结果失败</h4>
+                    <p>请尝试刷新页面或重新提交任务。</p>
+                    <p>错误详情: ${error}</p>
+                  </div>
+                `);
+              }
+            });
+          }
+          
+          // 设置结果查看和下载按钮
+          setupResultButtons(resultPath, fileName);
+          
+        } catch (e) {
+          console.error('加载结果时发生错误:', e);
+          
+          // 如果重试次数未达到最大值，则重试
+          if (currentRetry < maxRetries) {
+            console.log(`加载发生错误，${maxRetries - currentRetry}秒后重试...`);
+            setTimeout(tryLoadResult, 1000 * (maxRetries - currentRetry));
+            return;
+          }
+          
+          $('#result-content').html(`
+            <div class="alert alert-danger">
+              <h4>处理结果路径时发生错误</h4>
+              <p>请尝试刷新页面或重新提交任务。</p>
+              <p>错误详情: ${e.message}</p>
             </div>
           `);
-          addEntryAnimation('#result-section');
-        } else if (resultPath.startsWith('http')) {
-          // 普通HTTP URL，直接加载
-          console.log('加载HTTP URL:', loadPath);
-          $.ajax({
-            url: loadPath,
-            type: 'GET',
-            success: function(html) {
-              $('#result-content').html(html);
-              addEntryAnimation('#result-section');
-            },
-            error: function(xhr, status, error) {
-              console.error('加载HTTP结果失败:', error);
-              
-              // 显示错误消息和直接链接
-              $('#result-content').html(`
-                <div class="alert alert-warning">
-                  <h4>加载结果内容失败</h4>
-                  <p>无法加载结果内容，您可以：</p>
-                  <ol>
-                    <li>直接 <a href="${resultPath}" target="_blank" class="btn btn-sm btn-outline-primary">打开结果链接</a></li>
-                    <li>或 <a href="/download?file=${encodeURIComponent(resultPath)}" class="btn btn-sm btn-outline-success">下载结果文件</a></li>
-                  </ol>
-                </div>
-              `);
-            }
-          });
-        } else {
-          // 相对路径，使用预览接口
-          console.log('使用预览API加载:', fileName);
-          $.ajax({
-            url: '/preview/' + encodeURIComponent(fileName),
-            type: 'GET',
-            success: function(html) {
-              $('#result-content').html(html);
-              addEntryAnimation('#result-section');
-            },
-            error: function(xhr, status, error) {
-              console.error('使用预览API加载失败:', error);
-              $('#result-content').html(`
-                <div class="alert alert-danger">
-                  <h4>加载美化结果失败</h4>
-                  <p>请尝试刷新页面或重新提交任务。</p>
-                  <p>错误详情: ${error}</p>
-                </div>
-              `);
-            }
-          });
         }
-        
-        // 设置结果查看和下载按钮
-        setupResultButtons(resultPath, fileName);
-        
-      } catch (e) {
-        console.error('加载结果时发生错误:', e);
-        $('#result-content').html(`
-          <div class="alert alert-danger">
-            <h4>处理结果路径时发生错误</h4>
-            <p>请尝试刷新页面或重新提交任务。</p>
-            <p>错误详情: ${e.message}</p>
-          </div>
-        `);
       }
+      
+      // 开始加载
+      tryLoadResult();
     }
 
     /**
@@ -3408,6 +3443,28 @@ $(document).ready(function() {
     function handleTaskCompletion(response) {
       console.log('任务完成，处理结果:', response);
       
+      // 尝试从各种可能的来源确定任务类型
+      let taskType = response.taskType;
+      
+      // 如果taskType未直接定义，尝试从结果对象获取
+      if (!taskType && response.result) {
+        taskType = response.result.taskType || response.result.type;
+      }
+      
+      // 根据结果内容推断任务类型
+      if (!taskType && response.result) {
+        if (response.result.path && response.result.path.includes('beautified')) {
+          taskType = 'beautify';
+          console.log('根据结果路径推断任务类型为: beautify');
+        } else if (response.result.colorizedImages) {
+          taskType = 'colorize';
+        } else if (response.result.text && response.result.language) {
+          taskType = 'ocr';
+        }
+      }
+      
+      console.log('确定的任务类型:', taskType);
+      
       // 如果有进度弹窗，更新它
       if ($('#taskProgressModal').length > 0) {
         // 更新状态
@@ -3461,7 +3518,7 @@ $(document).ready(function() {
       }
       
       // 根据任务类型执行不同的后续操作
-      switch (response.taskType) {
+      switch (taskType) {
         case 'beautify':
           // 重置美化按钮
           $('#beautifyButton, #beautify-btn').prop('disabled', false);
@@ -3521,7 +3578,7 @@ $(document).ready(function() {
           break;
           
         default:
-          console.log(`任务类型 ${response.taskType} 完成，但没有特定处理逻辑`);
+          console.log(`任务类型 ${taskType} 完成，但没有特定处理逻辑`);
       }
       
       // 触发自定义事件，通知任务完成
@@ -3583,7 +3640,7 @@ $(document).ready(function() {
       }
       
       // 根据失败的任务类型执行额外的清理操作
-      switch (response.taskType) {
+      switch (taskType) {
         case 'beautify':
           // 重置美化任务相关状态
           $('#beautifyButton, #beautify-btn').prop('disabled', false);
@@ -3618,7 +3675,7 @@ $(document).ready(function() {
           break;
           
         default:
-          console.log(`任务类型 ${response.taskType || '未知'} 失败，但没有特定清理逻辑`);
+          console.log(`任务类型 ${taskType || '未知'} 失败，但没有特定清理逻辑`);
       }
       
       // 触发自定义事件，通知任务失败

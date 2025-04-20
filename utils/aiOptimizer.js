@@ -645,11 +645,11 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         }
 
         if (!response || !response.data) {
-            console.warn('未收到有效的API响应，使用本地备份处理');
+            console.error('DeepSeek API响应为空或格式异常');
+            console.log('使用本地备份处理...');
             return await fallbackProcessing(htmlContent, prompt, targetFormat);
         }
         
-        // 提取响应中的HTML内容
         if (!response.data.choices || !response.data.choices[0]) {
             console.error('DeepSeek API响应格式异常:', JSON.stringify(response.data));
             console.log('使用本地备份处理...');
@@ -664,6 +664,14 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         }
         
         const assistantResponse = response.data.choices[0].message.content;
+        
+        // 进一步检查响应内容
+        if (!assistantResponse) {
+            console.error('DeepSeek API响应内容为空');
+            console.log('使用本地备份处理...');
+            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+        }
+        
         console.log('DeepSeek响应内容长度:', assistantResponse.length);
         
         // 提取HTML内容并还原图片

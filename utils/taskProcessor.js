@@ -219,7 +219,8 @@ async function processBeautifyTask(taskId) {
             type: targetFormat,
             originalname: filename,
             wasBackupMode: usedBackupMode,
-            completedAt: new Date().toISOString()
+            completedAt: new Date().toISOString(),
+            taskType: 'beautify' // 添加明确的任务类型
         };
         
         // 将文件上传到Supabase存储
