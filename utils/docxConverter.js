@@ -663,6 +663,54 @@ function sanitizeFilePath(filePath) {
     return sanitizedFilePath.replace(/\\/g, '/');
 }
 
+/**
+ * 处理Base64编码的图片
+ * @param {string} base64String - Base64编码的图片数据
+ * @param {string} filePath - 图片存储路径
+ * @returns {Promise<object>} - 包含图片URL的对象
+ */
+exports.processBase64Image = async function(base64String, filePath) {
+  try {
+    console.log('处理Base64图片开始...');
+    
+    // 提取base64数据
+    const base64Data = base64String.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    if (!buffer || buffer.length === 0) {
+      throw new Error('图片数据为空');
+    }
+    
+    console.log(`图片大小: ${buffer.length} 字节`);
+    console.log(`目标路径: ${filePath}`);
+    
+    // 上传到Supabase
+    const uploadResult = await supabaseClient.uploadFile(buffer, filePath);
+    
+    if (!uploadResult.success) {
+      console.error('Base64图片上传失败:', uploadResult.error);
+      throw new Error(`上传图片失败: ${uploadResult.error}`);
+    }
+    
+    console.log('Base64图片上传成功，URL:', uploadResult.url);
+    
+    // 返回结果对象
+    return {
+      src: uploadResult.url,
+      alt: "文档图片",
+      title: path.basename(filePath)
+    };
+  } catch (error) {
+    console.error('处理Base64图片出错:', error.message);
+    // 返回错误占位图片
+    return {
+      src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFdwI3QlMYkQAAAABJRU5ErkJggg==",
+      alt: "图片处理失败",
+      title: error.message
+    };
+  }
+};
+
 module.exports = {
     convertDocxToHtml: exports.convertDocxToHtml,
     convertHtmlToDocx,
