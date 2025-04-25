@@ -446,8 +446,19 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             return await fallbackProcessing(htmlContent, prompt, 'word');
         }
         
-        // 安全显示API密钥
-        console.log(`DeepSeek API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
+        // 确保apiKey是字符串类型
+        if (typeof apiKey !== 'string') {
+            console.warn(`API密钥类型无效，应为字符串但收到了${typeof apiKey}，将使用本地备份处理`);
+            return await fallbackProcessing(htmlContent, prompt, 'word');
+        }
+        
+        // 安全显示API密钥 (添加额外的安全检查)
+        try {
+            console.log(`DeepSeek API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
+        } catch (error) {
+            console.warn('无法安全显示API密钥，可能格式不正确，将使用本地备份处理');
+            return await fallbackProcessing(htmlContent, prompt, 'word');
+        }
         console.log(`原始HTML内容长度: ${htmlContent.length}`);
         
         // 进一步验证API密钥

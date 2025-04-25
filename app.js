@@ -1919,7 +1919,17 @@ async function validateApiKey() {
     }
     
     console.log(`API密钥长度: ${globalApiConfig.apiKey.length}`);
-    console.log(`API密钥前5位和后5位: ${globalApiConfig.apiKey.substring(0, 5)}...${globalApiConfig.apiKey.substring(globalApiConfig.apiKey.length-5)}`);
+    
+    // 安全显示API密钥信息
+    try {
+      if (typeof globalApiConfig.apiKey === 'string' && globalApiConfig.apiKey.length >= 10) {
+        console.log(`API密钥前5位和后5位: ${globalApiConfig.apiKey.substring(0, 5)}...${globalApiConfig.apiKey.substring(globalApiConfig.apiKey.length-5)}`);
+      } else {
+        console.log('API密钥信息: 格式无效或长度不足，无法安全显示');
+      }
+    } catch (error) {
+      console.log('显示API密钥信息时出错:', error.message);
+    }
     
     // 根据API类型进行验证
     if (globalApiConfig.apiType === 'deepseek') {
@@ -2280,7 +2290,17 @@ app.post('/api/test-deepseek', async (req, res) => {
     const apiModel = config.apiConfig.model || 'deepseek-chat';
     
     console.log(`[DeepSeek API测试] 使用API类型: ${apiType}, 模型: ${apiModel}`);
-    console.log(`[DeepSeek API测试] API密钥长度: ${apiKey ? apiKey.length : 0}, 前5位: ${apiKey ? apiKey.substring(0, 5) : 'N/A'}`);
+    
+    // 安全显示API密钥信息
+    try {
+      if (typeof apiKey === 'string' && apiKey.length >= 10) {
+        console.log(`[DeepSeek API测试] API密钥长度: ${apiKey.length}, 前5位: ${apiKey.substring(0, 5)}`);
+      } else {
+        console.log(`[DeepSeek API测试] API密钥: ${apiKey ? '无效格式或长度不足' : '未提供'}`);
+      }
+    } catch (error) {
+      console.log('[DeepSeek API测试] 显示API密钥信息时出错:', error.message);
+    }
     
     // 准备请求参数
     const apiUrl = 'https://api.deepseek.com/v1/chat/completions';

@@ -66,7 +66,18 @@ async function beautifyWithDeepseek(htmlContent, apiKey, targetFormat = 'word', 
     
     try {
         console.log('调用DEEPSEEK API美化文档...');
-        console.log('使用的API密钥:', apiKey ? `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}` : '未提供');
+        
+        // 安全地显示API密钥
+        try {
+            if (typeof apiKey === 'string' && apiKey.length > 10) {
+                console.log('使用的API密钥:', `${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
+            } else {
+                console.log('使用的API密钥: 格式无效或未提供');
+            }
+        } catch (error) {
+            console.log('使用的API密钥: 无法安全显示');
+        }
+        
         console.log('目标格式:', targetFormat);
         
         // 提取所有图片标签并保存相关信息
