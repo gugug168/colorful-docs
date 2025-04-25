@@ -442,29 +442,29 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         
         // 修复: 增强apiKey验证，防止undefined读取length属性导致的错误
         if (!apiKey) {
-            console.warn('未提供API密钥，将使用本地备份处理');
-            return await fallbackProcessing(htmlContent, prompt, 'word');
+            console.warn('未提供API密钥');
+            throw new Error('未提供API密钥，请配置有效的API密钥');
         }
         
         // 确保apiKey是字符串类型
         if (typeof apiKey !== 'string') {
-            console.warn(`API密钥类型无效，应为字符串但收到了${typeof apiKey}，将使用本地备份处理`);
-            return await fallbackProcessing(htmlContent, prompt, 'word');
+            console.warn(`API密钥类型无效，应为字符串但收到了${typeof apiKey}`);
+            throw new Error('API密钥类型无效，请提供正确格式的API密钥');
         }
         
         // 安全显示API密钥 (添加额外的安全检查)
         try {
             console.log(`DeepSeek API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
         } catch (error) {
-            console.warn('无法安全显示API密钥，可能格式不正确，将使用本地备份处理');
-            return await fallbackProcessing(htmlContent, prompt, 'word');
+            console.warn('无法安全显示API密钥，可能格式不正确');
+            throw new Error('API密钥格式不正确，无法处理请求');
         }
         console.log(`原始HTML内容长度: ${htmlContent.length}`);
         
         // 进一步验证API密钥
         if (apiKey.length < 20) {
-            console.warn('无效的API密钥，长度不足，将使用本地备份处理');
-            return await fallbackProcessing(htmlContent, prompt, 'word');
+            console.warn('无效的API密钥，长度不足');
+            throw new Error('API密钥长度不足，请提供有效的API密钥');
         }
         
         // 预处理HTML内容，替换图片为占位符
@@ -504,6 +504,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         if (isLongContent) {
             console.log('内容较长，采用分段处理方式');
             // 这里可以实现分段处理的逻辑
+        }
+        
+        // 在创建axiosOptions前再次验证apiKey
+        // 额外的安全检查，确保即使前面的检查出现问题，这里也能捕获
+        if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
+            console.warn('创建API请求前发现API密钥无效');
+            throw new Error('API密钥无效，无法创建请求');
         }
         
         // 添加超时和重试设置
@@ -555,6 +562,12 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
 
         async function tryDeepSeekRequest() {
             try {
+                // 在发送请求前再次验证apiKey有效性
+                if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
+                    console.warn('tryDeepSeekRequest中发现API密钥无效');
+                    throw new Error('API密钥无效，请检查配置');
+                }
+                
                 console.log(`开始第${retryCount+1}次API请求...`);
                 const requestStartTime = Date.now();
                 
@@ -661,9 +674,9 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         // null - 需要使用备份处理
         
         if (success === null) {
-            // 使用备份处理方案
-            console.log('切换到本地备份处理...');
-            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+            // 不再使用备份处理，而是直接报错
+            console.log('API请求失败，无法处理请求');
+            throw new Error('DeepSeek API请求失败，请稍后重试');
         }
         
         if (success === false && retryCount < maxRetries) {
@@ -676,29 +689,26 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             
             const retrySuccess = await tryDeepSeekRequest();
             if (retrySuccess !== true) {
-                // 如果重试也失败，使用备份处理
-                console.log('重试失败，切换到本地备份处理...');
-                return await fallbackProcessing(htmlContent, prompt, targetFormat); 
+                // 如果重试也失败，直接报错
+                console.log('重试失败，API请求无法完成');
+                throw new Error('DeepSeek API请求重试失败，请稍后再试');
             }
         }
 
         if (!response || !response.data) {
             console.error('DeepSeek API响应为空或格式异常');
-            console.log('使用本地备份处理...');
-            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+            throw new Error('DeepSeek API响应异常，请检查API状态');
         }
         
         if (!response.data.choices || !response.data.choices[0]) {
             console.error('DeepSeek API响应格式异常:', JSON.stringify(response.data));
-            console.log('使用本地备份处理...');
-            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+            throw new Error('DeepSeek API响应格式异常，无法处理结果');
         }
         
         // 添加额外安全检查，防止"Cannot read properties of undefined (reading 'length')"错误
         if (!response.data.choices[0].message || !response.data.choices[0].message.content) {
             console.error('DeepSeek API响应缺少消息内容:', JSON.stringify(response.data.choices[0]));
-            console.log('使用本地备份处理...');
-            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+            throw new Error('DeepSeek API响应缺少消息内容，无法处理结果');
         }
         
         const assistantResponse = response.data.choices[0].message.content;
@@ -706,8 +716,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         // 进一步检查响应内容
         if (!assistantResponse) {
             console.error('DeepSeek API响应内容为空');
-            console.log('使用本地备份处理...');
-            return await fallbackProcessing(htmlContent, prompt, targetFormat);
+            throw new Error('DeepSeek API响应内容为空，无法处理结果');
         }
         
         console.log('DeepSeek响应内容长度:', assistantResponse.length);
@@ -719,10 +728,8 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         return extractedHTML;
     } catch (error) {
         console.error('DeepSeek API处理错误:', error);
-        // 任何未捕获的错误，使用备份处理
-        const targetFormat = prompt.includes('PDF格式') ? 'pdf' : 'word';
-        console.log('发生错误，切换到本地备份处理...');
-        return await fallbackProcessing(htmlContent, prompt, targetFormat);
+        // 直接将错误传递给上层调用者，而不是使用备份处理
+        throw error;
     }
 }
 

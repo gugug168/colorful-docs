@@ -128,12 +128,19 @@ async function processBeautifyTask(taskId) {
         let usedBackupMode = false;
         
         try {
+            // 确保API密钥有效
+            const apiKey = globalApiConfig.apiKey;
+            if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
+                console.warn(`任务 ${taskId} 的API密钥无效或未提供，将使用本地备用模式`);
+                throw new Error('API密钥无效或未提供');
+            }
+            
             if (aiProvider === 'deepseek') {
                 // 使用DeepSeek处理HTML
                 optimizedHTML = await aiOptimizer.processWithDeepseek(
                     htmlContent,
                     optimizationPrompt,
-                    globalApiConfig.apiKey,
+                    apiKey,
                     globalApiConfig.apiParams.deepseek
                 );
             } else if (aiProvider === 'baidu') {
@@ -141,7 +148,7 @@ async function processBeautifyTask(taskId) {
                 optimizedHTML = await aiOptimizer.beautifyWithBaidu(
                     htmlContent,
                     optimizationPrompt,
-                    globalApiConfig.apiKey,
+                    apiKey,
                     globalApiConfig.apiSecret,
                     globalApiConfig.apiParams.baidu || { temperature: 0.7, max_tokens: 4000 }
                 );
@@ -151,7 +158,7 @@ async function processBeautifyTask(taskId) {
                 optimizedHTML = await aiOptimizer.processWithDeepseek(
                     htmlContent,
                     optimizationPrompt,
-                    globalApiConfig.apiKey,
+                    apiKey,
                     globalApiConfig.apiParams.deepseek
                 );
             }
@@ -162,25 +169,16 @@ async function processBeautifyTask(taskId) {
             
         } catch (aiError) {
             console.error(`任务 ${taskId} AI处理失败:`, aiError);
-            console.log('使用本地备用模式处理HTML...');
             
-            // 使用本地备用美化功能
-            optimizedHTML = aiOptimizer.beautifyWithRules(htmlContent, targetFormat, customRequirements);
-            usedBackupMode = true;
-            
-            // 如果本地处理也失败，则标记任务为失败
-            if (!optimizedHTML) {
-                clearTimeout(timeoutId);
-                await supabaseClient.updateTaskStatus(taskId, 'failed', {
-                    error: `AI处理失败，备用模式也失败: ${aiError.message}`
-                });
-                return {
-                    success: false,
-                    error: `AI处理失败，备用模式也失败: ${aiError.message}`
-                };
-            }
-            
-            console.log(`任务 ${taskId} 本地备用模式成功处理了HTML内容`);
+            // 不再尝试备用美化功能，而是直接将任务标记为失败
+            clearTimeout(timeoutId);
+            await supabaseClient.updateTaskStatus(taskId, 'failed', {
+                error: `AI处理失败: ${aiError.message}`
+            });
+            return {
+                success: false,
+                error: `AI处理失败: ${aiError.message}`
+            };
         }
         
         // 处理上色图片 - 替换HTML中的图片路径
