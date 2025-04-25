@@ -452,12 +452,17 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             throw new Error('API密钥类型无效，请提供正确格式的API密钥');
         }
         
-        // 安全显示API密钥 (添加额外的安全检查)
+        // 安全显示API密钥 (添加更强健的安全检查)
         try {
-            console.log(`DeepSeek API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
+            // 确保即使前面的检查都通过了，这里再次确认apiKey是否为有效字符串
+            if (apiKey && typeof apiKey === 'string' && apiKey.length > 0) {
+                console.log(`DeepSeek API密钥: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length-5)}`);
+            } else {
+                console.warn('API密钥格式不正确，无法安全显示');
+            }
         } catch (error) {
             console.warn('无法安全显示API密钥，可能格式不正确');
-            throw new Error('API密钥格式不正确，无法处理请求');
+            // 捕获错误但不中断处理流程
         }
         console.log(`原始HTML内容长度: ${htmlContent.length}`);
         
