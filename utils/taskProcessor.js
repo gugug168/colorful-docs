@@ -78,6 +78,16 @@ function setApiConfig(config) {
     }
 }
 
+// 添加sanitizeFileName函数用于生成短文件名
+function sanitizeFileName(fileName, ts) {
+    const timestamp = ts || Date.now();
+    // 获取文件扩展名
+    const extname = path.extname(fileName) || '.tmp';
+    
+    // 生成短文件名 - 使用时间戳和哈希
+    return `doc-${timestamp}-${crypto.createHash('md5').update(fileName).digest('hex').substring(0, 10)}${extname}`;
+}
+
 /**
  * 处理美化任务
  * @param {string} taskId - 任务ID
@@ -190,8 +200,9 @@ async function processBeautifyTask(taskId) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
         
-        // 生成唯一文件名
-        const outputFileName = `beautified-${taskId}-${timestamp}.html`;
+        // 生成唯一文件名 - 使用sanitizeFileName生成短文件名
+        const safeFilename = sanitizeFileName(filename || 'beautified', timestamp);
+        const outputFileName = `beautified-${taskId}-${safeFilename}`;
         const outputPath = path.join(tempDir, outputFileName);
         
         // 保存HTML到文件

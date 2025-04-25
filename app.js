@@ -2200,7 +2200,11 @@ app.post('/beautify', async (req, res) => {
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
-      finalFilePath = path.join(tempDir, finalFilename);
+      
+      // 使用sanitizeFileName生成短文件名
+      const shortFilename = sanitizeFileName(finalFilename);
+      finalFilePath = path.join(tempDir, shortFilename);
+      
       fs.writeFileSync(finalFilePath, htmlContent, 'utf8');
       console.log(`已将HTML内容保存到临时文件: ${finalFilePath}`);
     }
@@ -2344,3 +2348,13 @@ app.post('/api/test-deepseek', async (req, res) => {
     });
   }
 });
+
+// 添加sanitizeFileName函数用于生成短文件名
+function sanitizeFileName(fileName, ts) {
+  const timestamp = ts || Date.now();
+  // 获取文件扩展名
+  const extname = path.extname(fileName) || '.tmp';
+  
+  // 生成短文件名 - 使用时间戳和哈希
+  return `doc-${timestamp}-${crypto.createHash('md5').update(fileName).digest('hex').substring(0, 10)}${extname}`;
+}
