@@ -581,12 +581,13 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            timeout: isLongContent ? 90000 : 60000, // 增加超时时间：长内容90秒，短内容60秒
+            timeout: isLongContent ? 180000 : 120000, // 增加超时时间：长内容3分钟，短内容2分钟
         };
         
         // 检查并输出关键参数
         console.log(`使用的温度参数: ${temperature}, 最大token: ${max_tokens}`);
         console.log(`提示词长度: ${enhancedPrompt.length}, 内容长度: ${userContent.length}`);
+        console.log(`请求超时设置: ${axiosOptions.timeout / 1000}秒`);
         
         // 构建系统提示
         let systemPrompt;
@@ -620,7 +621,7 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         console.log('开始请求DeepSeek API...');
         let response;
         let retryCount = 0;
-        const maxRetries = 3; // 增加最大重试次数，从1次增加到3次
+        const maxRetries = 5; // 增加最大重试次数到5次
 
         async function tryDeepSeekRequest() {
             try {
@@ -718,8 +719,17 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 } else if (apiError.request) {
                     // 请求已发送但没有收到响应 - 超时或网络问题
                     console.error('DeepSeek API请求超时或无响应');
-                    // 直接返回null，使用备份处理
-                    return null;
+                    
+                    // 判断是否是超时错误
+                    if (apiError.code === 'ECONNABORTED' || apiError.message.includes('timeout')) {
+                        console.log('检测到API请求超时，将进行重试');
+                        // 返回false表示可以重试，而不是直接返回null
+                        return false;
+                    }
+                    
+                    // 其他网络错误，也可以尝试重试
+                    console.log('检测到网络问题，将进行重试');
+                    return false;
                 } else {
                     // 请求配置中发生错误
                     console.error(`DeepSeek API请求配置错误: ${apiError.message}`);
@@ -742,18 +752,28 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
         }
         
         if (success === false && retryCount < maxRetries) {
-            // 允许一次重试
+            // 实现指数退避策略进行重试
             retryCount++;
+            // 计算退避延迟：基础时间 * 2^重试次数，最长不超过30秒
+            const baseDelay = 1000; // 基础延迟1秒
+            const delayTime = Math.min(baseDelay * Math.pow(2, retryCount - 1), 30000); // 指数增长，但最长不超过30秒
+            
             console.log(`DeepSeek API请求失败，进行第${retryCount}次重试...`);
-            const delayTime = 2000;
-            console.log(`等待${delayTime/1000}秒后重试...`);
+            console.log(`使用指数退避策略，等待${delayTime/1000}秒后重试...`);
             await new Promise(resolve => setTimeout(resolve, delayTime));
             
+            // 进行重试
             const retrySuccess = await tryDeepSeekRequest();
-            if (retrySuccess !== true) {
-                // 如果重试也失败，直接报错
-                console.log('重试失败，API请求无法完成');
-                throw new Error('DeepSeek API请求重试失败，请稍后再试');
+            
+            // 如果重试失败，但还有重试次数，则继续重试
+            if (retrySuccess === false && retryCount < maxRetries) {
+                console.log(`第${retryCount}次重试仍然失败，继续下一次重试`);
+                // 递归调用本条件，继续重试
+                return await processWithDeepseek(htmlContent, prompt, apiKey, params);
+            } else if (retrySuccess !== true) {
+                // 如果达到最大重试次数或者返回null，则报错
+                console.log(`已重试${retryCount}次，API请求仍然失败`);
+                throw new Error(`DeepSeek API请求在重试${retryCount}次后失败，请稍后再试`);
             }
         }
 
