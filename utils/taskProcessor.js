@@ -752,24 +752,40 @@ async function processTask(taskId) {
         if (!task.type) {
             console.warn(`任务 ${taskId} 未指定类型，从data属性中查找...`);
             
-            // 尝试从data属性中获取任务类型
-            if (task.data && task.data.taskType) {
-                task.type = task.data.taskType === 'beautify' ? 'beautify_html' : task.data.taskType;
-                console.log(`从data属性中找到任务类型: ${task.type}`);
-            } else {
-                // 设置默认任务类型
-                task.type = 'beautify_html';
-                console.warn(`未能找到任务类型，设置为默认类型: beautify_html`);
-                
-                // 尝试更新数据库中的任务类型
-                try {
-                    await updateTaskStatus(taskId, task.status, {
-                        type: task.type
-                    });
-                    console.log(`已更新任务 ${taskId} 的类型为 ${task.type}`);
-                } catch (updateError) {
-                    console.error(`更新任务类型失败 (${taskId}):`, updateError);
+            // 改进类型检测逻辑
+            const possibleTypes = ['beautify_html', 'optimize_html', 'beautify'];
+            let foundType = null;
+            
+            // 从多个可能的位置查找类型信息
+            if (task.data) {
+                if (task.data.taskType) {
+                    foundType = task.data.taskType === 'beautify' ? 'beautify_html' : task.data.taskType;
+                    console.log(`从task.data.taskType找到任务类型: ${foundType}`);
+                } else if (task.data.type) {
+                    foundType = task.data.type;
+                    console.log(`从task.data.type找到任务类型: ${foundType}`);
+                } else if (task.data.targetFormat) {
+                    // 有目标格式参数的通常是美化任务
+                    foundType = 'beautify_html';
+                    console.log(`根据task.data.targetFormat推断任务类型为: ${foundType}`);
+                } else if (task.data.filename && task.data.htmlContent) {
+                    // 有filename和htmlContent的通常是美化任务
+                    foundType = 'beautify_html';
+                    console.log(`根据task.data.filename和htmlContent推断任务类型为: ${foundType}`);
                 }
+            }
+            
+            // 设置找到的类型或默认类型
+            task.type = foundType || 'beautify_html';
+            console.log(`最终设置任务 ${taskId} 类型为: ${task.type}`);
+            
+            // 更新数据库中的任务类型
+            try {
+                await updateTaskStatus(taskId, task.status, { type: task.type });
+                console.log(`已更新任务 ${taskId} 的类型为 ${task.type}`);
+            } catch (updateError) {
+                console.error(`更新任务类型失败 (${taskId}): ${updateError.message}`);
+                // 继续处理，不中断流程
             }
         }
         

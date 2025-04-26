@@ -16,7 +16,7 @@
       "config": {
         "includeFiles": ["utils/**", "data/**"],
         "memory": 1024,
-        "maxDuration": 10
+        "maxDuration": 30
       }
     },
     {
@@ -31,7 +31,14 @@
     { "src": "/css/(.*)", "dest": "/public/css/$1" },
     { "handle": "filesystem" },
     { "src": "/beautify", "dest": "/app.js" },
+    { "src": "/api/processTasks", "dest": "/api/processTasks.js" },
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "src": "/(.*)", "dest": "/app.js" }
-  ]
+  ],
+  "functions": {
+    "api/processTasks.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  }
 } 

@@ -507,28 +507,69 @@ async function getTask(taskId) {
  */
 async function cleanupExpiredTasks() {
     try {
-        const now = new Date().toISOString();
+        console.log('开始清理过期任务...');
         
-        const { data, error } = await supabase
-            .from('tasks')
-            .delete()
-            .lt('expires_at', now)
-            .select();
-            
-        if (error) {
-            console.error('清理过期任务失败:', error);
-            throw error;
+        // 添加超时和重试机制
+        const MAX_RETRIES = 3;
+        let retries = 0;
+        let success = false;
+        let cleanedCount = 0;
+        
+        while (!success && retries < MAX_RETRIES) {
+            try {
+                retries++;
+                console.log(`尝试清理过期任务 (尝试 ${retries}/${MAX_RETRIES})...`);
+                
+                // 使用指数退避策略
+                if (retries > 1) {
+                    const waitTime = Math.pow(2, retries - 1) * 1000;
+                    console.log(`等待 ${waitTime}ms 后重试...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+                
+                // 实际的清理逻辑
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .lt('expires_at', new Date().toISOString())
+                    .select();
+                    
+                if (error) {
+                    console.error(`清理过期任务失败 (尝试 ${retries}/${MAX_RETRIES}):`, error);
+                    throw error;
+                }
+                
+                cleanedCount = data?.length || 0;
+                success = true;
+                console.log(`成功清理了 ${cleanedCount} 个过期任务`);
+            } catch (retryError) {
+                console.warn(`清理过期任务失败 (尝试 ${retries}/${MAX_RETRIES}): ${retryError.message}`);
+                if (retryError.message && retryError.message.includes('fetch failed')) {
+                    console.warn('检测到网络连接问题，将在下次尝试重试');
+                }
+                // 如果已经达到最大重试次数，则跳出循环
+                if (retries >= MAX_RETRIES) {
+                    console.error(`已达到最大重试次数(${MAX_RETRIES})，清理任务失败`);
+                }
+            }
         }
         
-        console.log(`已清理 ${data?.length || 0} 个过期任务`);
-        return {
-            success: true,
-            deletedCount: data?.length || 0
+        return { 
+            success, 
+            cleanedCount
         };
     } catch (error) {
-        console.error('清理过期任务失败:', error);
-        return {
-            success: false,
+        console.error('清理过期任务失败:', {
+            message: error.message,
+            details: error.stack,
+            hint: '请检查Supabase连接和权限',
+            code: error.code || ''
+        });
+        
+        // 返回明确的结果对象
+        return { 
+            success: false, 
+            cleanedCount: 0,
             error: error.message
         };
     }

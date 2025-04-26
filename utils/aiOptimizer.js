@@ -650,24 +650,83 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                     user_content_length: requestBody.messages[1].content.length
                 }));
                 
-                response = await axios.post(
-                    'https://api.deepseek.com/v1/chat/completions',
-                    requestBody,
-                    axiosOptions
-                );
+                // 使用更高级的错误处理来包装axios请求
+                try {
+                    response = await axios.post(
+                        'https://api.deepseek.com/v1/chat/completions',
+                        requestBody,
+                        axiosOptions
+                    );
+                } catch (axiosError) {
+                    // 详细记录axios错误
+                    console.error('Axios请求失败：', {
+                        message: axiosError.message,
+                        code: axiosError.code,
+                        stack: axiosError.stack
+                    });
+                    
+                    if (axiosError.response) {
+                        console.error('接收到错误响应:', {
+                            status: axiosError.response.status,
+                            statusText: axiosError.response.statusText,
+                            data: axiosError.response.data
+                        });
+                    } else if (axiosError.request) {
+                        console.error('请求已发送但未收到响应 (可能是超时)');
+                    } else {
+                        console.error('请求配置错误');
+                    }
+                    throw axiosError; // 重新抛出以便外部处理
+                }
+                
                 const requestEndTime = Date.now();
                 console.log(`DeepSeek API请求时间: ${(requestEndTime - requestStartTime) / 1000}秒`);
                 console.log('DeepSeek API返回状态码:', response.status);
                 
-                // 记录响应的基本结构
-                if (response.data) {
-                    console.log('API响应结构:', JSON.stringify({
+                // 安全地访问和记录响应数据
+                if (response && response.data) {
+                    // 详细记录响应结构，避免直接访问可能不存在的属性
+                    const responseStructure = {
                         id: response.data.id,
                         object: response.data.object,
                         model: response.data.model,
-                        usage: response.data.usage,
-                        choices_count: response.data.choices ? response.data.choices.length : 0
-                    }));
+                        usage: response.data.usage ? {
+                            prompt_tokens: response.data.usage.prompt_tokens,
+                            completion_tokens: response.data.usage.completion_tokens,
+                            total_tokens: response.data.usage.total_tokens
+                        } : null,
+                        hasChoices: Array.isArray(response.data.choices),
+                        choicesCount: Array.isArray(response.data.choices) ? response.data.choices.length : 0
+                    };
+                    console.log('API响应结构:', JSON.stringify(responseStructure));
+                    
+                    // 详细检查并记录响应内容的结构
+                    console.log('检查响应内容结构:');
+                    console.log(`- response.data存在: ${!!response.data}`);
+                    console.log(`- response.data.choices存在: ${!!response.data.choices}`);
+                    console.log(`- response.data.choices是数组: ${Array.isArray(response.data.choices)}`);
+                    if (Array.isArray(response.data.choices)) {
+                        console.log(`- response.data.choices长度: ${response.data.choices.length}`);
+                        if (response.data.choices.length > 0) {
+                            console.log(`- response.data.choices[0]存在: ${!!response.data.choices[0]}`);
+                            if (response.data.choices[0]) {
+                                console.log(`- response.data.choices[0].message存在: ${!!response.data.choices[0].message}`);
+                                if (response.data.choices[0].message) {
+                                    console.log(`- response.data.choices[0].message.content存在: ${!!response.data.choices[0].message.content}`);
+                                    console.log(`- response.data.choices[0].message.content长度: ${response.data.choices[0].message.content ? response.data.choices[0].message.content.length : 0}`);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    console.warn('收到异常响应，response或response.data为空');
+                    return false; // 异常响应，应该重试
+                }
+                
+                // 进行基本的响应验证
+                if (!validateDeepseekResponse(response)) {
+                    console.error('DeepSeek响应格式验证失败，将重试');
+                    return false;
                 }
                 
                 return true;
@@ -679,14 +738,6 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                     // 服务器响应了错误状态码
                     console.error('DeepSeek API错误状态码:', apiError.response.status);
                     console.error('DeepSeek API错误详情:', JSON.stringify(apiError.response.data));
-                    
-                    // 详细记录错误信息
-                    console.error('完整错误响应: ', JSON.stringify({
-                        status: apiError.response.status,
-                        statusText: apiError.response.statusText,
-                        headers: apiError.response.headers,
-                        data: apiError.response.data
-                    }));
                     
                     // 特别处理401错误（未授权）
                     if (apiError.response.status === 401) {
@@ -736,6 +787,56 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                     return null;
                 }
             }
+        }
+
+        // 定义一个专门用于验证DeepSeek响应格式的函数
+        function validateDeepseekResponse(response) {
+            if (!response) {
+                console.error('validateDeepseekResponse: 响应对象为空');
+                return false;
+            }
+            
+            if (!response.data) {
+                console.error('validateDeepseekResponse: 响应数据为空');
+                return false;
+            }
+            
+            if (!response.data.choices) {
+                console.error('validateDeepseekResponse: 响应中没有choices字段');
+                return false;
+            }
+            
+            if (!Array.isArray(response.data.choices)) {
+                console.error('validateDeepseekResponse: choices不是数组');
+                return false;
+            }
+            
+            if (response.data.choices.length === 0) {
+                console.error('validateDeepseekResponse: choices数组为空');
+                return false;
+            }
+            
+            if (!response.data.choices[0]) {
+                console.error('validateDeepseekResponse: 第一个choice为空');
+                return false;
+            }
+            
+            if (!response.data.choices[0].message) {
+                console.error('validateDeepseekResponse: 第一个choice没有message字段');
+                return false;
+            }
+            
+            if (!response.data.choices[0].message.content) {
+                console.error('validateDeepseekResponse: message中没有content字段');
+                return false;
+            }
+            
+            if (typeof response.data.choices[0].message.content !== 'string') {
+                console.error('validateDeepseekResponse: content不是字符串');
+                return false;
+            }
+            
+            return true;
         }
 
         // 尝试请求，最多重试maxRetries次
