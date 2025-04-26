@@ -461,9 +461,10 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
                 console.warn('API密钥格式不正确，无法安全显示');
             }
         } catch (error) {
-            console.warn('无法安全显示API密钥，可能格式不正确');
+            console.warn('无法安全显示API密钥，可能格式不正确:', error.message);
             // 捕获错误但不中断处理流程
         }
+        
         console.log(`原始HTML内容长度: ${htmlContent.length}`);
         
         // 进一步验证API密钥
@@ -705,17 +706,38 @@ async function processWithDeepseek(htmlContent, prompt, apiKey, params = {}) {
             throw new Error('DeepSeek API响应异常，请检查API状态');
         }
         
-        if (!response.data.choices || !response.data.choices[0]) {
-            console.error('DeepSeek API响应格式异常:', JSON.stringify(response.data));
-            throw new Error('DeepSeek API响应格式异常，无法处理结果');
+        // 添加全面的空值检查
+        if (!response.data.choices) {
+            console.error('DeepSeek API响应中缺少choices字段:', JSON.stringify(response.data));
+            throw new Error('DeepSeek API响应格式异常：缺少choices字段');
         }
         
-        // 添加额外安全检查，防止"Cannot read properties of undefined (reading 'length')"错误
-        if (!response.data.choices[0].message || !response.data.choices[0].message.content) {
-            console.error('DeepSeek API响应缺少消息内容:', JSON.stringify(response.data.choices[0]));
-            throw new Error('DeepSeek API响应缺少消息内容，无法处理结果');
+        if (!Array.isArray(response.data.choices)) {
+            console.error('DeepSeek API响应中choices不是数组:', typeof response.data.choices);
+            throw new Error('DeepSeek API响应格式异常：choices不是数组');
         }
         
+        if (response.data.choices.length === 0) {
+            console.error('DeepSeek API响应中choices数组为空');
+            throw new Error('DeepSeek API响应格式异常：choices数组为空');
+        }
+        
+        if (!response.data.choices[0]) {
+            console.error('DeepSeek API响应中第一个choice项为空');
+            throw new Error('DeepSeek API响应格式异常：choice项为空');
+        }
+        
+        if (!response.data.choices[0].message) {
+            console.error('DeepSeek API响应中缺少message字段:', JSON.stringify(response.data.choices[0]));
+            throw new Error('DeepSeek API响应格式异常：缺少message字段');
+        }
+        
+        if (!response.data.choices[0].message.content) {
+            console.error('DeepSeek API响应中缺少content字段:', JSON.stringify(response.data.choices[0].message));
+            throw new Error('DeepSeek API响应格式异常：缺少content字段');
+        }
+        
+        // 获取并记录响应内容，确保处理是安全的
         const assistantResponse = response.data.choices[0].message.content;
         
         // 进一步检查响应内容

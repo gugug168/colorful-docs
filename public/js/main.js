@@ -3589,6 +3589,14 @@ $(document).ready(function() {
     function handleTaskFailure(response) {
       console.log('任务失败:', response);
       
+      // 从response中获取任务类型，如果不存在则使用默认值'unknown'
+      const taskType = (response && response.type) || 
+                       (response && response.task && response.task.type) || 
+                       (response && response.taskType) || 
+                       'unknown';
+      
+      console.log(`处理任务失败，任务类型: ${taskType}`);
+      
       // 如果有进度弹窗，更新它
       if ($('#taskProgressModal').length > 0) {
         // 更新状态
