@@ -109,12 +109,96 @@ async function processBeautifyTask(taskId) {
         const task = taskResult.task;
         
         // 更详细地记录任务数据，排除HTML内容
-        const { filename, targetFormat, customRequirements, colorizedImages } = task.data;
+        const { filename, targetFormat, customRequirements, colorizedImages, filePath } = task.data;
         console.log(`任务 ${taskId} 详情: 文件名="${filename || '未指定'}", 目标格式="${targetFormat || 'auto'}", 自定义需求="${customRequirements || '无'}"`);
         console.log(`任务 ${taskId} 包含${colorizedImages?.length || 0}张上色图片`);
         
-        // 检查HTML内容是否有效
-        if (!task.data.htmlContent) {
+        // 尝试获取HTML内容 - 从多个可能的来源
+        let htmlContent = task.data.htmlContent;
+        
+        // 如果htmlContent为空但有filePath，尝试从filePath获取内容
+        if (!htmlContent && filePath) {
+            console.log(`任务 ${taskId} 尝试从文件路径获取HTML内容: ${filePath}`);
+            
+            // 检查filePath是否是URL
+            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+                console.log(`任务 ${taskId} 检测到URL路径，尝试下载内容`);
+                try {
+                    const axios = require('axios');
+                    // 设置超时和重试
+                    const axiosOptions = {
+                        timeout: 30000, // 30秒超时
+                        maxRetries: 3,
+                        retryDelay: 1000
+                    };
+                    
+                    console.log(`开始从URL下载内容: ${filePath}`);
+                    const response = await axios.get(filePath, axiosOptions);
+                    
+                    if (response.data) {
+                        htmlContent = response.data;
+                        console.log(`成功从URL获取HTML内容，长度: ${htmlContent.length}`);
+                        
+                        // 更新任务数据中的htmlContent
+                        task.data.htmlContent = htmlContent;
+                        await supabaseClient.updateTaskStatus(taskId, 'processing', {
+                            data: task.data
+                        });
+                    } else {
+                        console.error(`URL响应无数据: ${filePath}`);
+                        throw new Error('URL响应无数据');
+                    }
+                } catch (fetchError) {
+                    console.error(`从URL获取内容失败: ${fetchError.message}`);
+                    throw new Error(`无法从URL获取HTML内容: ${fetchError.message}`);
+                }
+            } else {
+                // 尝试从本地文件系统读取
+                try {
+                    const fs = require('fs');
+                    const path = require('path');
+                    
+                    // 尝试从多个可能的位置加载原始HTML文件
+                    const possiblePaths = [
+                        filePath, // 原始路径
+                        path.join('/tmp', 'temp', path.basename(filePath)), // 在temp目录中查找文件名
+                        path.join('/tmp', 'uploads', path.basename(filePath)), // 在uploads目录中查找文件名
+                        // 向后兼容旧路径
+                        path.join(__dirname, '..', 'temp', path.basename(filePath)),
+                        path.join(__dirname, '..', 'uploads', path.basename(filePath))
+                    ];
+                    
+                    let foundPath = null;
+                    for (const p of possiblePaths) {
+                        if (fs.existsSync(p)) {
+                            console.log(`找到文件: ${p}`);
+                            htmlContent = fs.readFileSync(p, 'utf8');
+                            foundPath = p;
+                            break;
+                        }
+                    }
+                    
+                    if (foundPath) {
+                        console.log(`从文件系统获取HTML内容成功，长度: ${htmlContent.length}`);
+                        
+                        // 更新任务数据中的htmlContent
+                        task.data.htmlContent = htmlContent;
+                        await supabaseClient.updateTaskStatus(taskId, 'processing', {
+                            data: task.data
+                        });
+                    } else {
+                        console.error(`未找到文件: ${filePath}`);
+                        throw new Error(`文件不存在: ${filePath}`);
+                    }
+                } catch (fsError) {
+                    console.error(`从文件系统读取内容失败: ${fsError.message}`);
+                    throw new Error(`无法从文件系统读取HTML内容: ${fsError.message}`);
+                }
+            }
+        }
+        
+        // 再次检查HTML内容是否有效
+        if (!htmlContent) {
             console.error(`任务 ${taskId} 缺少HTML内容`);
             await supabaseClient.updateTaskStatus(taskId, 'failed', {
                 error: 'HTML内容为空，无法处理任务'
@@ -125,7 +209,6 @@ async function processBeautifyTask(taskId) {
             };
         }
         
-        const htmlContent = task.data.htmlContent;
         console.log(`任务 ${taskId} 的HTML内容长度: ${htmlContent.length}`);
         
         // 设置超时机制 - 5分钟后自动标记为失败
