@@ -107,7 +107,26 @@ async function processBeautifyTask(taskId) {
         }
         
         const task = taskResult.task;
-        const { filename, targetFormat, htmlContent, customRequirements, colorizedImages } = task.data;
+        
+        // 更详细地记录任务数据，排除HTML内容
+        const { filename, targetFormat, customRequirements, colorizedImages } = task.data;
+        console.log(`任务 ${taskId} 详情: 文件名="${filename || '未指定'}", 目标格式="${targetFormat || 'auto'}", 自定义需求="${customRequirements || '无'}"`);
+        console.log(`任务 ${taskId} 包含${colorizedImages?.length || 0}张上色图片`);
+        
+        // 检查HTML内容是否有效
+        if (!task.data.htmlContent) {
+            console.error(`任务 ${taskId} 缺少HTML内容`);
+            await supabaseClient.updateTaskStatus(taskId, 'failed', {
+                error: 'HTML内容为空，无法处理任务'
+            });
+            return {
+                success: false,
+                error: 'HTML内容为空，无法处理任务'
+            };
+        }
+        
+        const htmlContent = task.data.htmlContent;
+        console.log(`任务 ${taskId} 的HTML内容长度: ${htmlContent.length}`);
         
         // 设置超时机制 - 5分钟后自动标记为失败
         const timeoutId = setTimeout(async () => {
@@ -119,6 +138,7 @@ async function processBeautifyTask(taskId) {
         
         // 生成优化提示
         const optimizationPrompt = aiOptimizer.generateOptimizationPrompt(targetFormat, customRequirements);
+        console.log(`任务 ${taskId} 的优化提示: "${optimizationPrompt.substring(0, 100)}${optimizationPrompt.length > 100 ? '...' : ''}"`);
         
         // 根据当前配置选择AI服务
         const aiProvider = globalApiConfig.apiType.toLowerCase();
@@ -128,39 +148,94 @@ async function processBeautifyTask(taskId) {
         let usedBackupMode = false;
         
         try {
+            // 记录API配置状态
+            console.log(`任务 ${taskId} 的API配置检查:`);
+            
             // 确保API密钥有效
             const apiKey = globalApiConfig.apiKey;
-            if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
-                console.warn(`任务 ${taskId} 的API密钥无效或未提供，将使用本地备用模式`);
+            if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '' || apiKey.length < 10) {
+                console.warn(`任务 ${taskId} 的API密钥无效或未提供，详情: 类型=${typeof apiKey}, 长度=${apiKey ? apiKey.length : 0}`);
                 throw new Error('API密钥无效或未提供');
+            } else {
+                // 隐藏显示API密钥
+                console.log(`任务 ${taskId} 使用有效的API密钥: ${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}`);
             }
+            
+            // 参数检查与日志
+            const apiParams = aiProvider === 'deepseek' 
+                ? (globalApiConfig.apiParams?.deepseek || { temperature: 0.7, max_tokens: 8000 })
+                : (globalApiConfig.apiParams?.baidu || { temperature: 0.7, max_tokens: 4000 });
+                
+            console.log(`任务 ${taskId} 的API参数: ${JSON.stringify(apiParams)}`);
             
             if (aiProvider === 'deepseek') {
                 // 使用DeepSeek处理HTML
-                optimizedHTML = await aiOptimizer.processWithDeepseek(
-                    htmlContent,
-                    optimizationPrompt,
-                    apiKey,
-                    globalApiConfig.apiParams.deepseek
-                );
+                console.log(`任务 ${taskId} 开始使用DeepSeek处理，HTML长度=${htmlContent.length}`);
+                try {
+                    optimizedHTML = await aiOptimizer.processWithDeepseek(
+                        htmlContent,
+                        optimizationPrompt,
+                        apiKey,
+                        apiParams
+                    );
+                    
+                    if (!optimizedHTML) {
+                        console.error(`任务 ${taskId} DeepSeek返回了空内容`);
+                        throw new Error('DeepSeek API返回了空内容');
+                    }
+                    
+                    console.log(`任务 ${taskId} DeepSeek处理成功，结果长度=${optimizedHTML.length}`);
+                } catch (deepseekError) {
+                    console.error(`任务 ${taskId} DeepSeek处理失败:`, deepseekError);
+                    // 详细记录DeepSeek错误
+                    console.error(`任务 ${taskId} DeepSeek错误详情: 类型=${deepseekError.constructor.name}, 消息="${deepseekError.message}", 堆栈=${deepseekError.stack}`);
+                    throw deepseekError; // 重新抛出以便上层处理
+                }
             } else if (aiProvider === 'baidu') {
                 // 使用百度文心处理HTML
-                optimizedHTML = await aiOptimizer.beautifyWithBaidu(
-                    htmlContent,
-                    optimizationPrompt,
-                    apiKey,
-                    globalApiConfig.apiSecret,
-                    globalApiConfig.apiParams.baidu || { temperature: 0.7, max_tokens: 4000 }
-                );
+                console.log(`任务 ${taskId} 开始使用百度文心处理，HTML长度=${htmlContent.length}`);
+                try {
+                    optimizedHTML = await aiOptimizer.beautifyWithBaidu(
+                        htmlContent,
+                        optimizationPrompt,
+                        apiKey,
+                        globalApiConfig.apiSecret,
+                        apiParams
+                    );
+                    
+                    if (!optimizedHTML) {
+                        console.error(`任务 ${taskId} 百度文心返回了空内容`);
+                        throw new Error('百度文心API返回了空内容');
+                    }
+                    
+                    console.log(`任务 ${taskId} 百度文心处理成功，结果长度=${optimizedHTML.length}`);
+                } catch (baiduError) {
+                    console.error(`任务 ${taskId} 百度文心处理失败:`, baiduError);
+                    console.error(`任务 ${taskId} 百度文心错误详情: 类型=${baiduError.constructor.name}, 消息="${baiduError.message}", 堆栈=${baiduError.stack}`);
+                    throw baiduError; // 重新抛出以便上层处理
+                }
             } else {
                 // 默认使用DeepSeek
-                console.log(`不支持的AI提供商: ${aiProvider}，改用DeepSeek`);
-                optimizedHTML = await aiOptimizer.processWithDeepseek(
-                    htmlContent,
-                    optimizationPrompt,
-                    apiKey,
-                    globalApiConfig.apiParams.deepseek
-                );
+                console.log(`不支持的AI提供商: ${aiProvider}，改用DeepSeek处理任务 ${taskId}`);
+                try {
+                    optimizedHTML = await aiOptimizer.processWithDeepseek(
+                        htmlContent,
+                        optimizationPrompt,
+                        apiKey,
+                        globalApiConfig.apiParams.deepseek
+                    );
+                    
+                    if (!optimizedHTML) {
+                        console.error(`任务 ${taskId} DeepSeek返回了空内容`);
+                        throw new Error('DeepSeek API返回了空内容');
+                    }
+                    
+                    console.log(`任务 ${taskId} DeepSeek处理成功，结果长度=${optimizedHTML.length}`);
+                } catch (deepseekError) {
+                    console.error(`任务 ${taskId} DeepSeek处理失败:`, deepseekError);
+                    console.error(`任务 ${taskId} DeepSeek错误详情: 类型=${deepseekError.constructor.name}, 消息="${deepseekError.message}", 堆栈=${deepseekError.stack}`);
+                    throw deepseekError; // 重新抛出以便上层处理
+                }
             }
             
             if (!optimizedHTML) {
@@ -169,6 +244,7 @@ async function processBeautifyTask(taskId) {
             
         } catch (aiError) {
             console.error(`任务 ${taskId} AI处理失败:`, aiError);
+            console.error(`任务 ${taskId} AI错误堆栈:`, aiError.stack);
             
             // 不再尝试备用美化功能，而是直接将任务标记为失败
             clearTimeout(timeoutId);
