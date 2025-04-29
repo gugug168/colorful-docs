@@ -345,10 +345,98 @@ function getActiveTaskIds() {
         const status = window.taskStatus[taskId];
         const isStoppedInMainJs = window.activeTaskChecks && window.activeTaskChecks[taskId] === false;
         
-        return (!status || 
-               status === TASK_STATUS.PENDING || 
-               status === TASK_STATUS.PROCESSING) && 
-               !isStoppedInMainJs;
+        // 修改：首先检查是否需要验证数据库中的任务状态
+        if (!status || status === TASK_STATUS.PENDING || status === TASK_STATUS.PROCESSING) {
+            // 任务处于待处理或处理中状态，主动检查一下数据库中的真实状态
+            checkTaskRealStatus(taskId);
+            
+            // 重新获取状态值，这样即使checkTaskRealStatus是异步的，在下次循环中也能获取到更新后的状态
+            const updatedStatus = window.taskStatus[taskId];
+            
+            // 修改：根据更新后的状态决定是否将任务视为活跃
+            return (updatedStatus === TASK_STATUS.PENDING || updatedStatus === TASK_STATUS.PROCESSING) && !isStoppedInMainJs;
+        }
+        
+        return false; // 其他情况不视为活跃任务
+    });
+}
+
+/**
+ * 检查任务在数据库中的真实状态
+ * @param {string} taskId - 任务ID
+ */
+function checkTaskRealStatus(taskId) {
+    // 如果此任务已经在检查，则不重复检查
+    if (window.checkingTaskStatus && window.checkingTaskStatus[taskId]) {
+        return;
+    }
+    
+    // 初始化检查状态跟踪
+    window.checkingTaskStatus = window.checkingTaskStatus || {};
+    window.checkingTaskStatus[taskId] = true;
+    
+    // 添加时间戳防止缓存
+    const timestamp = new Date().getTime();
+    
+    // 发起一次数据库状态检查
+    fetch(`/check-task/${taskId}?t=${timestamp}`, {
+        headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`获取任务真实状态失败: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(`任务${taskId}数据库状态:`, data);
+        
+        // 如果数据库中任务已完成，更新本地状态
+        if (data.status === 'completed') {
+            console.log(`任务${taskId}在数据库中已完成，更新本地状态`);
+            window.taskStatus[taskId] = TASK_STATUS.COMPLETED;
+            
+            // 清理任务超时跟踪
+            if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
+                delete window.taskCheckStartTimes[taskId];
+            }
+            
+            // 确保在main.js中也标记为停止
+            if (window.activeTaskChecks) {
+                window.activeTaskChecks[taskId] = false;
+            }
+            
+            // 如果有结果，获取并显示
+            if (data.result) {
+                fetchTaskResult(taskId);
+            }
+        }
+        // 任务已失败
+        else if (data.status === 'failed') {
+            console.log(`任务${taskId}在数据库中已失败，更新本地状态`);
+            window.taskStatus[taskId] = TASK_STATUS.FAILED;
+            
+            // 清理任务超时跟踪
+            if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
+                delete window.taskCheckStartTimes[taskId];
+            }
+            
+            // 确保在main.js中也标记为停止
+            if (window.activeTaskChecks) {
+                window.activeTaskChecks[taskId] = false;
+            }
+        }
+    })
+    .catch(error => {
+        console.error(`检查任务${taskId}真实状态失败:`, error);
+    })
+    .finally(() => {
+        // 完成检查
+        window.checkingTaskStatus[taskId] = false;
     });
 }
 
@@ -391,7 +479,9 @@ function triggerTaskProcessing() {
     fetch(`/api/processTasks?t=${timestamp}`, {
         method: 'GET',
         headers: {
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         }
     })
     .then(response => {
@@ -457,6 +547,27 @@ function triggerTaskProcessing() {
             }
         } else if (data.message) {
             console.log(`API消息: ${data.message}`);
+            
+            // 修改：如果API返回"没有待处理任务"，主动检查所有待处理任务的真实状态
+            if (data.message === '没有待处理任务') {
+                const pendingTaskIds = getActiveTaskIds();
+                if (pendingTaskIds.length > 0) {
+                    console.log(`API返回没有待处理任务，但前端仍有${pendingTaskIds.length}个待处理任务，主动检查状态`);
+                    pendingTaskIds.forEach(taskId => {
+                        // 主动检查任务状态
+                        checkTaskRealStatus(taskId);
+                    });
+                    
+                    // 短暂延迟后再次检查待处理任务（等待异步状态检查完成）
+                    setTimeout(() => {
+                        const updatedPendingTaskIds = getActiveTaskIds();
+                        if (updatedPendingTaskIds.length === 0) {
+                            console.log('所有任务已完成或被移除，清理状态');
+                            cleanupTaskTracking();
+                        }
+                    }, 2000);
+                }
+            }
             
             // 检查是否有错误信息
             if (data.error) {
