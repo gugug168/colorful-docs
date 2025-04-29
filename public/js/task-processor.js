@@ -101,15 +101,15 @@ function initTaskProcessor() {
             if (processingTasks.length > 0) {
                 console.log('标记为处理中的任务:', processingTasks);
                 
-                // 检查这些处理中的任务是否已经超时（超过3分钟）
+                // 检查这些处理中的任务是否已经超时（超过2分钟）
                 const currentTime = Date.now();
                 const stillProcessing = processingTasks.filter(taskId => {
                     if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
                         const elapsedTime = currentTime - window.taskCheckStartTimes[taskId];
-                        const isTimeout = elapsedTime > 3 * 60 * 1000; // 3分钟
+                        const isTimeout = elapsedTime > 2 * 60 * 1000; // 改为2分钟
                         
                         if (isTimeout) {
-                            console.log(`任务 ${taskId} 已经处理超过3分钟，认为已超时`);
+                            console.log(`任务 ${taskId} 已经处理超过2分钟，认为已超时`);
                             // 将任务标记为失败
                             window.taskStatus[taskId] = TASK_STATUS.FAILED;
                             // 清理任务开始时间
@@ -153,7 +153,8 @@ function initTaskProcessor() {
                                 }
                             }
                             
-                            // 尝试通过API取消该任务
+                            // 尝试通过API取消该任务，并在Supabase中标记为失败
+                            updateTaskStatusInDatabase(taskId, 'failed', '任务处理超时');
                             cancelTimeoutTask(taskId);
                             
                             return false;
@@ -187,10 +188,13 @@ function initTaskProcessor() {
                     
                     if (oldestProcessingTask) {
                         const oldestElapsedTime = currentTime - window.taskCheckStartTimes[oldestProcessingTask];
-                        if (oldestElapsedTime > 5 * 60 * 1000) { // 5分钟
+                        if (oldestElapsedTime > 3 * 60 * 1000) { // 改为3分钟
                             console.warn('检测到任务处理时间过长，强制清理所有任务状态');
                             cleanupTaskTracking();
                             hasRealProcessingTask = false;
+                            
+                            // 尝试在数据库中将长时间处理的任务标记为失败
+                            updateTaskStatusInDatabase(oldestProcessingTask, 'failed', '强制清理：任务处理时间过长（超过3分钟）');
                         }
                     }
                 } else {
@@ -204,9 +208,9 @@ function initTaskProcessor() {
                     window.taskRetryCount[taskId] = 0;
                 }
                 
-                // 如果一个任务已经尝试了超过10次还是待处理，标记为失败
-                if (window.taskRetryCount[taskId] > 10) {
-                    console.log(`任务 ${taskId} 重试超过10次，标记为失败。日志如下：${getTaskLog(taskId)}`);
+                // 如果一个任务已经尝试了超过5次还是待处理，标记为失败
+                if (window.taskRetryCount[taskId] > 5) {
+                    console.log(`任务 ${taskId} 重试超过5次，标记为失败。日志如下：${getTaskLog(taskId)}`);
                     window.taskStatus[taskId] = TASK_STATUS.FAILED;
                     delete window.taskRetryCount[taskId];
                     
@@ -225,6 +229,9 @@ function initTaskProcessor() {
                             statusEl.classList.add('text-danger');
                         }
                     });
+                    
+                    // 尝试在数据库中更新任务状态为失败
+                    updateTaskStatusInDatabase(taskId, 'failed', '任务重试次数超过限制');
                 } else {
                     window.taskRetryCount[taskId]++;
                 }
@@ -238,12 +245,12 @@ function initTaskProcessor() {
             // 没有待处理任务，清理所有跟踪状态
             cleanupTaskTracking();
         }
-    }, 5000); // 每5秒检查一次
+    }, 3000); // 改为每3秒检查一次
     
     // 将定时器ID保存到window对象，以便需要时可以清除
     window.taskProcessorInterval = taskCheckInterval;
     
-    console.log('任务处理器已初始化，将每5秒检查一次待处理任务');
+    console.log('任务处理器已初始化，将每3秒检查一次待处理任务');
     
     // 立即触发一次任务处理
     setTimeout(triggerTaskProcessing, 1000);
@@ -276,6 +283,50 @@ function cleanupTaskTracking() {
 }
 
 /**
+ * 在数据库中更新任务状态
+ * @param {string} taskId - 任务ID
+ * @param {string} status - 新状态
+ * @param {string} errorMessage - 错误信息（可选）
+ */
+function updateTaskStatusInDatabase(taskId, status, errorMessage) {
+    console.log(`尝试在数据库中更新任务 ${taskId} 状态为 ${status}`);
+    
+    // 构建请求数据
+    const updateData = {
+        status: status
+    };
+    
+    // 如果提供了错误信息，添加到请求数据中
+    if (errorMessage) {
+        updateData.error = errorMessage;
+    }
+    
+    // 发送更新请求
+    fetch(`/api/update-task/${taskId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        },
+        body: JSON.stringify(updateData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`更新任务状态失败: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(`任务 ${taskId} 状态更新结果:`, data);
+    })
+    .catch(error => {
+        console.error(`更新任务 ${taskId} 状态失败:`, error);
+    });
+}
+
+/**
  * 尝试通过API取消超时任务
  * @param {string} taskId - 任务ID
  */
@@ -285,7 +336,10 @@ function cancelTimeoutTask(taskId) {
     fetch(`/api/cancelTask/${taskId}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache', 
+            'Expires': '0'
         }
     })
     .then(response => response.json())
@@ -428,6 +482,47 @@ function checkTaskRealStatus(taskId) {
             // 确保在main.js中也标记为停止
             if (window.activeTaskChecks) {
                 window.activeTaskChecks[taskId] = false;
+            }
+        }
+        // 检查任务是否超时（超过2分钟仍处于pending或processing状态）
+        else if (data.status === 'pending' || data.status === 'processing') {
+            // 检查任务创建时间
+            if (data.createdAt) {
+                const createdTime = new Date(data.createdAt).getTime();
+                const currentTime = Date.now();
+                const elapsedTime = currentTime - createdTime;
+                
+                // 如果任务已经创建超过2分钟但仍未完成
+                if (elapsedTime > 2 * 60 * 1000) {
+                    console.log(`任务${taskId}在数据库中已超过2分钟未完成，标记为失败`);
+                    
+                    // 更新本地状态
+                    window.taskStatus[taskId] = TASK_STATUS.FAILED;
+                    
+                    // 清理任务超时跟踪
+                    if (window.taskCheckStartTimes && window.taskCheckStartTimes[taskId]) {
+                        delete window.taskCheckStartTimes[taskId];
+                    }
+                    
+                    // 确保在main.js中也标记为停止
+                    if (window.activeTaskChecks) {
+                        window.activeTaskChecks[taskId] = false;
+                    }
+                    
+                    // 更新UI显示任务失败
+                    const taskElements = document.querySelectorAll(`[data-task-id="${taskId}"]`);
+                    taskElements.forEach(el => {
+                        const statusEl = el.querySelector('.task-status');
+                        if (statusEl) {
+                            statusEl.textContent = '处理失败（数据库超时）';
+                            statusEl.classList.remove('text-warning');
+                            statusEl.classList.add('text-danger');
+                        }
+                    });
+                    
+                    // 尝试在数据库中更新任务状态为失败
+                    updateTaskStatusInDatabase(taskId, 'failed', '任务处理超过2分钟超时');
+                }
             }
         }
     })
