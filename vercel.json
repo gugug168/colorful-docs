@@ -11,6 +11,15 @@
       }
     },
     { 
+      "src": "api/processTasks.js", 
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["utils/**", "data/**"],
+        "memory": 1024,
+        "maxDuration": 60
+      }
+    },
+    { 
       "src": "api/**/*.js", 
       "use": "@vercel/node",
       "config": {
@@ -34,11 +43,5 @@
     { "src": "/api/processTasks", "dest": "/api/processTasks.js" },
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "src": "/(.*)", "dest": "/app.js" }
-  ],
-  "functions": {
-    "api/processTasks.js": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  }
+  ]
 } 
