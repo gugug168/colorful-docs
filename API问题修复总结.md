@@ -16,6 +16,11 @@
 3. **路由混淆错误**：Vercel日志显示路由混淆
    - 错误: `/api/beautify-task.js@beautify-task.js`
 
+4. **Vercel配置问题**：
+   - 最初尝试同时使用`builds`和`functions`配置，这在Vercel中是不允许的
+   - 随后尝试将app.js作为函数处理，但Vercel要求所有函数必须在api目录中
+   - 需要调整配置，使其符合Vercel的文件系统路由规则
+
 ## 问题原因分析
 
 1. **重复路由定义**：
@@ -31,9 +36,9 @@
    - 在Vercel部署环境中路由规则不同，导致404错误
    - Vercel使用基于文件系统的路由，而我们的api/index.js使用自定义路由分发
 
-4. **Vercel配置问题**：
-   - 同时使用了`builds`和`functions`配置，这在Vercel中是不允许的
-   - 需要统一使用`functions`配置方式
+4. **Serverless架构问题**：
+   - Vercel需要API端点放在api目录下且使用特定的文件命名规则
+   - 每个URL参数需要使用`[param].js`格式创建文件
 
 ## 修复方案
 
@@ -51,10 +56,10 @@
    - 新增`api/update-task/[taskId].js`文件处理更新任务请求
    - 修改`api/processTasks.js`以适应Vercel环境
 
-4. **Vercel配置优化**：
-   - 更新`vercel.json`配置文件，使用`functions`而非`builds`
-   - 添加明确的API路由映射规则
-   - 保留原有的内存、持续时间和文件包含配置
+4. **Vercel配置调整**：
+   - 使用`functions`配置处理API请求
+   - 只为api目录下的文件配置函数属性
+   - 通过routes配置将URL模式映射到正确的处理函数
 
 ## 技术实现
 
@@ -77,34 +82,38 @@ module.exports = async (req, res) => {
 }
 ```
 
-3. **vercel.json函数配置**：
+3. **优化的vercel.json配置**：
 ```json
 {
   "functions": {
-    "app.js": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "includeFiles": "views/**,data/**,utils/**"
+    "api/check-task/[taskId].js": {
+      "includeFiles": "utils/**"
     },
-    "api/**/*.js": {
-      "memory": 1024,
-      "maxDuration": 30,
-      "includeFiles": "utils/**,data/**"
+    "api/update-task/[taskId].js": {
+      "includeFiles": "utils/**"
+    },
+    "api/processTasks.js": {
+      "includeFiles": "utils/**"
+    },
+    "api/beautify-task.js": {
+      "includeFiles": "utils/**"
     }
   },
   "routes": [
     { "src": "/api/check-task/(.*)", "dest": "/api/check-task/[taskId].js?taskId=$1" },
-    { "src": "/api/update-task/(.*)", "dest": "/api/update-task/[taskId].js?taskId=$1" }
+    { "src": "/api/update-task/(.*)", "dest": "/api/update-task/[taskId].js?taskId=$1" },
+    { "src": "/api/cancelTask/(.*)", "dest": "/api/cancelTask.js?taskId=$1" }
   ]
 }
 ```
 
 ## 总结
 
-这次修复解决了两个主要问题：
+这次修复解决了几个主要问题：
 
 1. 通过删除重复路由和统一API调用路径，解决了双重任务创建问题
 2. 通过创建Vercel兼容的API路由文件和配置，解决了404错误问题
-3. 将Vercel配置从`builds`改为`functions`，确保部署兼容性
+3. 将Vercel配置调整为仅使用`functions`，确保部署兼容性
+4. 使用文件系统路由规则，创建正确的URL参数处理文件
 
 修复后，美化文档功能将只创建一个任务，并能正确跟踪和显示任务状态和结果。修复同时兼容本地开发环境和Vercel部署环境。 

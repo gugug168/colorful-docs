@@ -1,34 +1,25 @@
 {
   "version": 2,
   "functions": {
-    "app.js": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "includeFiles": "views/**,data/**,utils/**,public/images/templates/**"
+    "api/check-task/[taskId].js": {
+      "includeFiles": "utils/**"
+    },
+    "api/update-task/[taskId].js": {
+      "includeFiles": "utils/**"
     },
     "api/processTasks.js": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "includeFiles": "utils/**,data/**"
+      "includeFiles": "utils/**"
     },
-    "api/**/*.js": {
-      "memory": 1024,
-      "maxDuration": 30,
-      "includeFiles": "utils/**,data/**"
+    "api/beautify-task.js": {
+      "includeFiles": "utils/**"
+    },
+    "api/cancelTask.js": {
+      "includeFiles": "utils/**"
     }
   },
   "routes": [
-    { "src": "/images/templates/(.*)", "dest": "/public/images/templates/$1" },
-    { "src": "/images/(.*)", "dest": "/public/images/$1" },
-    { "src": "/js/(.*)", "dest": "/public/js/$1" },
-    { "src": "/css/(.*)", "dest": "/public/css/$1" },
-    { "handle": "filesystem" },
     { "src": "/api/check-task/(.*)", "dest": "/api/check-task/[taskId].js?taskId=$1" },
     { "src": "/api/update-task/(.*)", "dest": "/api/update-task/[taskId].js?taskId=$1" },
-    { "src": "/api/processTasks", "dest": "/api/processTasks.js" },
-    { "src": "/api/beautify-task", "dest": "/api/beautify-task.js" },
-    { "src": "/api/cancelTask/(.*)", "dest": "/api/cancelTask.js?taskId=$1" },
-    { "src": "/api/(.*)", "dest": "/api/$1.js" },
-    { "src": "/(.*)", "dest": "/app.js" }
+    { "src": "/api/cancelTask/(.*)", "dest": "/api/cancelTask.js?taskId=$1" }
   ]
 } 
