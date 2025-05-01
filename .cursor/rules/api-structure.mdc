@@ -1,0 +1,55 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# API结构
+
+为解决Vercel Hobby计划限制最多12个Serverless函数的问题，本项目采用了API分组策略，将功能相似的API合并到单个Serverless函数中。
+还要注意Vercel中不能同时使用funtion和builds，本项目是使用funtion的。
+
+## API分组映射
+
+API通过[vercel.json](mdc:vercel.json)中的路由映射实现，使用`req.query.action`参数区分具体操作。
+
+### 文档相关API ([document-api.js](mdc:api/document-api.js))
+
+文档上传、处理和图像相关功能：
+
+- `/upload` → `action=upload` - 文档上传
+- `/api/beautify-task` → `action=beautify` - 创建美化任务
+- `/api/templates` → `action=templates` - 获取模板
+- `/api/image/colorize` → `action=colorize` - 图像上色
+- `/api/image/recolorize` → `action=recolorize` - 图像重新上色
+- `/api/document/apply-colorized-images` → `action=apply-colorized-images` - 应用上色图像
+- `/api/document/images` → `action=get-images` - 获取文档中的图像
+- `/api/config` → `action=config` - 获取配置信息
+
+### 任务相关API ([task-api.js](mdc:api/task-api.js))
+
+任务管理和状态更新：
+
+- `/api/check-task/(.*)` → `action=check&taskId=$1` - 检查任务状态
+- `/api/update-task/(.*)` → `action=update&taskId=$1` - 更新任务状态
+- `/api/processTasks` → `action=process` - 处理任务队列
+- `/api/cancelTask/(.*)` → `action=cancel&taskId=$1` - 取消任务
+- `/api/task-status` → `action=status` - 获取任务状态
+
+### 资源访问API ([resource-api.js](mdc:api/resource-api.js))
+
+文件下载、导出和预览：
+
+- `/download` → `action=download` - 下载文件
+- `/export` → `action=export` - 导出文件（HTML转DOCX/PDF）
+- `/preview/(.*)` → `action=preview&file=$1` - 预览文件
+- `/view-document/(.*)` → `action=view&file=$1` - 查看文档
+- `/api/proxy-image` → `action=proxy-image` - 图片代理功能
+
+## API使用示例
+
+```
+/api/task-api?action=check&taskId=123   // 检查任务状态
+/api/task-api?action=cancel&taskId=123  // 取消任务
+/api/document-api?action=upload         // 上传文档
+/api/resource-api?action=download&path=file.docx  // 下载文件
+

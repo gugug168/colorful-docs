@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 任务处理
+
+系统使用异步任务处理机制，解决Vercel函数执行时间限制的问题。主要通过[taskProcessor.js](mdc:utils/taskProcessor.js)和[supabaseClient.js](mdc:utils/supabaseClient.js)模块实现。
+
+## 任务生命周期
+
+1. **任务创建**：通过`createTask()`函数创建任务，分配唯一ID
+2. **任务排队**：新任务状态设为`pending`，等待处理
+3. **任务处理**：更新状态为`processing`，执行实际处理逻辑
+4. **任务完成/失败**：更新状态为`completed`或`failed`，存储结果或错误信息
+5. **任务清理**：过期任务自动清理
+
+## 任务状态
+
+- `pending` - 等待处理
+- `processing` - 处理中
+- `completed` - 处理完成
+- `failed` - 处理失败
+- `cancelled` - 用户取消
+
+## 任务数据存储
+
+任务数据存储在Supabase数据库的`tasks`表中：
+
+```sql
+create table tasks (
+  id uuid primary key,
+  status text,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  data jsonb,
+  result jsonb,
+  error text,
+  expires_at timestamp with time zone
+);
+```
+
+## 核心处理函数
+
+- `processTask(taskId)` - 任务处理主入口函数
+- `processBeautifyTask(taskId)` - 处理文档美化任务
+- `processAiOptimizationTask(task)` - 处理AI优化任务
+- `getTaskProgress(task)` - 计算任务进度
+
+## 任务查询与监控
+
+- 通过`getTask(taskId)`获取任务信息
+- 通过`getPendingTasks()`获取待处理任务列表
+- 通过`updateTaskStatus()`更新任务状态
+- 定期运行`cleanupExpiredTasks()`清理过期任务
+

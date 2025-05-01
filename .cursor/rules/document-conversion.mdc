@@ -1,0 +1,49 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 文档转换流程
+
+系统支持多种文档格式的转换，包括Word文档(DOCX)、PDF和HTML之间的相互转换。
+
+## 文档导入流程
+
+1. 用户上传文档（Word或PDF）
+2. 文档通过相应的转换工具转换为HTML
+   - Word转HTML：使用[docxConverter.js](mdc:utils/docxConverter.js)
+   - PDF转HTML：使用[pdfConverter.js](mdc:utils/pdfConverter.js)
+3. 转换过程中，图片被提取并单独保存
+4. 生成的HTML保留原始文档的结构和格式
+
+## 文档导出流程
+
+美化后的HTML可以导出为原始格式：
+
+1. 用户选择导出格式（Word或PDF）
+2. 系统调用[exportUtils.js](mdc:utils/exportUtils.js)中的相应函数
+   - HTML转Word：`exportToDocx()`
+   - HTML转PDF：`exportToPdf()`
+3. 生成的文件提供下载链接
+
+## 图片处理
+
+文档转换过程中的图片处理机制：
+
+- 图片提取并保存在`temp/images`目录
+- 在HTML中使用占位符替换图片
+- 美化处理中保留图片位置
+- 处理完成后恢复图片引用
+
+## HTML到WORD转换格式限制
+
+为确保AI优化后的HTML能成功转回WORD，系统限制了可用的HTML标签和CSS样式：
+
+- 颜色：`<span style="color:#FF0000">`
+- 高亮：`<span style="background-color:yellow">`
+- 加粗：`<b>` 或 `<strong>`
+- 下划线：`<u>`
+- 斜体：`<i>`
+
+系统不允许使用class、id、div布局或复杂CSS，以确保兼容性。
+

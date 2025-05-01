@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# AI集成
+
+本系统支持多种AI服务，用于文档的智能排版和美化，以及图片上色处理。主要通过[aiOptimizer.js](mdc:utils/aiOptimizer.js)模块实现。
+
+## 支持的AI模型
+
+系统支持多种AI服务提供商：
+
+- DeepSeek模型（默认）
+- 百度文心大模型
+- OpenAI模型（可选）
+- 阿里云通义千问模型（可选）
+
+## 核心AI处理函数
+
+- `processWithAI()` - 根据配置选择不同的AI服务
+- `processWithDeepseek()` - 使用DeepSeek处理HTML
+- `beautifyWithBaidu()` - 使用百度文心处理HTML
+- `beautifyWithRules()` - 本地规则处理（备用模式）
+
+## 优化提示生成
+
+`generateOptimizationPrompt()`函数根据目标格式和用户自定义要求生成优化提示：
+
+- Word格式 - 使用限制性HTML标签确保兼容性
+- PDF格式 - 优化排版和打印友好性
+- HTML格式 - 通用美化
+
+## 图像处理
+
+通过[imageColorizer.js](mdc:utils/imageColorizer.js)实现：
+
+- 黑白图像自动上色
+- 彩色图像色调优化
+- 图像应用到文档中
+
+## 备用处理机制
+
+当AI服务不可用时，系统会降级使用本地规则进行基本格式优化：
+
+- `fallbackProcessing()` - 失败时的降级处理
+- `basicEnhanceHtml()` - 基本HTML增强
+
