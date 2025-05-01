@@ -167,13 +167,30 @@ async function handleUpload(req, res) {
     // 解析表单数据
     const [fields, files] = await new Promise((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
+        // 添加日志记录解析结果
+        if (err) {
+          console.error('Formidable 解析错误:', err);
+          reject(err);
+          return;
+        }
+        console.log('Formidable 解析成功:', { fields: Object.keys(fields), files: Object.keys(files) });
+        if (files && typeof files === 'object') {
+            console.log('Files 对象内容:', Object.keys(files).map(key => ({ 
+                key: key, 
+                filename: files[key] ? files[key].originalFilename : 'N/A', 
+                size: files[key] ? files[key].size : 'N/A' 
+            })));
+        }
         resolve([fields, files]);
       });
     });
 
+    // 现在检查 files.file
+    console.log('检查 files.file ...');
     const uploadedFile = files.file;
     if (!uploadedFile) {
+      // 如果 files.file 不存在，记录 files 对象以供调试
+      console.error('错误: 未找到名为 \'file\' 的上传文件字段。 可用的文件字段:', Object.keys(files));
       return res.status(400).json({ success: false, error: '未提供文件' });
     }
 
