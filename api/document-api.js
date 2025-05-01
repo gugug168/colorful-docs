@@ -138,33 +138,28 @@ async function handleUpload(req, res) {
   try {
     debug('收到文件上传请求');
     
-    // 确保上传目录存在
-    const uploadDir = path.join(process.cwd(), 'tmp', 'uploads');
+    // 直接使用 /tmp 目录，这是Vercel唯一保证可写的目录
+    const uploadDir = path.join('/tmp', 'uploads'); 
     debug(`使用上传目录: ${uploadDir}`);
     
     try {
-      // 尝试创建目录
+      // 确保 /tmp/uploads 目录存在
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
         debug(`创建上传目录成功: ${uploadDir}`);
       }
     } catch (mkdirErr) {
-      console.error('创建上传目录失败:', mkdirErr);
-      // 尝试使用备用目录
-      const tmpDir = path.join('/tmp', 'uploads');
-      try {
-        if (!fs.existsSync(tmpDir)) {
-          fs.mkdirSync(tmpDir, { recursive: true });
-        }
-        debug(`使用备用上传目录: ${tmpDir}`);
-      } catch (tmpDirErr) {
-        console.error('创建备用上传目录失败:', tmpDirErr);
-      }
+      // 如果在 /tmp 下创建目录仍然失败，记录错误并返回
+      console.error(`创建上传目录 ${uploadDir} 失败:`, mkdirErr);
+      return res.status(500).json({
+        success: false,
+        error: `服务器无法创建临时上传目录: ${mkdirErr.message}`
+      });
     }
 
-    // 使用formidable解析表单
+    // 使用formidable解析表单，确保使用正确的uploadDir
     const form = new formidable.IncomingForm({
-      uploadDir: fs.existsSync(uploadDir) ? uploadDir : '/tmp',
+      uploadDir: uploadDir, // 直接使用确保存在的 /tmp 目录
       keepExtensions: true,
       maxFileSize: 50 * 1024 * 1024, // 50MB限制
     });
