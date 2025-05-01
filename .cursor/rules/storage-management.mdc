@@ -1,5 +1,54 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+# 存储管理
+
+系统使用[Supabase](mdc:https:/supabase.com)作为主要的存储和数据库解决方案，通过[supabaseClient.js](mdc:utils/supabaseClient.js)模块实现。
+
+## Supabase存储桶
+
+系统使用以下存储桶：
+
+- `uploads` - 存储上传的原始文件
+- `files` - 存储处理后的文件
+- `templates` - 存储文档模板（可选）
+
+## 文件命名和路径管理
+
+为确保文件名的唯一性和安全性：
+
+- 生成基于时间戳和哈希的唯一文件名
+- 使用`sanitizeFilePath()`函数清理文件路径
+- 处理文件扩展名和MIME类型
+
+## 本地文件系统目录
+
+系统也使用本地文件系统作为临时存储：
+
+- `/tmp/uploads` - 临时存储上传文件
+- `/tmp/temp` - 处理中的临时文件
+- `/tmp/downloads` - 处理完成的文件，供下载
+
+对于Vercel环境，使用`/tmp`目录以符合无服务器环境的要求。
+对于本地开发环境，使用项目目录下的相应文件夹。
+
+## 文件上传与下载
+
+主要功能实现在[supabaseClient.js](mdc:utils/supabaseClient.js)中：
+
+- `uploadFile()` - 上传文件到Supabase
+- `getFile()` - 从Supabase下载文件
+- `getPublicUrl()` - 获取文件的公共URL
+- `listFiles()` - 列出存储桶中的文件
+- `deleteFile()` - 删除文件
+
+## 错误处理与备用机制
+
+当Supabase存储不可用时：
+
+- 系统会退回到使用本地文件系统
+- 提供备用的本地URL路径
+- 记录警告并继续处理流程
+

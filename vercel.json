@@ -29,6 +29,10 @@
     { "src": "/export", "dest": "/api/resource-api.js?action=export" },
     { "src": "/preview/(.*)", "dest": "/api/resource-api.js?action=preview&file=$1" },
     { "src": "/view-document/(.*)", "dest": "/api/resource-api.js?action=view&file=$1" },
-    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" }
+    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" },
+    { "src": "/", "dest": "/views/landing.html" },
+    { "src": "/app", "dest": "/views/index.html" },
+    { "src": "/test-deepseek", "dest": "/views/test-deepseek.html" },
+    { "src": "/upload", "dest": "/api/document-api.js?action=upload" }
   ]
 } 

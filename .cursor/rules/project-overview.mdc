@@ -1,7 +1,43 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
-# ��Ŀ���� 
-����һ���ĵ��Ű�������ϵͳ���ܹ����û��ϴ����ĵ�ת��ΪHTML��ʽ������AI����������������Ű���ص�֪ʶͻ����ʾ����֧�ֽ���������ĵ�����Ϊԭ��ʽ�� 
+# 项目概述
+
+这是一个文档排版与美化系统，能够将用户上传的文档转换为HTML格式，利用AI技术对其进行智能排版和重点知识突出显示，并支持将美化后的文档导出为原格式。
+
+## 项目架构
+
+项目基于Vercel部署，使用Supabase进行存储和数据库管理，采用异步任务处理AI美化请求，以减少Vercel的代码运行时间。
+
+### 核心文件
+
+- [app.js](mdc:app.js) - 主应用入口
+- [vercel.json](mdc:vercel.json) - Vercel配置文件，包含API路由映射
+
+### API结构
+
+为了符合Vercel Hobby计划12个函数的限制，API采用了分组策略：
+
+- [api/document-api.js](mdc:api/document-api.js) - 处理文档相关操作（上传、美化、模板、图像处理）
+- [api/task-api.js](mdc:api/task-api.js) - 处理任务相关操作（创建、查询、更新、取消）
+- [api/resource-api.js](mdc:api/resource-api.js) - 处理资源访问相关操作（下载、导出、预览）
+
+### 工具函数
+
+- [utils/supabaseClient.js](mdc:utils/supabaseClient.js) - Supabase客户端配置和操作
+- [utils/taskProcessor.js](mdc:utils/taskProcessor.js) - 异步任务处理的核心模块
+- [utils/aiOptimizer.js](mdc:utils/aiOptimizer.js) - AI优化处理，支持多种AI服务
+- [utils/fileManager.js](mdc:utils/fileManager.js) - 文件管理工具
+- [utils/htmlUtils.js](mdc:utils/htmlUtils.js) - HTML处理工具
+- [utils/exportUtils.js](mdc:utils/exportUtils.js) - 导出功能实现
+
+## 数据流
+
+1. 用户上传文档 → document-api.js
+2. 创建异步任务 → supabaseClient.js
+3. 任务处理 → taskProcessor.js
+4. AI美化 → aiOptimizer.js
+5. 结果预览与导出 → resource-api.js
+
