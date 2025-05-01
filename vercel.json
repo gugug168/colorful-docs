@@ -12,7 +12,14 @@
     }
   },
   "routes": [
+
+    { "src": "/", "dest": "/landing.html" },
+    { "src": "/app", "dest": "/index.html" },
+    { "src": "/test-deepseek", "dest": "/test-deepseek.html" },
     { "src": "/upload", "dest": "/api/document-api.js?action=upload" },
+    { "src": "/admin", "dest": "/admin.html" },
+
+
     { "src": "/api/beautify-task", "dest": "/api/document-api.js?action=beautify" },
     { "src": "/api/templates", "dest": "/api/document-api.js?action=templates" },
     { "src": "/api/image/colorize", "dest": "/api/document-api.js?action=colorize" },
@@ -29,10 +36,7 @@
     { "src": "/export", "dest": "/api/resource-api.js?action=export" },
     { "src": "/preview/(.*)", "dest": "/api/resource-api.js?action=preview&file=$1" },
     { "src": "/view-document/(.*)", "dest": "/api/resource-api.js?action=view&file=$1" },
-    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" },
-    { "src": "/", "dest": "/views/landing.html" },
-    { "src": "/app", "dest": "/views/index.html" },
-    { "src": "/test-deepseek", "dest": "/views/test-deepseek.html" },
-    { "src": "/upload", "dest": "/api/document-api.js?action=upload" }
+    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" }
+
   ]
 } 
