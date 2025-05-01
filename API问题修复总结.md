@@ -84,12 +84,12 @@ module.exports = async (req, res) => {
     "app.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": ["views/**", "data/**", "utils/**"]
+      "includeFiles": "views/**,data/**,utils/**"
     },
     "api/**/*.js": {
       "memory": 1024,
       "maxDuration": 30,
-      "includeFiles": ["utils/**", "data/**"]
+      "includeFiles": "utils/**,data/**"
     }
   },
   "routes": [

@@ -4,17 +4,17 @@
     "app.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": ["views/**", "data/**", "utils/**", "public/images/templates/**"]
+      "includeFiles": "views/**,data/**,utils/**,public/images/templates/**"
     },
     "api/processTasks.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": ["utils/**", "data/**"]
+      "includeFiles": "utils/**,data/**"
     },
     "api/**/*.js": {
       "memory": 1024,
       "maxDuration": 30,
-      "includeFiles": ["utils/**", "data/**"]
+      "includeFiles": "utils/**,data/**"
     }
   },
   "routes": [
