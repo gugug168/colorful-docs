@@ -1,25 +1,34 @@
 {
   "version": 2,
   "functions": {
-    "api/check-task/[taskId].js": {
+    "api/document-api.js": {
       "includeFiles": "utils/**"
     },
-    "api/update-task/[taskId].js": {
+    "api/task-api.js": {
       "includeFiles": "utils/**"
     },
-    "api/processTasks.js": {
-      "includeFiles": "utils/**"
-    },
-    "api/beautify-task.js": {
-      "includeFiles": "utils/**"
-    },
-    "api/cancelTask.js": {
+    "api/resource-api.js": {
       "includeFiles": "utils/**"
     }
   },
   "routes": [
-    { "src": "/api/check-task/(.*)", "dest": "/api/check-task/[taskId].js?taskId=$1" },
-    { "src": "/api/update-task/(.*)", "dest": "/api/update-task/[taskId].js?taskId=$1" },
-    { "src": "/api/cancelTask/(.*)", "dest": "/api/cancelTask.js?taskId=$1" }
+    { "src": "/upload", "dest": "/api/document-api.js?action=upload" },
+    { "src": "/api/beautify-task", "dest": "/api/document-api.js?action=beautify" },
+    { "src": "/api/templates", "dest": "/api/document-api.js?action=templates" },
+    { "src": "/api/image/colorize", "dest": "/api/document-api.js?action=colorize" },
+    { "src": "/api/image/recolorize", "dest": "/api/document-api.js?action=recolorize" },
+    { "src": "/api/document/apply-colorized-images", "dest": "/api/document-api.js?action=apply-colorized-images" },
+    { "src": "/api/document/images", "dest": "/api/document-api.js?action=get-images" },
+    { "src": "/api/config", "dest": "/api/document-api.js?action=config" },
+    { "src": "/api/check-task/(.*)", "dest": "/api/task-api.js?action=check&taskId=$1" },
+    { "src": "/api/update-task/(.*)", "dest": "/api/task-api.js?action=update&taskId=$1" },
+    { "src": "/api/processTasks", "dest": "/api/task-api.js?action=process" },
+    { "src": "/api/cancelTask/(.*)", "dest": "/api/task-api.js?action=cancel&taskId=$1" },
+    { "src": "/api/task-status", "dest": "/api/task-api.js?action=status" },
+    { "src": "/download", "dest": "/api/resource-api.js?action=download" },
+    { "src": "/export", "dest": "/api/resource-api.js?action=export" },
+    { "src": "/preview/(.*)", "dest": "/api/resource-api.js?action=preview&file=$1" },
+    { "src": "/view-document/(.*)", "dest": "/api/resource-api.js?action=view&file=$1" },
+    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" }
   ]
 } 

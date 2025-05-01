@@ -5,7 +5,92 @@
 #重点和重复出现的问题
 1、我是使用vercel的环境变量
 2、在vercel.json中The `functions` property cannot be used in conjunction with the `builds` property. Please remove one of them.'functions' 属性不能与 'builds' 属性一起使用。请删除其中一个。
-3、
+3、我要用免费的VERCEL计划，Serverless函数不要超过12个。
+
+## Vercel免费计划Serverless函数限制解决方案
+
+Vercel的Hobby（免费）计划限制部署不能超过12个Serverless函数。为了解决这个问题，我们采用了API分组策略，将功能相似的API合并到单个Serverless函数中：
+
+### API分组策略
+
+我们将所有API按功能分为三大类：
+
+1. **document-api.js** - 处理文档相关操作
+   - 文档上传与转换
+   - 文档美化与处理
+   - 文档模板管理
+   - 图像处理相关功能
+
+2. **task-api.js** - 处理任务相关操作
+   - 任务创建与查询
+   - 任务状态更新
+   - 任务队列处理
+   - 任务取消功能
+
+3. **resource-api.js** - 处理资源访问相关操作
+   - 文件下载功能
+   - 文件导出功能（HTML转DOCX/PDF）
+   - 文档预览
+   - 图片代理功能
+
+每个API文件内部通过`req.query.action`参数区分具体操作，例如：
+```
+/api/task-api?action=check&taskId=123   // 检查任务状态
+/api/task-api?action=cancel&taskId=123  // 取消任务
+/api/document-api?action=upload         // 上传文档
+/api/resource-api?action=download&path=file.docx  // 下载文件
+```
+
+### 优势
+
+- 符合Vercel Hobby计划12个函数的限制
+- 保持所有原始功能完整
+- 前端代码无需大量修改，只需更改API路径
+- 代码组织更加清晰，便于维护
+- 相关功能集中在同一文件，降低了代码重复
+
+### 实现方式
+
+在`vercel.json`中，我们通过如下配置将所有API请求映射到三个主要函数：
+
+```json
+{
+  "version": 2,
+  "functions": {
+    "api/document-api.js": {
+      "includeFiles": "utils/**"
+    },
+    "api/task-api.js": {
+      "includeFiles": "utils/**"
+    },
+    "api/resource-api.js": {
+      "includeFiles": "utils/**"
+    }
+  },
+  "routes": [
+    { "src": "/upload", "dest": "/api/document-api.js?action=upload" },
+    { "src": "/api/beautify-task", "dest": "/api/document-api.js?action=beautify" },
+    { "src": "/api/templates", "dest": "/api/document-api.js?action=templates" },
+    { "src": "/api/image/colorize", "dest": "/api/document-api.js?action=colorize" },
+    { "src": "/api/image/recolorize", "dest": "/api/document-api.js?action=recolorize" },
+    { "src": "/api/document/apply-colorized-images", "dest": "/api/document-api.js?action=apply-colorized-images" },
+    { "src": "/api/document/images", "dest": "/api/document-api.js?action=get-images" },
+    { "src": "/api/config", "dest": "/api/document-api.js?action=config" },
+    { "src": "/api/check-task/(.*)", "dest": "/api/task-api.js?action=check&taskId=$1" },
+    { "src": "/api/update-task/(.*)", "dest": "/api/task-api.js?action=update&taskId=$1" },
+    { "src": "/api/processTasks", "dest": "/api/task-api.js?action=process" },
+    { "src": "/api/cancelTask/(.*)", "dest": "/api/task-api.js?action=cancel&taskId=$1" },
+    { "src": "/api/task-status", "dest": "/api/task-api.js?action=status" },
+    { "src": "/download", "dest": "/api/resource-api.js?action=download" },
+    { "src": "/export", "dest": "/api/resource-api.js?action=export" },
+    { "src": "/preview/(.*)", "dest": "/api/resource-api.js?action=preview&file=$1" },
+    { "src": "/view-document/(.*)", "dest": "/api/resource-api.js?action=view&file=$1" },
+    { "src": "/api/proxy-image", "dest": "/api/resource-api.js?action=proxy-image" }
+  ]
+}
+```
+
+这种方法确保我们能够在Vercel免费计划的限制范围内运行所有必要的服务器功能。函数配置中的`includeFiles`参数确保了utils目录下的所有工具函数可以被API函数访问。
 
 ## 项目概述
 本项目旨在开发一个文档排版与美化系统，能够将用户上传的文档转换为HTML格式，利用AI技术对其进行智能排版和重点知识突出显示，并支持将美化后的文档导出为原格式。系统不会影响原文档中的图片展示，同时能够对重点字句进行字体变色、加粗等处理。
@@ -110,7 +195,9 @@ colorful-docs/
   ├── app.js            // 主应用入口
   ├── vercel.json       // Vercel配置文件
   ├── api/              // Serverless API函数
-  │   └── process.js    // 处理API请求
+  │   ├── document-api.js  // 文档处理API（上传、美化、模板）
+  │   ├── task-api.js      // 任务管理API（创建、检查、取消）
+  │   └── resource-api.js  // 资源访问API（下载、导出、预览）
   ├── routes/           // 路由处理
   │   ├── upload.js     // 上传路由
   │   ├── process.js    // 处理路由
@@ -123,6 +210,7 @@ colorful-docs/
       ├── validatorUtils.js    // 表单验证工具
       ├── aiOptimizer.js       // AI优化处理
       ├── htmlUtils.js         // HTML处理工具
+      ├── exportUtils.js       // 导出工具函数
       └── imageColorizer.js    // 图片处理工具
 ```
 
@@ -279,6 +367,7 @@ generateOptimizationPrompt() // 生成优化提示
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
     "axios": "^0.27.2",
+    "busboy": "^1.6.0",
     "express": "^4.18.2",
     "html-pdf-node": "^1.0.8",
     "html-to-docx": "^1.6.5",
@@ -297,18 +386,22 @@ generateOptimizationPrompt() // 生成优化提示
 **问题**: Vercel函数执行超过10秒会终止  
 **解决方案**: 使用异步任务处理机制，将长时间运行的任务存储在Supabase，然后使用单独的处理器处理
 
-### 2. 文件大小限制
+### 2. Vercel Serverless函数数量限制
+**问题**: Vercel Hobby计划限制最多12个Serverless函数  
+**解决方案**: 采用API分组策略，将功能相似的API合并到单个Serverless函数中，使用query参数区分不同操作。具体实现见"Vercel免费计划Serverless函数限制解决方案"部分。
+
+### 3. 文件大小限制
 **问题**: Vercel和Supabase对文件大小有限制  
 **解决方案**: 
 - 在前端添加文件大小验证
 - 实现文件分块上传(大文件)
 - 优化图片和内容以减小文件大小
 
-### 3. AI服务不可用
+### 4. AI服务不可用
 **问题**: AI服务可能暂时不可用  
 **解决方案**: 实现本地备用处理逻辑(`beautifyWithRules`函数)
 
-### 4. 处理任务失败
+### 5. 处理任务失败
 **问题**: 任务可能因各种原因失败  
 **解决方案**:
 - 实现详细的错误记录
