@@ -185,15 +185,17 @@ async function handleUpload(req, res) {
       });
     });
 
-    // 现在检查 files.file
-    console.log('检查 files.file ...');
-    const uploadedFile = files.file;
+    // 现在检查文件字段，根据日志，前端使用的是 'document'
+    console.log('检查 files.document ...');
+    const uploadedFile = files.document;
     if (!uploadedFile) {
-      // 如果 files.file 不存在，记录 files 对象以供调试
-      console.error('错误: 未找到名为 \'file\' 的上传文件字段。 可用的文件字段:', Object.keys(files));
-      return res.status(400).json({ success: false, error: '未提供文件' });
+      // 如果 files.document 仍然不存在，记录 files 对象以供调试
+      console.error('错误: 未找到名为 \'document\' 的上传文件字段。 可用的文件字段:', Object.keys(files));
+      return res.status(400).json({ success: false, error: '未提供文件（字段名应为document）' });
     }
 
+    // 文件找到了，继续处理
+    console.log('成功获取文件字段 \'document\'.');
     const originalFilename = uploadedFile.originalFilename || uploadedFile.name || 'unnamed_file';
     debug(`接收到文件: ${originalFilename}`);
     
