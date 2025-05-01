@@ -3423,7 +3423,7 @@ $(document).ready(function() {
       };
       
       // 打开连接并发送请求
-      xhr.open('POST', '/beautify', true);
+      xhr.open('POST', '/api/beautify-task', true);
       xhr.send(formData);
       
       // 返回一个函数，用于主动中止请求
