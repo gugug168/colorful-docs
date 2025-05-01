@@ -15,6 +15,7 @@ const beautifyTask = require('./beautify-task');
 const templates = require('./templates');
 const download = require('./download');
 const cancelTask = require('./cancelTask');
+const updateTask = require('./update-task');
 
 /**
  * API路由适配器
@@ -30,6 +31,14 @@ module.exports = async (req, res) => {
     return await processTasks(req, res);
   } else if (url.includes('/check-task/') || url.includes('/check-task')) {
     return await checkTask(req, res);
+  } else if (url.includes('/update-task/')) {
+    // 从URL中提取任务ID
+    const taskIdMatch = url.match(/\/update-task\/([^\/\?]+)/);
+    if (taskIdMatch && taskIdMatch[1]) {
+      req.query = req.query || {};
+      req.query.taskId = taskIdMatch[1];
+    }
+    return await updateTask(req, res);
   } else if (url.includes('/task')) {
     return await task(req, res);
   } else if (url.includes('/upload')) {

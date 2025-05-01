@@ -301,8 +301,11 @@ function updateTaskStatusInDatabase(taskId, status, errorMessage) {
         updateData.error = errorMessage;
     }
     
+    // 确定API基础URL（支持本地开发和Vercel部署环境）
+    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    
     // 发送更新请求
-    fetch(`/api/update-task/${taskId}`, {
+    fetch(`${apiBase}/update-task/${taskId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -333,7 +336,10 @@ function updateTaskStatusInDatabase(taskId, status, errorMessage) {
 function cancelTimeoutTask(taskId) {
     console.log(`尝试取消超时任务: ${taskId}`);
     
-    fetch(`/api/cancelTask/${taskId}`, {
+    // 确定API基础URL（支持本地开发和Vercel部署环境）
+    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    
+    fetch(`${apiBase}/cancelTask/${taskId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -432,8 +438,11 @@ function checkTaskRealStatus(taskId) {
     // 添加时间戳防止缓存
     const timestamp = new Date().getTime();
     
+    // 确定API基础URL（支持本地开发和Vercel部署环境）
+    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    
     // 发起一次数据库状态检查
-    fetch(`/check-task/${taskId}?t=${timestamp}`, {
+    fetch(`${apiBase}/check-task/${taskId}?t=${timestamp}`, {
         headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
@@ -570,8 +579,11 @@ function triggerTaskProcessing() {
     // 添加时间戳防止缓存
     const timestamp = new Date().getTime();
     
+    // 确定API基础URL（支持本地开发和Vercel部署环境）
+    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    
     // 调用任务处理API
-    fetch(`/api/processTasks?t=${timestamp}`, {
+    fetch(`${apiBase}/processTasks?t=${timestamp}`, {
         method: 'GET',
         headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -704,8 +716,11 @@ function fetchTaskResult(taskId) {
     // 添加时间戳防止缓存
     const timestamp = new Date().getTime();
     
+    // 确定API基础URL（支持本地开发和Vercel部署环境）
+    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    
     // 请求任务详情
-    fetch(`/check-task/${taskId}?t=${timestamp}`, {
+    fetch(`${apiBase}/check-task/${taskId}?t=${timestamp}`, {
         headers: {
             'Cache-Control': 'no-cache'
         }
