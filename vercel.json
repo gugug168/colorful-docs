@@ -1,46 +1,33 @@
 {
   "version": 2,
-  "builds": [
-    { 
-      "src": "app.js", 
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["views/**", "data/**", "utils/**", "public/images/templates/**"],
-        "memory": 1024,
-        "maxDuration": 60
-      }
+  "functions": {
+    "app.js": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "includeFiles": ["views/**", "data/**", "utils/**", "public/images/templates/**"]
     },
-    { 
-      "src": "api/processTasks.js", 
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["utils/**", "data/**"],
-        "memory": 1024,
-        "maxDuration": 60
-      }
+    "api/processTasks.js": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "includeFiles": ["utils/**", "data/**"]
     },
-    { 
-      "src": "api/**/*.js", 
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["utils/**", "data/**"],
-        "memory": 1024,
-        "maxDuration": 30
-      }
-    },
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
+    "api/**/*.js": {
+      "memory": 1024,
+      "maxDuration": 30,
+      "includeFiles": ["utils/**", "data/**"]
     }
-  ],
+  },
   "routes": [
     { "src": "/images/templates/(.*)", "dest": "/public/images/templates/$1" },
     { "src": "/images/(.*)", "dest": "/public/images/$1" },
     { "src": "/js/(.*)", "dest": "/public/js/$1" },
     { "src": "/css/(.*)", "dest": "/public/css/$1" },
     { "handle": "filesystem" },
-    { "src": "/beautify", "dest": "/app.js" },
+    { "src": "/api/check-task/(.*)", "dest": "/api/check-task/[taskId].js?taskId=$1" },
+    { "src": "/api/update-task/(.*)", "dest": "/api/update-task/[taskId].js?taskId=$1" },
     { "src": "/api/processTasks", "dest": "/api/processTasks.js" },
+    { "src": "/api/beautify-task", "dest": "/api/beautify-task.js" },
+    { "src": "/api/cancelTask/(.*)", "dest": "/api/cancelTask.js?taskId=$1" },
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "src": "/(.*)", "dest": "/app.js" }
   ]

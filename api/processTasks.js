@@ -3,145 +3,111 @@
  * 用于处理Supabase中的pending状态任务
  */
 
-const { supabase } = require('../utils/supabaseClient');
+const { createClient } = require('@supabase/supabase-js');
 const { processTask } = require('../utils/taskProcessor');
+
+// 创建Supabase客户端
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+let supabase;
+try {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('缺少Supabase配置');
+  }
+  supabase = createClient(supabaseUrl, supabaseKey);
+} catch (err) {
+  console.error('Supabase客户端创建失败:', err);
+  // 创建虚拟客户端，避免空引用错误
+  supabase = {
+    from: () => ({
+      select: () => ({ data: null, error: { message: 'Supabase未配置' } })
+    })
+  };
+}
 
 /**
  * 处理请求
  */
 module.exports = async (req, res) => {
-    console.log('任务处理API被调用');
+    // 启用CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    // 设置较长的响应超时时间
-    res.setTimeout(55000, () => {
-        console.log('响应超时，但后台任务会继续执行');
-        // 当请求即将超时时，发送一个200响应，避免客户端收到504
-        if (!res.headersSent) {
-            res.status(200).json({
-                success: true,
-                message: '任务已接收，正在后台继续处理',
-                isAsync: true
-            });
-        }
-    });
+    // 处理OPTIONS请求
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
     
-    // 验证密钥 (简单保护，防止未授权访问)
-    const apiKey = req.headers['x-api-key'] || req.query.apiKey;
-    const expectedKey = process.env.TASK_PROCESSOR_API_KEY;
-    
-    if (expectedKey && apiKey !== expectedKey) {
-        console.error('API密钥验证失败');
-        return res.status(401).json({ success: false, error: '未授权访问' });
+    // 只处理GET请求
+    if (req.method !== 'GET') {
+        return res.status(405).json({
+            success: false,
+            error: '方法不允许'
+        });
     }
     
     try {
-        // 添加请求参数日志
-        console.log('请求方法:', req.method);
-        console.log('请求查询参数:', JSON.stringify(req.query));
-        console.log('是否有请求体:', !!req.body);
+        console.log('查找待处理任务...');
         
-        // 从Supabase获取pending状态的任务
-        console.log('查询pending状态的任务...');
+        // 查询待处理的任务
+        let { data: pendingTasks, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(1);
         
-        let supabaseQuery;
-        try {
-            supabaseQuery = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('status', 'pending')
-                .order('created_at', { ascending: true }) // 先处理最早创建的任务
-                .limit(1);
-        } catch (queryError) {
-            console.error('Supabase查询出错:', queryError);
-            return res.status(500).json({ 
-                success: false, 
-                error: '数据库查询失败', 
-                details: queryError.message 
-            });
-        }
-        
-        const { data: tasks, error } = supabaseQuery;
-
         if (error) {
-            console.error('查询任务失败:', error);
-            return res.status(500).json({ 
-                success: false, 
-                error: '查询任务失败', 
-                details: error.message,
-                hint: '请检查Supabase连接和权限'
+            console.error('查询待处理任务失败:', error);
+            return res.status(500).json({
+                success: false,
+                error: error.message
             });
         }
-
-        // 如果没有pending任务
-        if (!tasks || tasks.length === 0) {
-            console.log('没有找到pending状态的任务');
-            return res.status(200).json({ 
-                success: true, 
-                message: '没有待处理任务' 
+        
+        // 如果没有待处理任务
+        if (!pendingTasks || pendingTasks.length === 0) {
+            console.log('没有待处理任务');
+            return res.status(200).json({
+                success: true,
+                message: '没有待处理任务'
             });
         }
-
-        // 处理找到的第一个pending任务
-        const task = tasks[0];
-        console.log(`找到待处理任务: ID=${task.id}, 创建时间=${task.created_at}`);
-
-        // 使用Promise.race和超时控制处理超时
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('任务处理超时')), 50000); // 50秒超时
-        });
         
-        // 创建处理任务的Promise
-        const processingPromise = (async () => {
-            console.log(`开始处理任务 ${task.id}...`);
-            return await processTask(task.id);
-        })();
+        // 获取第一个待处理任务
+        const task = pendingTasks[0];
+        console.log(`找到待处理任务: ${task.id}`);
         
-        // 使用Promise.race来实现超时控制
-        let result;
-        try {
-            result = await Promise.race([processingPromise, timeoutPromise]);
-            console.log(`任务 ${task.id} 处理完成，结果:`, result.success ? '成功' : '失败');
-        } catch (timeoutError) {
-            console.log(`任务 ${task.id} 处理超时，但会在后台继续处理`);
-            if (!res.headersSent) {
-                return res.status(202).json({
-                    success: true,
-                    processed: false,
-                    taskId: task.id,
-                    message: '任务处理超时，但会在后台继续处理',
-                    isAsync: true
-                });
-            }
-            return;
+        // 更新任务状态为处理中
+        const { error: updateError } = await supabase
+            .from('tasks')
+            .update({ status: 'processing', updated_at: new Date().toISOString() })
+            .eq('id', task.id);
+        
+        if (updateError) {
+            console.error(`更新任务 ${task.id} 状态失败:`, updateError);
+            // 继续处理，不中断流程
         }
         
-        // 如果已经发送了超时响应，直接返回
-        if (res.headersSent) {
-            console.log('响应已发送，不再发送新响应');
-            return;
-        }
-
-        // 返回处理结果
+        // 返回任务ID
         return res.status(200).json({
             success: true,
-            processed: true,
+            message: '发现待处理任务',
             taskId: task.id,
-            result: result
+            task: {
+                id: task.id,
+                type: task.type || task.data?.taskType || 'beautify',
+                status: 'processing',
+                data: task.data
+            }
         });
     } catch (error) {
-        console.error('处理任务时出错:', error);
-        console.error('错误堆栈:', error.stack);
-        
-        // 如果已经发送了超时响应，直接返回
-        if (res.headersSent) {
-            console.log('响应已发送，不再发送错误响应');
-            return;
-        }
-        
+        console.error('处理任务API错误:', error);
         return res.status(500).json({
             success: false,
-            error: `处理任务时出错: ${error.message}`,
-            details: error.stack
+            error: error.message || '服务器内部错误'
         });
     }
 }; 
