@@ -575,6 +575,38 @@ async function cleanupExpiredTasks() {
     }
 }
 
+/**
+ * 获取待处理的任务
+ * @returns {Promise<Object>} - 待处理任务列表
+ */
+async function getPendingTasks() {
+    try {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(10);
+            
+        if (error) {
+            console.error('获取待处理任务失败:', error);
+            throw error;
+        }
+        
+        return {
+            success: true,
+            tasks: data
+        };
+    } catch (error) {
+        console.error('获取待处理任务失败:', error);
+        return {
+            success: false,
+            error: error.message,
+            tasks: []
+        };
+    }
+}
+
 module.exports = {
     supabase,
     uploadFile,
@@ -585,5 +617,6 @@ module.exports = {
     createTask,
     updateTaskStatus,
     getTask,
-    cleanupExpiredTasks
+    cleanupExpiredTasks,
+    getPendingTasks
 }; 

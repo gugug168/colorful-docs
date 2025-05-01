@@ -3,7 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const formidable = require('formidable');
 const fs = require('fs');
 const path = require('path');
-const { nanoid } = require('nanoid');
 const sanitize = require('sanitize-filename');
 const { v4: uuidv4 } = require('uuid');
 
