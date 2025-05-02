@@ -185,25 +185,49 @@ async function handleUpload(req, res) {
       });
     });
 
-    // 现在检查文件字段，根据日志，前端使用的是 'document'
+    // 现在检查文件字段
     console.log('检查 files.document ...');
     const uploadedFile = files.document;
-    if (!uploadedFile) {
-      // 如果 files.document 仍然不存在，记录 files 对象以供调试
-      console.error('错误: 未找到名为 \'document\' 的上传文件字段。 可用的文件字段:', Object.keys(files));
-      return res.status(400).json({ success: false, error: '未提供文件（字段名应为document）' });
-    }
+    // 添加更详细的日志，查看 uploadedFile 对象的具体内容
+    console.log('Uploaded File Object:', uploadedFile);
 
+    if (!uploadedFile || !uploadedFile[0]) { // Formidable v3+ 返回数组
+      console.error('错误: 未找到名为 \'document\' 的上传文件字段或文件数组为空。 可用的文件字段:', Object.keys(files));
+      return res.status(400).json({ success: false, error: '未提供文件或文件解析失败' });
+    }
+    
+    // Formidable v3+ 通常将文件放在数组中
+    const fileData = Array.isArray(uploadedFile) ? uploadedFile[0] : uploadedFile;
+    console.log('Extracted File Data:', fileData);
+
+    // 尝试从 fileData 中获取必要的信息
+    const originalFilename = fileData.originalFilename || fileData.newFilename || 'unnamed_file'; // 尝试用 newFilename 作为备选
+    const tempFilepath = fileData.filepath;
+    const fileSize = fileData.size;
+    
+    console.log('解析出的文件信息:', { originalFilename, tempFilepath, fileSize });
+
+    // 检查获取到的信息是否有效
+    if (!tempFilepath) {
+        console.error('错误: formidable未能提供临时文件路径 (filepath)');
+        return res.status(500).json({ success: false, error: '服务器文件解析错误：无法获取文件路径' });
+    }
+    
     // 文件找到了，继续处理
     console.log('成功获取文件字段 \'document\'.');
-    const originalFilename = uploadedFile.originalFilename || uploadedFile.name || 'unnamed_file';
     debug(`接收到文件: ${originalFilename}`);
-    
-    // 验证文件类型
+
+    // 使用解析出的 originalFilename 进行类型验证
     if (!validateFileType(originalFilename)) {
       // 删除临时文件
       try {
-        fs.unlinkSync(uploadedFile.filepath);
+        // 使用解析出的 tempFilepath 删除
+        if (fs.existsSync(tempFilepath)) {
+            fs.unlinkSync(tempFilepath);
+            debug('无效类型文件已删除:', tempFilepath);
+        } else {
+            debug('尝试删除无效类型文件，但文件不存在:', tempFilepath);
+        }
       } catch (unlinkErr) {
         debug(`删除临时文件失败: ${unlinkErr.message}`);
       }
@@ -216,17 +240,21 @@ async function handleUpload(req, res) {
     // 提取用户ID（如果有）
     const userId = fields.userId || null;
 
-    // 上传到Supabase
+    // 上传到Supabase (使用解析出的 tempFilepath 和 originalFilename)
     const uploadResult = await uploadToSupabase(
-      uploadedFile.filepath, 
+      tempFilepath, 
       originalFilename,
       userId
     );
 
-    // 删除临时文件
+    // 删除临时文件 (使用解析出的 tempFilepath)
     try {
-      fs.unlinkSync(uploadedFile.filepath);
-      debug('临时文件已删除');
+      if (fs.existsSync(tempFilepath)) {
+          fs.unlinkSync(tempFilepath);
+          debug('临时文件已删除:', tempFilepath);
+      } else {
+          debug('尝试删除临时文件，但文件不存在:', tempFilepath);
+      }
     } catch (unlinkErr) {
       debug(`删除临时文件失败: ${unlinkErr.message}`);
     }
