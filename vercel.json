@@ -9,6 +9,9 @@
     },
     "api/resource-api.js": {
       "includeFiles": "utils/**"
+    },
+    "app.js": {
+      "includeFiles": "utils/**"
     }
   },
   "routes": [

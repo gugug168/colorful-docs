@@ -186,23 +186,37 @@ async function handleUpload(req, res) {
     });
 
     // 现在检查文件字段
-    console.log('检查 files.document ...');
-    const uploadedFile = files.document;
+    console.log('检查上传的文件字段, 可用的文件字段:', Object.keys(files));
+    
+    // 尝试多种可能的字段名称
+    let uploadedFile = files.document || files.file;
+    
     // 添加更详细的日志，查看 uploadedFile 对象的具体内容
     console.log('Uploaded File Object:', uploadedFile);
 
-    if (!uploadedFile || !uploadedFile[0]) { // Formidable v3+ 返回数组
-      console.error('错误: 未找到名为 \'document\' 的上传文件字段或文件数组为空。 可用的文件字段:', Object.keys(files));
+    if (!uploadedFile) {
+      console.error('错误: 未找到上传文件字段。可用的文件字段:', Object.keys(files));
       return res.status(400).json({ success: false, error: '未提供文件或文件解析失败' });
     }
     
-    // Formidable v3+ 通常将文件放在数组中
-    const fileData = Array.isArray(uploadedFile) ? uploadedFile[0] : uploadedFile;
+    // 处理各种可能的formidable版本格式
+    let fileData;
+    if (Array.isArray(uploadedFile)) {
+      // Formidable v3+ 将文件放在数组中
+      if (uploadedFile.length === 0) {
+        return res.status(400).json({ success: false, error: '上传的文件数组为空' });
+      }
+      fileData = uploadedFile[0];
+    } else {
+      // 较早版本的formidable或修改过的formidable
+      fileData = uploadedFile;
+    }
+    
     console.log('Extracted File Data:', fileData);
 
-    // 尝试从 fileData 中获取必要的信息
-    const originalFilename = fileData.originalFilename || fileData.newFilename || 'unnamed_file'; // 尝试用 newFilename 作为备选
-    const tempFilepath = fileData.filepath;
+    // 尝试从各种可能的属性中获取必要信息
+    const originalFilename = fileData.originalFilename || fileData.originalName || fileData.name || fileData.newFilename || 'unnamed_file';
+    let tempFilepath = fileData.filepath || fileData.path;
     const fileSize = fileData.size;
     
     console.log('解析出的文件信息:', { originalFilename, tempFilepath, fileSize });

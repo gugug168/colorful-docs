@@ -242,6 +242,15 @@ app.post('/upload', upload.single('document'), async (req, res) => {
             } : 'no file'
         });
         
+        // 检查是否存在文件
+        if (!req.file) {
+            console.error('上传失败：未找到上传文件');
+            return res.status(400).json({
+                success: false,
+                error: '未提供文件或文件解析失败'
+            });
+        }
+        
         // 解码文件名，用于显示
         let decodedFileName;
         try {
@@ -270,18 +279,6 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         // 确保所有后续处理使用的是安全编码过的文件名
         const safeFileName = encodedFileName || encodeURIComponent(originalFileName);
         
-        // 检查文件是否存在
-        if (!req.file) {
-            console.log('错误: 未接收到文件');
-            return res.status(400).json({
-                success: false,
-                message: '未接收到文件'
-            });
-        }
-        
-        console.log('处理上传文件:', decodedFileName, '大小:', req.file.size, '字节');
-        console.log('MIME类型:', req.file.mimetype);
-
         // 获取目标格式
         const targetFormat = req.body.targetFormat || 'word';
         console.log('目标格式:', targetFormat);
@@ -304,190 +301,22 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         
         console.log('文件已上传到Supabase:', uploadResult.url);
         
-        // 清理文件名以避免本地文件系统长度限制问题
-        function sanitizeFileName(fileName, ts) {
-            // 获取文件扩展名
-            const extname = path.extname(fileName) || '.tmp';
-            
-            // 生成短文件名 - 使用时间戳和哈希
-            return `doc-${ts}-${crypto.createHash('md5').update(fileName).digest('hex').substring(0, 10)}${extname}`;
-        }
-        
-        // 生成短文件名
-        const shortFilename = sanitizeFileName(safeFileName, timestamp);
-        
-        // 保存到本地临时文件用于处理 - 在AWS Lambda环境中，只有/tmp目录可写
-        const tempDir = path.join(os.tmpdir(), 'uploads');
-        console.log(`使用系统临时目录: ${tempDir}`);
-        
-        try {
-            fs.mkdirSync(tempDir, { recursive: true });
-            console.log(`临时目录创建/验证成功: ${tempDir}`);
-        } catch (mkdirError) {
-            console.error(`创建临时目录失败: ${mkdirError}`);
-            // 如果创建特定子目录失败，尝试使用系统临时根目录
-            console.log(`退回使用系统根临时目录: ${os.tmpdir()}`);
-        }
-        
-        // 确保使用可用的目录
-        const finalTempDir = fs.existsSync(tempDir) ? tempDir : os.tmpdir();
-        const tempFilePath = path.join(finalTempDir, shortFilename); // 使用短文件名而不是原始长文件名
-        
-        try {
-            fs.writeFileSync(tempFilePath, buffer);
-            console.log(`文件已保存到临时路径: ${tempFilePath}`);
-            
-            // 验证文件写入成功
-            if (fs.existsSync(tempFilePath)) {
-                const stats = fs.statSync(tempFilePath);
-                console.log(`临时文件大小: ${stats.size} 字节`);
-            } else {
-                console.error(`临时文件写入失败，文件不存在: ${tempFilePath}`);
-            }
-        } catch (writeError) {
-            console.error(`写入临时文件失败: ${writeError}`);
-            throw new Error(`无法写入临时文件: ${writeError.message}`);
-        }
-        
-        // 处理上传的文件
-        let fileType = '';
-        let htmlContent = '';
-        let htmlPath = '';
-        let errorMessage = '';
-
-        try {
-            // 判断文件类型并处理
-            if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
-                mimetype === 'application/msword' ||
-                safeFileName.endsWith('.docx') ||
-                safeFileName.endsWith('.doc')) {
-                // 处理DOCX/DOC文件
-                fileType = safeFileName.endsWith('.doc') ? 'doc' : 'docx';
-                console.log('检测到Word文档，开始处理...');
-                
-                // 检查转换函数是否存在
-                if (typeof docxConverter.convertDocxToHtml !== 'function') {
-                    throw new Error('docxConverter.convertDocxToHtml 不是有效函数，模块加载失败');
-                }
-                
-                // 使用临时文件路径处理
-                const result = await docxConverter.convertDocxToHtml(tempFilePath);
-                htmlContent = result.html;
-                htmlPath = result.htmlPath;
-                
-                // 将HTML上传到Supabase
-                if (htmlContent) {
-                    const htmlFilename = `html-${timestamp}.html`;
-                    const htmlFilePath = `temp/${htmlFilename}`;
-                    
-                    const htmlUploadResult = await supabaseClient.uploadFile(
-                        Buffer.from(htmlContent), 
-                        htmlFilePath
-                    );
-                    
-                    if (htmlUploadResult.success) {
-                        htmlPath = htmlUploadResult.url;
-                    } else {
-                        console.warn('HTML上传到Supabase警告:', htmlUploadResult.error);
-                    }
-                }
-                
-            } else if (mimetype === 'application/pdf' || safeFileName.endsWith('.pdf')) {
-                // 处理PDF文件
-                fileType = 'pdf';
-                console.log('检测到PDF文档，开始处理...');
-                
-                if (typeof pdfConverter.convertPdfToHtml !== 'function') {
-                    throw new Error('pdfConverter.convertPdfToHtml 不是有效函数，模块加载失败');
-                }
-                
-                // 使用临时文件路径处理
-                const result = await pdfConverter.convertPdfToHtml(tempFilePath);
-                htmlContent = result.html;
-                htmlPath = result.htmlPath;
-                
-                // 将HTML上传到Supabase
-                if (htmlContent) {
-                    const htmlFilename = `html-${timestamp}.html`;
-                    const htmlFilePath = `temp/${htmlFilename}`;
-                    
-                    const htmlUploadResult = await supabaseClient.uploadFile(
-                        Buffer.from(htmlContent), 
-                        htmlFilePath
-                    );
-                    
-                    if (htmlUploadResult.success) {
-                        htmlPath = htmlUploadResult.url;
-                    } else {
-                        console.warn('HTML上传到Supabase警告:', htmlUploadResult.error);
-                    }
-                }
-            } else {
-                // 不支持的文件类型
-                console.log('错误: 不支持的文件类型:', mimetype);
-                return res.status(400).json({
-                    success: false,
-                    message: '不支持的文件类型，请上传DOCX或PDF文件'
-                });
-            }
-        } catch (conversionError) {
-            // 处理转换过程中的任何错误
-            console.error('文件转换失败:', conversionError);
-            console.error('错误堆栈:', conversionError.stack);
-            errorMessage = conversionError.message;
-            
-            // 创建一个备用的HTML内容
-            htmlContent = `
-                <!DOCTYPE html>
-                <html>
-                <head><title>处理错误</title></head>
-                <body><p>处理文档时出错: ${conversionError.message}</p></body>
-                </html>
-            `;
-            
-            // 上传错误HTML到Supabase
-            const htmlFilename = `error-${timestamp}.html`;
-            const htmlFilePath = `temp/${htmlFilename}`;
-            
-            const htmlUploadResult = await supabaseClient.uploadFile(
-                Buffer.from(htmlContent), 
-                htmlFilePath
-            );
-            
-            if (htmlUploadResult.success) {
-                htmlPath = htmlUploadResult.url;
-            }
-        }
-
-        // 确保临时文件被删除
-        try {
-            fs.unlinkSync(tempFilePath);
-        } catch (err) {
-            console.warn('删除临时文件失败:', err);
-        }
-
-        console.log('文件处理完成，准备返回结果');
-        
-        // 返回成功响应
-        return res.json({
+        // 返回统一格式的成功响应，与document-api.js兼容
+        return res.status(200).json({
             success: true,
-            uploadedFile: {
-                originalname: decodedFileName,
-                filename,
-                path: htmlPath,
-                url: htmlPath, // 使用Supabase URL
-                type: fileType,
-                html: htmlContent,
-                downloadUrl: htmlPath,
-                message: errorMessage ? `警告：${errorMessage}` : undefined
+            file: {
+                url: uploadResult.url,
+                key: uploadResult.key,
+                filename: decodedFileName,
+                size: req.file.size
             }
         });
+        
     } catch (error) {
         console.error('文件上传处理错误:', error);
-        console.error('错误堆栈:', error.stack);
         return res.status(500).json({
             success: false,
-            message: '服务器处理文件时出错: ' + error.message
+            error: '文件上传失败: ' + error.message
         });
     }
 });
@@ -2219,3 +2048,13 @@ function sanitizeFileName(fileName, ts) {
   // 生成短文件名 - 使用时间戳和哈希
   return `doc-${timestamp}-${crypto.createHash('md5').update(fileName).digest('hex').substring(0, 10)}${extname}`;
 }
+
+// 如果不在开发模式下，不启动监听
+if (process.env.NODE_ENV === 'development') {
+  app.listen(port, () => {
+    console.log(`文档处理服务运行在端口 ${port}`);
+  });
+}
+
+// 导出为 Vercel 函数
+module.exports = app;
