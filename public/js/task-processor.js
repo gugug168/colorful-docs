@@ -302,7 +302,7 @@ function updateTaskStatusInDatabase(taskId, status, errorMessage) {
     }
     
     // 确定API基础URL（支持本地开发和Vercel部署环境）
-    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    const apiBase = window.location.hostname === 'localhost' ? '' : '';
     
     // 发送更新请求
     fetch(`${apiBase}/update-task/${taskId}`, {
@@ -337,7 +337,7 @@ function cancelTimeoutTask(taskId) {
     console.log(`尝试取消超时任务: ${taskId}`);
     
     // 确定API基础URL（支持本地开发和Vercel部署环境）
-    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    const apiBase = window.location.hostname === 'localhost' ? '' : '';
     
     fetch(`${apiBase}/cancelTask/${taskId}`, {
         method: 'POST',
@@ -439,7 +439,7 @@ function checkTaskRealStatus(taskId) {
     const timestamp = new Date().getTime();
     
     // 确定API基础URL（支持本地开发和Vercel部署环境）
-    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    const apiBase = window.location.hostname === 'localhost' ? '' : '';
     
     // 发起一次数据库状态检查
     fetch(`${apiBase}/check-task/${taskId}?t=${timestamp}`, {
@@ -580,7 +580,7 @@ function triggerTaskProcessing() {
     const timestamp = new Date().getTime();
     
     // 确定API基础URL（支持本地开发和Vercel部署环境）
-    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    const apiBase = window.location.hostname === 'localhost' ? '' : '';
     
     // 调用任务处理API
     fetch(`${apiBase}/processTasks?t=${timestamp}`, {
@@ -717,7 +717,7 @@ function fetchTaskResult(taskId) {
     const timestamp = new Date().getTime();
     
     // 确定API基础URL（支持本地开发和Vercel部署环境）
-    const apiBase = window.location.hostname === 'localhost' ? '' : '/api';
+    const apiBase = window.location.hostname === 'localhost' ? '' : '';
     
     // 请求任务详情
     fetch(`${apiBase}/check-task/${taskId}?t=${timestamp}`, {

@@ -195,6 +195,78 @@ async function handlePreview(req, res, fileName) {
     
     console.log('尝试预览文件:', sanitizedFilename);
     
+    // 检查是否是Supabase URL
+    if (fileName.includes('supabase.co/storage') || fileName.startsWith('https://')) {
+      console.log('检测到Supabase URL，尝试下载文件预览');
+      try {
+        // 从URL下载文件
+        const response = await axios.get(fileName, {
+          responseType: 'arraybuffer',
+          timeout: 15000
+        });
+        
+        // 获取文件扩展名并检查是否是支持的文档类型
+        const fileExt = path.extname(sanitizedFilename).toLowerCase();
+        const isDocument = ['.doc', '.docx', '.pdf'].includes(fileExt);
+        
+        if (isDocument) {
+          // 创建下载目录
+          const downloadDir = path.join('/tmp', 'downloads');
+          if (!fs.existsSync(downloadDir)) {
+            fs.mkdirSync(downloadDir, { recursive: true });
+          }
+          
+          // 保存文件到本地
+          const localFilePath = path.join(downloadDir, sanitizedFilename);
+          fs.writeFileSync(localFilePath, Buffer.from(response.data));
+          console.log('已将Supabase文件保存到本地:', localFilePath);
+          
+          // 返回文档预览HTML
+          const fileSize = fs.statSync(localFilePath).size;
+          const fileSizeKB = Math.round(fileSize / 1024);
+          
+          const previewHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>文档预览</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+              .document-preview { border: 1px solid #ddd; border-radius: 8px; padding: 20px; background-color: #f9f9f9; }
+              .icon { font-size: 48px; text-align: center; margin-bottom: 15px; color: #0066cc; }
+              h2 { margin-top: 0; color: #444; }
+              .meta { color: #666; margin-bottom: 15px; }
+              .note { background-color: #fff8e1; border-left: 4px solid #ffc107; padding: 10px; margin-top: 20px; }
+              .success { color: #4CAF50; font-weight: bold; }
+            </style>
+          </head>
+          <body>
+            <div class="document-preview">
+              <div class="icon">${fileExt === '.pdf' ? '📄' : '📝'}</div>
+              <h2>${sanitizedFilename}</h2>
+              <div class="meta">
+                <strong>文件类型:</strong> ${fileExt.replace('.', '').toUpperCase()} 文档<br>
+                <strong>文件大小:</strong> ${fileSizeKB} KB
+              </div>
+              <p class="success">✓ 文件已成功上传并准备好处理</p>
+              <div class="note">
+                <p>点击美化按钮开始处理此文档。系统会自动应用您选择的样式。</p>
+              </div>
+            </div>
+          </body>
+          </html>
+          `;
+          
+          return res.send(previewHtml);
+        } else {
+          return res.status(400).send('不支持的文件类型');
+        }
+      } catch (error) {
+        console.error('从Supabase URL下载文件失败:', error);
+        return res.status(500).send('无法从存储服务获取文件: ' + error.message);
+      }
+    }
+    
     // 先检查文件类型
     const fileExt = path.extname(sanitizedFilename).toLowerCase();
     const isDocument = ['.doc', '.docx', '.pdf'].includes(fileExt);

@@ -32,6 +32,7 @@
     { "src": "/api/processTasks", "dest": "/api/task-api.js?action=process" },
     { "src": "/api/cancelTask/(.*)", "dest": "/api/task-api.js?action=cancel&taskId=$1" },
     { "src": "/api/task-status", "dest": "/api/task-api.js?action=status" },
+    { "src": "/check-task/(.*)", "dest": "/api/task-api.js?action=check&taskId=$1" },
     { "src": "/download", "dest": "/api/resource-api.js?action=download" },
     { "src": "/export", "dest": "/api/resource-api.js?action=export" },
     { "src": "/preview/(.*)", "dest": "/api/resource-api.js?action=preview&file=$1" },
