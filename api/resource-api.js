@@ -231,9 +231,11 @@ async function handlePreview(req, res, fileName) {
         try {
           // 尝试从多个可能的路径获取文件
           const possibleStoragePaths = [
+            // 新的路径格式（不包含uploads/前缀）
+            `${sanitizedFilename}`,
+            // 向后兼容的路径格式
             `uploads/${sanitizedFilename}`,
-            `uploads/processed/${sanitizedFilename}`,
-            `${sanitizedFilename}`
+            `uploads/processed/${sanitizedFilename}`
           ];
           
           let fileData = null;
@@ -242,7 +244,7 @@ async function handlePreview(req, res, fileName) {
           // 尝试每个可能的路径
           for (const storagePath of possibleStoragePaths) {
             try {
-              console.log(`尝试从Supabase下载: uploads/${storagePath}`);
+              console.log(`尝试从Supabase下载: ${storagePath}`);
               const { data, error } = await supabaseClient.supabase.storage
                 .from('uploads')
                 .download(storagePath);

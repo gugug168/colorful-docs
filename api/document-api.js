@@ -51,7 +51,17 @@ async function uploadToSupabase(filePath, fileName, userId) {
     
     const fileBuffer = fs.readFileSync(filePath);
     const sanitizedFileName = sanitize(fileName);
-    const fileKey = `uploads/${userId ? userId + '/' : ''}${Date.now()}-${sanitizedFileName}`;
+    
+    // 处理中文文件名问题 - 生成一个随机的文件名
+    const fileExt = path.extname(sanitizedFileName);
+    const randomFileName = uuidv4().replace(/-/g, '').substring(0, 20) + fileExt;
+    
+    // 不要在路径中包含uploads/前缀，这可能会造成Supabase混淆
+    const fileKey = `${userId ? userId + '/' : ''}${Date.now()}-${randomFileName}`;
+    
+    console.log('原始文件名:', fileName);
+    console.log('处理后的文件名:', randomFileName);
+    console.log('上传路径:', fileKey);
 
     // 使用正确的存储桶名称
     const bucket = 'uploads';
@@ -106,7 +116,8 @@ async function uploadToSupabase(filePath, fileName, userId) {
           success: true, // 继续流程
           url: `/uploads/${path.basename(filePath)}`,
           key: fileKey,
-          filename: sanitizedFileName,
+          filename: randomFileName,
+          originalFilename: sanitizedFileName, // 保存原始文件名
           size: fs.statSync(filePath).size,
           warning: 'Supabase存储上传失败，使用本地路径'
         };
@@ -123,7 +134,8 @@ async function uploadToSupabase(filePath, fileName, userId) {
         success: true,
         url: publicUrlData.publicUrl,
         key: fileKey,
-        filename: sanitizedFileName,
+        filename: randomFileName,
+        originalFilename: sanitizedFileName, // 保存原始文件名
         size: fs.statSync(filePath).size,
         bucket: bucket
       };
@@ -135,7 +147,8 @@ async function uploadToSupabase(filePath, fileName, userId) {
         success: true, // 继续流程
         url: `/uploads/${path.basename(filePath)}`,
         key: fileKey,
-        filename: sanitizedFileName,
+        filename: randomFileName,
+        originalFilename: sanitizedFileName, // 保存原始文件名
         size: fs.statSync(filePath).size,
         warning: 'Supabase存储上传出错，使用本地路径'
       };
@@ -325,21 +338,23 @@ async function handleUpload(req, res) {
       path: uploadResult.url,
       url: uploadResult.url,
       filename: uploadResult.filename,
+      originalFilename: uploadResult.originalFilename,
       // 保留file对象
       file: {
         url: uploadResult.url,
         key: uploadResult.key,
         filename: uploadResult.filename,
+        originalFilename: uploadResult.originalFilename,
         size: uploadResult.size,
         warning: uploadResult.warning
       },
       // 添加兼容旧前端代码的字段
       uploadedFile: {
-        originalname: uploadResult.filename,
+        originalname: uploadResult.originalFilename,
         filename: uploadResult.filename,
         path: uploadResult.url,
         url: uploadResult.url,
-        type: originalFilename.split('.').pop().toLowerCase(),
+        type: uploadResult.originalFilename.split('.').pop().toLowerCase(),
         size: uploadResult.size,
         downloadUrl: uploadResult.url
       }
