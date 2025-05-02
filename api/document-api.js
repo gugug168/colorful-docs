@@ -422,6 +422,7 @@ async function handleBeautifyTask(req, res) {
         taskType: 'beautify',
         createdAt: new Date().toISOString()
       },
+      type: 'beautify_html',
       result: null,
       error: null,
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()

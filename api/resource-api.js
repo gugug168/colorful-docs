@@ -4,6 +4,7 @@ const fs = require('fs');
 const axios = require('axios');
 const exportUtils = require('../utils/exportUtils');
 const supabaseClient = require('../utils/supabaseClient');
+const mammoth = require('mammoth');
 
 // 下载文件
 async function handleDownload(req, res) {
@@ -220,6 +221,32 @@ async function handlePreview(req, res, fileName) {
           const localFilePath = path.join(downloadDir, sanitizedFilename);
           fs.writeFileSync(localFilePath, Buffer.from(response.data));
           console.log('已将Supabase文件保存到本地:', localFilePath);
+          
+          // 尝试将Word文档转换为HTML
+          if (fileExt === '.docx' || fileExt === '.doc') {
+            try {
+              console.log('尝试将Word文档转换为HTML...');
+              // 使用mammoth转换
+              const result = await mammoth.convertToHtml({path: localFilePath});
+              const htmlContent = result.value;
+              
+              // 保存HTML到本地临时文件
+              const htmlDir = path.join('/tmp', 'temp');
+              if (!fs.existsSync(htmlDir)) {
+                fs.mkdirSync(htmlDir, { recursive: true });
+              }
+              const htmlFilename = sanitizedFilename.replace(fileExt, '.html');
+              const htmlPath = path.join(htmlDir, htmlFilename);
+              fs.writeFileSync(htmlPath, htmlContent);
+              console.log('Word转HTML成功,保存到:', htmlPath);
+              
+              // 返回HTML而不是预览页面
+              return res.send(htmlContent);
+            } catch (convErr) {
+              console.error('Word转HTML失败:', convErr);
+              // 转换失败时仍然返回默认预览
+            }
+          }
           
           // 返回文档预览HTML
           const fileSize = fs.statSync(localFilePath).size;

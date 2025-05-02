@@ -131,17 +131,28 @@ async function handleProcessTasks(req, res) {
       updated_at: new Date().toISOString()
     });
     
+    console.log(`开始处理任务 ${task.id}，类型:`, task.data?.taskType || '未知');
+    
     // 处理不同类型的任务
-    if (task.taskType === 'beautify') {
+    // 检查task.data.taskType
+    const taskType = task.data?.taskType || 'beautify';
+    
+    // 不同任务类型的处理
+    if (taskType === 'beautify' || taskType === 'beautify_html') {
       // 在后台处理美化任务
+      console.log(`使用taskProcessor.processBeautifyTask处理任务 ${task.id}`);
       taskProcessor.processBeautifyTask(task.id);
+    } else {
+      // 处理其他类型任务
+      console.log(`使用taskProcessor.processTask处理任务 ${task.id}`);
+      taskProcessor.processTask(task.id);
     }
     
     return res.json({
       success: true,
       message: `正在处理任务 ${task.id}`,
       taskId: task.id,
-      taskType: task.taskType
+      taskType: taskType
     });
     
   } catch (error) {

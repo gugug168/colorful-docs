@@ -20,7 +20,7 @@ const { htmlBeautify } = require('./htmlUtils');
 
 // 全局API配置 - 应从app.js中导入或通过环境变量设置
 let globalApiConfig = {
-    apiKey: process.env.DEEPSEEK_API_KEY || '',
+    apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '',
     apiType: 'deepseek',
     apiParams: {
         deepseek: { temperature: 0.7, max_tokens: 8000 }
@@ -29,13 +29,32 @@ let globalApiConfig = {
 
 // 记录API配置状态（隐藏敏感信息）
 console.log('API配置状态:');
-console.log(`- API类型: ${globalApiConfig.apiType}`);
-console.log(`- OpenAI API: ${globalApiConfig.apiKey ? '已配置' : '未配置'}`);
-console.log(`- Azure API: ${globalApiConfig.azureApiKey ? '已配置' : '未配置'}`);
-console.log(`- Azure Endpoint: ${globalApiConfig.azureEndpoint ? '已配置' : '未配置'}`);
-console.log(`- Azure 部署名称: ${globalApiConfig.azureDeploymentName ? '已配置' : '未配置'}`);
-console.log(`- Anthropic API: ${globalApiConfig.anthropicApiKey ? '已配置' : '未配置'}`);
-console.log(`- Gemini API: ${globalApiConfig.geminiApiKey ? '已配置' : '未配置'}`);
+console.log('- API类型:', globalApiConfig.apiType);
+console.log('- OpenAI API:', globalApiConfig.apiKey && globalApiConfig.apiType === 'openai' ? '已配置' : '未配置');
+console.log('- Azure API:', process.env.AZURE_OPENAI_API_KEY ? '已配置' : '未配置');
+console.log('- Azure Endpoint:', process.env.AZURE_OPENAI_ENDPOINT ? '已配置' : '未配置');
+console.log('- Azure 部署名称:', process.env.AZURE_OPENAI_DEPLOYMENT_NAME ? '已配置' : '未配置');
+console.log('- Anthropic API:', process.env.ANTHROPIC_API_KEY ? '已配置' : '未配置');
+console.log('- Gemini API:', process.env.GEMINI_API_KEY ? '已配置' : '未配置');
+
+// 尝试在启动时从环境变量更新API配置
+if (process.env.DEEPSEEK_API_KEY) {
+    console.log('从环境变量加载DeepSeek API密钥');
+    globalApiConfig.apiKey = process.env.DEEPSEEK_API_KEY;
+    globalApiConfig.apiType = 'deepseek';
+} else if (process.env.OPENAI_API_KEY) {
+    console.log('从环境变量加载OpenAI API密钥');
+    globalApiConfig.apiKey = process.env.OPENAI_API_KEY;
+    globalApiConfig.apiType = 'openai';
+}
+
+// 如果有API密钥，则确认加载成功
+if (globalApiConfig.apiKey) {
+    const maskedKey = globalApiConfig.apiKey.substring(0, 3) + "..." + globalApiConfig.apiKey.substring(globalApiConfig.apiKey.length - 3);
+    console.log(`成功加载${globalApiConfig.apiType}API密钥: ${maskedKey}`);
+} else {
+    console.warn('警告: 未从环境变量加载到API密钥，AI功能可能无法正常工作');
+}
 
 /**
  * 设置全局API配置
