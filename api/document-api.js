@@ -285,12 +285,27 @@ async function handleUpload(req, res) {
     // 返回成功响应
     return res.status(200).json({
       success: true,
+      // 添加顶层字段，兼容不同的前端代码路径
+      path: uploadResult.url,
+      url: uploadResult.url,
+      filename: uploadResult.filename,
+      // 保留file对象
       file: {
         url: uploadResult.url,
         key: uploadResult.key,
         filename: uploadResult.filename,
         size: uploadResult.size,
         warning: uploadResult.warning
+      },
+      // 添加兼容旧前端代码的字段
+      uploadedFile: {
+        originalname: uploadResult.filename,
+        filename: uploadResult.filename,
+        path: uploadResult.url,
+        url: uploadResult.url,
+        type: originalFilename.split('.').pop().toLowerCase(),
+        size: uploadResult.size,
+        downloadUrl: uploadResult.url
       }
     });
   } catch (err) {
