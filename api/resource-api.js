@@ -193,28 +193,202 @@ async function handlePreview(req, res, fileName) {
     // 安全检查：确保文件名不包含路径分隔符，防止路径遍历
     const sanitizedFilename = path.basename(fileName);
     
-    // 尝试在temp目录和downloads目录中查找文件 - 使用/tmp路径
-    let filePath = path.join('/tmp', 'temp', sanitizedFilename);
+    console.log('尝试预览文件:', sanitizedFilename);
     
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join('/tmp', 'downloads', sanitizedFilename);
-    }
+    // 先检查文件类型
+    const fileExt = path.extname(sanitizedFilename).toLowerCase();
+    const isDocument = ['.doc', '.docx', '.pdf'].includes(fileExt);
     
-    // 如果仍找不到，尝试在原始项目目录中查找（向后兼容）
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(process.cwd(), 'temp', sanitizedFilename);
-    }
+    // 如果是文档文件，尝试直接在uploads目录中查找
+    let filePath;
     
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(process.cwd(), 'downloads', sanitizedFilename);
+    if (isDocument) {
+      // 尝试所有可能的位置，但主要优先检查uploads目录
+      const possiblePaths = [
+        path.join('/tmp', 'uploads', sanitizedFilename),
+        path.join('/tmp', 'temp', sanitizedFilename),
+        path.join('/tmp', 'downloads', sanitizedFilename),
+        // 向后兼容
+        path.join(process.cwd(), 'uploads', sanitizedFilename),
+        path.join(process.cwd(), 'temp', sanitizedFilename),
+        path.join(process.cwd(), 'downloads', sanitizedFilename)
+      ];
+      
+      // 检查文件是否存在于以上路径
+      for (const p of possiblePaths) {
+        console.log('检查文件路径:', p);
+        if (fs.existsSync(p)) {
+          filePath = p;
+          console.log('找到文件:', p);
+          break;
+        }
+      }
+      
+      // 如果本地没有找到文件，尝试从Supabase获取
+      if (!filePath) {
+        console.log('本地未找到文件，尝试从Supabase获取:', sanitizedFilename);
+        
+        try {
+          // 尝试从多个可能的路径获取文件
+          const possibleStoragePaths = [
+            `uploads/${sanitizedFilename}`,
+            `uploads/processed/${sanitizedFilename}`,
+            `${sanitizedFilename}`
+          ];
+          
+          let fileData = null;
+          let downloadSuccess = false;
+          
+          // 尝试每个可能的路径
+          for (const storagePath of possibleStoragePaths) {
+            try {
+              console.log(`尝试从Supabase下载: uploads/${storagePath}`);
+              const { data, error } = await supabaseClient.supabase.storage
+                .from('uploads')
+                .download(storagePath);
+                
+              if (error) {
+                console.log(`从路径 ${storagePath} 下载失败:`, error);
+                continue;
+              }
+              
+              fileData = data;
+              downloadSuccess = true;
+              console.log(`从Supabase成功下载文件: ${storagePath}`);
+              break;
+            } catch (err) {
+              console.error(`尝试从 ${storagePath} 下载时出错:`, err);
+            }
+          }
+          
+          if (downloadSuccess && fileData) {
+            // 确保下载目录存在
+            const downloadDir = path.join('/tmp', 'downloads');
+            if (!fs.existsSync(downloadDir)) {
+              fs.mkdirSync(downloadDir, { recursive: true });
+            }
+            
+            // 保存文件到本地临时目录
+            filePath = path.join(downloadDir, sanitizedFilename);
+            fs.writeFileSync(filePath, Buffer.from(await fileData.arrayBuffer()));
+            console.log(`已将文件从Supabase保存到本地: ${filePath}`);
+          }
+        } catch (supabaseErr) {
+          console.error('从Supabase获取文件失败:', supabaseErr);
+        }
+      }
+    } else {
+      // 如果不是文档文件，按原来的逻辑查找
+      filePath = path.join('/tmp', 'temp', sanitizedFilename);
+    
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join('/tmp', 'downloads', sanitizedFilename);
+      }
+      
+      // 如果仍找不到，尝试在原始项目目录中查找（向后兼容）
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(process.cwd(), 'temp', sanitizedFilename);
+      }
+      
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(process.cwd(), 'downloads', sanitizedFilename);
+      }
     }
     
     if (!fs.existsSync(filePath)) {
       console.error('预览文件不存在:', filePath);
+      
+      // 对于Word和PDF文件，提供友好的错误HTML而不是404
+      if (isDocument) {
+        const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>文档预览</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .document-preview { border: 1px solid #ddd; border-radius: 8px; padding: 20px; background-color: #f9f9f9; }
+            .icon { font-size: 48px; text-align: center; margin-bottom: 15px; color: #cc0000; }
+            h2 { margin-top: 0; color: #444; }
+            .meta { color: #666; margin-bottom: 15px; }
+            .note { background-color: #fff8e1; border-left: 4px solid #ffc107; padding: 10px; margin-top: 20px; }
+            .error { background-color: #ffebee; border-left: 4px solid #f44336; padding: 10px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="document-preview">
+            <div class="icon">⚠️</div>
+            <h2>无法预览文件</h2>
+            <div class="meta">
+              <strong>文件名:</strong> ${sanitizedFilename}<br>
+              <strong>文件类型:</strong> ${fileExt.replace('.', '').toUpperCase()} 文档
+            </div>
+            <div class="error">
+              <p>无法找到此文件进行预览。这可能是因为:</p>
+              <ul>
+                <li>文件尚未完全上传或上传过程中断</li>
+                <li>文件已被系统自动清理</li>
+                <li>存储服务暂时不可用</li>
+              </ul>
+            </div>
+            <div class="note">
+              <p>您可以尝试重新上传文件，或联系系统管理员寻求帮助。</p>
+              <p>如果您确实需要处理此文档，可以尝试继续点击美化按钮，系统将尝试从备份存储中恢复。</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        `;
+        
+        return res.send(errorHtml);
+      }
+      
+      // 对于其他文件类型，返回404错误
       return res.status(404).send('文件不存在或已被删除');
     }
     
     try {
+      // 如果是Word或PDF文件，则返回简单的HTML预览信息
+      if (isDocument) {
+        const fileSize = fs.statSync(filePath).size;
+        const fileSizeKB = Math.round(fileSize / 1024);
+        
+        // 创建简单的HTML预览
+        const previewHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>文档预览</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .document-preview { border: 1px solid #ddd; border-radius: 8px; padding: 20px; background-color: #f9f9f9; }
+            .icon { font-size: 48px; text-align: center; margin-bottom: 15px; color: #0066cc; }
+            h2 { margin-top: 0; color: #444; }
+            .meta { color: #666; margin-bottom: 15px; }
+            .note { background-color: #fff8e1; border-left: 4px solid #ffc107; padding: 10px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="document-preview">
+            <div class="icon">${fileExt === '.pdf' ? '📄' : '📝'}</div>
+            <h2>${sanitizedFilename}</h2>
+            <div class="meta">
+              <strong>文件类型:</strong> ${fileExt.replace('.', '').toUpperCase()} 文档<br>
+              <strong>文件大小:</strong> ${fileSizeKB} KB
+            </div>
+            <p>该文件是 ${fileExt === '.pdf' ? 'PDF' : 'Word'} 文档，无法直接在浏览器中显示内容预览。</p>
+            <div class="note">
+              <p>文件已成功上传并保存。您可以点击美化按钮处理此文档。</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        `;
+        
+        return res.send(previewHtml);
+      }
+      
+      // 对于HTML等其他可预览文件，读取内容
       const htmlContent = fs.readFileSync(filePath, 'utf8');
       res.send(htmlContent);
     } catch (err) {

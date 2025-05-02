@@ -53,28 +53,62 @@ async function uploadToSupabase(filePath, fileName, userId) {
     const sanitizedFileName = sanitize(fileName);
     const fileKey = `uploads/${userId ? userId + '/' : ''}${Date.now()}-${sanitizedFileName}`;
 
-    // 检查Supabase存储桶是否可用
+    // 使用正确的存储桶名称
+    const bucket = 'uploads';
+    
+    // 确保存储桶存在
     try {
-      const bucket = 'files';
-      debug(`上传到桶: ${bucket}, 路径: ${fileKey}`);
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      
+      if (listError) {
+        console.error('获取存储桶列表失败:', listError);
+      } else {
+        // 检查uploads存储桶是否存在
+        const uploadsBucket = buckets.find(b => b.name === bucket);
+        if (!uploadsBucket) {
+          console.log(`存储桶 "${bucket}" 不存在，尝试创建...`);
+          
+          const { error: createError } = await supabase.storage.createBucket(bucket, {
+            public: true
+          });
+          
+          if (createError) {
+            console.error(`创建 "${bucket}" 存储桶失败:`, createError);
+            console.warn('将继续尝试上传，但可能会失败');
+          } else {
+            console.log(`✓ 存储桶 "${bucket}" 创建成功`);
+          }
+        } else {
+          console.log(`✓ 存储桶 "${bucket}" 已存在`);
+        }
+      }
+    } catch (bucketError) {
+      console.error('检查存储桶时出错:', bucketError);
+    }
+    
+    try {
+      debug(`尝试上传到存储桶: ${bucket}, 路径: ${fileKey}`);
       
       const { data, error } = await supabase.storage
         .from(bucket)
         .upload(fileKey, fileBuffer, {
           contentType: getContentType(fileName),
-          upsert: false,
+          upsert: true,
         });
 
       if (error) {
-        console.error('Supabase上传错误:', error);
-        // 如果上传失败，尝试返回本地文件路径
+        console.error(`上传到 ${bucket} 桶时出错:`, error);
+        console.error('错误详情:', JSON.stringify(error));
+        
+        // 如果上传失败，使用本地路径
+        console.warn('Supabase存储桶上传失败，使用本地文件路径作为备选');
         return { 
           success: true, // 继续流程
           url: `/uploads/${path.basename(filePath)}`,
           key: fileKey,
           filename: sanitizedFileName,
           size: fs.statSync(filePath).size,
-          warning: error.message
+          warning: 'Supabase存储上传失败，使用本地路径'
         };
       }
 
@@ -83,25 +117,27 @@ async function uploadToSupabase(filePath, fileName, userId) {
         .from(bucket)
         .getPublicUrl(fileKey);
         
-      debug(`文件上传成功，URL: ${publicUrlData.publicUrl}`);
-
+      debug(`文件上传成功到 ${bucket} 桶，URL: ${publicUrlData.publicUrl}`);
+      
       return {
         success: true,
         url: publicUrlData.publicUrl,
         key: fileKey,
         filename: sanitizedFileName,
-        size: fs.statSync(filePath).size
+        size: fs.statSync(filePath).size,
+        bucket: bucket
       };
-    } catch (storageErr) {
-      console.error('Supabase存储访问错误:', storageErr);
-      // 如果Supabase存储不可用，尝试返回本地文件路径
+    } catch (err) {
+      console.error(`上传到 ${bucket} 桶时发生错误:`, err);
+      
+      // 如果发生错误，使用本地路径
       return { 
         success: true, // 继续流程
         url: `/uploads/${path.basename(filePath)}`,
-        key: path.basename(filePath),
+        key: fileKey,
         filename: sanitizedFileName,
         size: fs.statSync(filePath).size,
-        warning: storageErr.message
+        warning: 'Supabase存储上传出错，使用本地路径'
       };
     }
   } catch (err) {
