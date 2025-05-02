@@ -1227,12 +1227,13 @@ $(document).ready(function() {
         showLoading('正在提交美化任务，请稍候...');
         
         // 准备美化请求
-        fetch('/beautify', {
+        fetch('/api/beautify-task', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                filePath: filePath,  // 添加文件路径
                 filename: htmlFilename, // 使用HTML文件名
                 targetFormat: targetFormat,
                 apiKey: FIXED_API_KEY, // 使用固定的API密钥
@@ -2784,7 +2785,7 @@ $(document).ready(function() {
       
       // 发送AJAX请求检查任务状态
       $.ajax({
-        url: '/check-task/' + taskId, // 使用正确的API路径
+        url: (window.location.hostname === 'localhost' ? '' : '/api') + '/check-task/' + taskId, // 使用正确的API路径
         type: 'GET',
         dataType: 'json',
         timeout: 10000, // 10秒超时

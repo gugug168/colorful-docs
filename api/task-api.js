@@ -72,8 +72,7 @@ async function handleUpdateTask(req, res, taskId) {
       });
     }
     
-    const updateResult = await supabaseClient.updateTask(taskId, {
-      status,
+    const updateResult = await supabaseClient.updateTaskStatus(taskId, status, {
       result,
       error
     });
@@ -126,10 +125,7 @@ async function handleProcessTasks(req, res) {
     const task = tasks[0];
     
     // 更新任务状态为处理中
-    await supabaseClient.updateTask(task.id, {
-      status: 'processing',
-      updated_at: new Date().toISOString()
-    });
+    await supabaseClient.updateTaskStatus(task.id, 'processing');
     
     console.log(`开始处理任务 ${task.id}，类型:`, task.data?.taskType || '未知');
     
@@ -167,10 +163,8 @@ async function handleProcessTasks(req, res) {
 // 取消任务
 async function handleCancelTask(req, res, taskId) {
   try {
-    const cancelResult = await supabaseClient.updateTask(taskId, {
-      status: 'cancelled',
-      error: '用户取消了任务',
-      updated_at: new Date().toISOString()
+    const cancelResult = await supabaseClient.updateTaskStatus(taskId, 'cancelled', {
+      error: '用户取消了任务'
     });
     
     if (!cancelResult.success) {

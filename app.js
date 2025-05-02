@@ -278,7 +278,7 @@ app.post('/upload', upload.single('document'), async (req, res) => {
         
         // 确保所有后续处理使用的是安全编码过的文件名
         const safeFileName = encodedFileName || encodeURIComponent(originalFileName);
-        
+
         // 获取目标格式
         const targetFormat = req.body.targetFormat || 'word';
         console.log('目标格式:', targetFormat);

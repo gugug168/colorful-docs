@@ -437,25 +437,46 @@ async function handleBeautifyTask(req, res) {
       
       if (error) {
         console.error('Supabase创建任务失败:', error);
-        // 在Supabase失败的情况下，我们仍然返回成功
-        // 因为前端只需要任务ID来检查状态
+        
+        // 检查是否是表结构问题
+        if (error.message && (
+            error.message.includes('column') || 
+            error.message.includes('does not exist') ||
+            error.message.includes('类型')
+          )) {
+          return res.status(500).json({
+            success: false,
+            error: '数据库表结构不匹配，请确认tasks表中是否有type列',
+            details: error.message,
+            solution: '请执行update-tasks-table.sql脚本修复数据库结构'
+          });
+        }
+        
+        // 其他Supabase错误
+        return res.status(500).json({
+          success: false,
+          error: '创建任务失败',
+          details: error.message
+        });
       }
       
-      console.log(`任务创建${error ? '失败但继续' : '成功'}: ${taskId}`);
+      console.log(`任务创建成功: ${taskId}`);
+      
+      // 返回任务ID
+      return res.status(200).json({
+        success: true,
+        taskId: taskId,
+        status: 'pending',
+        message: '美化任务已提交，请稍后检查结果'
+      });
     } catch (supabaseError) {
       console.error('Supabase请求错误:', supabaseError);
-      // 继续执行，不影响API响应
+      return res.status(500).json({
+        success: false,
+        error: '数据库服务出错',
+        details: supabaseError.message
+      });
     }
-    
-    // 返回任务ID - 即使Supabase创建失败也返回成功
-    // 用于前端展示目的
-    return res.status(200).json({
-      success: true,
-      taskId: taskId,
-      status: 'pending',
-      message: '美化任务已提交，请稍后检查结果'
-    });
-    
   } catch (error) {
     console.error('创建美化任务出错:', error);
     return res.status(500).json({ 
