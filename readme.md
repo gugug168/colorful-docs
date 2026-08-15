@@ -1,4 +1,22 @@
-# 文档排版与美化系统
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Colorful Docs：将文档转换为 HTML，并按目标风格进行排版美化。">
+</p>
+
+文档排版与美化系统。代码与 README 记录了文档转换、AI 排版、结果预览以及部署限制的处理方式。
+
+## 一眼看懂
+
+| 价值 | 真实证据 |
+| --- | --- |
+| 将文档转换为 HTML，并按目标风格进行排版美化。 | DOCX / PDF · HTML 转换 · 风格化输出 |
+
+## 从这里开始
+
+```text
+npm install && npm start
+```
+
+## 完整说明
 
 #该项目代码会上传到github托管，然后使用vercel进行部署，然后空间存储使用supabase，同时为了减少vercel的代码运行时间，采用异步执行AI美化，查询supabase的数据库
 
